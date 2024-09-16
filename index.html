@@ -20,6 +20,7 @@
     <label for="key">Key:</label>
     <select id="key" name="key" required>
       <option value="" disabled selected>Select a Key</option>
+      <!-- Common Keys -->
       <option value="C">C</option>
       <option value="C#">C# / Db</option>
       <option value="D">D</option>
@@ -44,15 +45,24 @@
       <option value="vi-IV-I-V">vi - IV - I - V</option>
     </select>
 
+    <label for="bars">Number of Bars:</label>
+    <select id="bars" name="bars" required>
+      <option value="" disabled selected>Select Number of Bars</option>
+      <!-- Common numbers of bars -->
+      <option value="2">2 Bars</option>
+      <option value="4">4 Bars</option>
+      <option value="8">8 Bars</option>
+      <option value="12">12 Bars</option>
+      <option value="16">16 Bars</option>
+    </select>
+
     <label for="shape">Chord Shape:</label>
     <select id="shape" name="shape" required>
       <option value="" disabled selected>Select a Shape</option>
       <option value="C">C Shape</option>
       <option value="A">A Shape</option>
-      <option value="A_stretch">A Stretch Shape</option>
       <option value="G">G Shape</option>
       <option value="E">E Shape</option>
-      <option value="E_stretch">E Stretch Shape</option>
       <option value="D">D Shape</option>
     </select>
 
@@ -62,7 +72,7 @@
   <!-- Container for Music Notation -->
   <div id="notation"></div>
 
-  <!-- Link to script -->
+  <!-- Link to Your JavaScript -->
   <script src="script.js"></script>
 </body>
 </html>
