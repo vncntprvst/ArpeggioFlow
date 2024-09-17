@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- Favicon sourced from https://icons8.com/icon/Bri4HBrgCsPa/music -->
-  <link rel="icon" type="image/x-icon" href="favicons\web\icons8-music-windows-11-color-32.ico" sizes="32x32">
+  <link rel="icon" type="image/x-icon" href="favicons\music_note_32.ico" sizes="32x32">
 
   <title>Arpeggio Practice Generator</title>
 
@@ -51,6 +50,10 @@
       <option value="vi-IV-I-V">vi - IV - I - V</option>
     </select>
 
+    <!-- Added Number of Bars Input -->
+    <label for="bars">Number of Bars:</label>
+    <input type="number" id="bars" name="bars" value="4" min="1" required>
+
     <label for="shape">Chord Shape:</label>
     <select id="shape" name="shape" required>
       <option value="" disabled selected>Select a Shape</option>
@@ -61,13 +64,14 @@
       <option value="D">D Shape</option>
     </select>
 
-    <button type="button" onclick="generateExercise()">Generate Exercise</button>
+    <!-- Removed onclick attribute -->
+    <button type="button" id="generateButton">Generate Exercise</button>
   </form>
 
   <!-- Container for Music Notation -->
   <div id="notation"></div>
 
   <!-- Include the main script as a module -->
-  <script type="module" src="autumn_leaves.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
