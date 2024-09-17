@@ -1,0 +1,11 @@
+#status {
+  font-size: 20px;
+  text-align: center;
+  margin-top: 50px;
+}
+
+#output {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VexFlow and Tonal Load Test</title>
+
+  <!-- VexFlow (version 4.2.2 from jsDelivr CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+  <!-- Tonal (latest version from jsDelivr CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
+
+  <style>
+    #status {
+      font-size: 20px;
+      text-align: center;
+      margin-top: 50px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Checking VexFlow and Tonal...</div>
+
+  <script>
+    window.onload = function() {
+      const statusDiv = document.getElementById('status');
+      
+      // Check if VexFlow loaded
+      let vexflowLoaded = typeof Vex !== 'undefined' ? "VexFlow loaded successfully." : "Failed to load VexFlow.";
+      
+      // Check if Tonal loaded
+      let tonalLoaded = typeof Tonal !== 'undefined' ? "Tonal loaded successfully." : "Failed to load Tonal.";
+
+      // Update the status message
+      statusDiv.innerHTML = `${vexflowLoaded}<br>${tonalLoaded}`;
+    };
+  </script>
+</body>
+</html>

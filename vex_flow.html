@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VexFlow Load Test</title>
+
+  <!-- VexFlow (version 4.2.2 from jsDelivr CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+
+  <style>
+    #status {
+      font-size: 20px;
+      text-align: center;
+      margin-top: 50px;
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Checking VexFlow...</div>
+
+  <script>
+    window.onload = function() {
+      const statusDiv = document.getElementById('status');
+      
+      // Check if VexFlow loaded
+      let vexflowLoaded = typeof Vex !== 'undefined' ? "VexFlow loaded successfully." : "Failed to load VexFlow.";
+
+      // Update the status message
+      statusDiv.innerHTML = vexflowLoaded;
+    };
+  </script>
+</body>
+</html>
