@@ -4,15 +4,7 @@
 
 **Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation and [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations.
 
-## Features
-
-- **Key Selection**: Choose from common musical keys.
-- **Chord Progression**: Select from popular chord progressions.
-- **Number of Bars**: Specify the number of bars for your exercise.
-- **Chord Shape**: Choose a chord shape based on the CAGED system.
-- **Dynamic Notation Rendering**: Generates and displays musical notation for the exercise.
-
-### Using the Application
+## Using the Application
 
 1. **Fill out the form**:
 
