@@ -7,9 +7,9 @@ window.onload = function() {
     // Check if VexFlow and Tonal.js are loaded
     let vexflowLoaded = typeof Vex !== 'undefined';
     let tonalLoaded = typeof Tonal !== 'undefined';
-    let vexchordsLoaded = typeof VexChords !== 'undefined';
-
-    if (!vexflowLoaded || !tonalLoaded || !vexchordsLoaded) {
+    // let vexchordsLoaded = typeof vexchords !== 'undefined';
+    // || !vexchordsLoaded
+    if (!vexflowLoaded || !tonalLoaded) {
         statusDiv.innerHTML = "Failed to load VexFlow or Tonal or VexChords. Please check the console for errors.";
     } else {
         statusDiv.style.display = "none";  // Hide the status div if VexFlow and Tonal.js are loaded
@@ -44,13 +44,13 @@ window.onload = function() {
 };
 
 function renderChord(frets) {
-    if (!VexChords) {
+    if (!vexchords) {
         console.error('VexChords is not available. Please ensure it is loaded.');
         return;
     }
 
     // Render the chord diagram using VexChords
-    VexChords.draw(document.getElementById('notation'), {
+    vexchords.draw(document.getElementById('notation'), {
         frets: frets,  // Example frets array
         strings: 6,    // Number of strings
         position: 5,   // Starting fret position (adjust based on chord)
