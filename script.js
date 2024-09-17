@@ -45,19 +45,19 @@ function generateExercise() {
 
     // Set the width and height of the renderer to allow wrapping
     const renderer = new Renderer(div, Renderer.Backends.SVG);
-    const width = 1200;  // Set a reasonable width for your SVG area
-    const height = 500;  // Set the height based on expected content
+    const width = 1200;
+    const height = 500;
     renderer.resize(width, height);
     const context = renderer.getContext();
 
     // Define some constants for positioning
-    const staveWidth = 250;  // Adjust the width of each stave
-    const staveHeight = 150; // Spacing between lines of staves
-    let xStart = 50;         // Initial x-position
-    let yStart = 40;         // Initial y-position
+    const staveWidth = 250;
+    const staveHeight = 150;
+    let xStart = 50;
+    let yStart = 40;
 
     // Set a maximum width before wrapping to a new line
-    const maxStaveWidth = width - 20;  // Leave some margin on the right
+    const maxStaveWidth = width - 20;
 
     // Parse the progression and adjust for the number of bars
     let chordsInProgression = progression.replace(/\s/g, '').split('-');
@@ -65,25 +65,30 @@ function generateExercise() {
 
     // Adjust the progression to fit the number of bars
     let adjustedProgression = [];
-    let barCount = 0;
     const totalChords = chordsInProgression.length;
+    let fullCycles = Math.floor(bars / totalChords);
+    let remainingBars = bars % totalChords;
 
-    while (barCount < bars) {
-        for (let i = 0; i < totalChords && barCount < bars; i++) {
-            adjustedProgression.push(chordsInProgression[i]);
-            barCount++;
+    // Add full cycles of the progression
+    for (let i = 0; i < fullCycles; i++) {
+        adjustedProgression = adjustedProgression.concat(chordsInProgression);
+    }
 
-            // Special case: Repeat the last chord if needed
-            if (barCount === bars) {
-                break;
-            }
+    // Handle the remaining bars
+    if (remainingBars > 0) {
+        if (remainingBars === 1) {
+            // Add the "I" chord to end the progression
+            adjustedProgression.push(chordsInProgression[totalChords - 1]);
+        } else {
+            // Add the necessary chords from the progression
+            adjustedProgression = adjustedProgression.concat(chordsInProgression.slice(0, remainingBars));
         }
     }
 
     console.log('Adjusted Progression:', adjustedProgression);
 
-    // Now, for each chord in the adjustedProgression, generate notes
-    const measures = [];  // Array to store measure data
+    // Generate measures based on the adjusted progression
+    const measures = [];
 
     adjustedProgression.forEach(function(chordSymbol) {
         // Map chord numerals to scale degrees and qualities
@@ -133,7 +138,7 @@ function generateExercise() {
             // Randomly pick a note from chordNotes
             const randomNote = chordNotes[Math.floor(Math.random() * chordNotes.length)];
             // Adjust octave to fit within a reasonable range
-            const octaveAdjustedNote = `${randomNote}/${4}`; // Corrected format
+            const octaveAdjustedNote = `${randomNote}/${4}`;
             console.log(`Adding note: ${octaveAdjustedNote}`);
             measureNotes.push(new StaveNote({
                 clef: 'treble',
@@ -150,15 +155,14 @@ function generateExercise() {
         });
     });
 
-    // Now, render the measures
+    // Render the measures
     measures.forEach(function(measureData, index) {
-        // If the next stave would exceed the maximum width, wrap to the next line
+        // Wrap to next line if necessary
         if (xStart + staveWidth > maxStaveWidth) {
-            xStart = 50;  // Reset x to the start of the next line
-            yStart += staveHeight;  // Move y down to the next line
+            xStart = 50;
+            yStart += staveHeight;
         }
 
-        // Increase the width of the first stave to accommodate the clef, key signature, and time signature
         const currentStaveWidth = index === 0 ? staveWidth + 70 : staveWidth;
 
         // Create a stave for each measure
@@ -168,24 +172,24 @@ function generateExercise() {
         }
         stave.setContext(context).draw();
 
-        // Attach the chord symbol as an annotation to the first note of the measure
+        // Attach the chord symbol as an annotation
         const firstNote = measureData.notes[0];
         const chordAnnotation = new Annotation(measureData.chordName)
             .setFont('Arial', 12, 'normal')
             .setVerticalJustification(Annotation.VerticalJustify.TOP);
         firstNote.addModifier(chordAnnotation, 0);
 
-        // Create a voice in 4/4 and add the notes for this measure
+        // Create a voice and add the notes
         const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(measureData.notes);
 
-        // Format and justify the notes to fit within the stave width
+        // Format and justify the notes
         new Formatter().joinVoices([voice]).format([voice], currentStaveWidth - 50);
 
-        // Draw the voice (notes) on the stave
+        // Draw the voice
         voice.draw(context, stave);
 
-        // Move the xStart for the next stave
-        xStart += stave.width;  // Shift the next stave to the right
+        // Move xStart for the next stave
+        xStart += stave.width;
     });
 }
 
