@@ -1,18 +1,21 @@
-// script.js
+// Purpose: Main script file for the CAGED Chords Exercise Generator.
+
+// Import your CAGED Shape generator function
 import { getCAGEDShape } from './cagedShapes.js';
 
-window.onload = function() {
+// Initialize the application on window load
+window.onload = function () {
     const statusDiv = document.getElementById('status');
 
     // Check if VexFlow and Tonal.js are loaded
     let vexflowLoaded = typeof Vex !== 'undefined';
     let tonalLoaded = typeof Tonal !== 'undefined';
-    // let vexchordsLoaded = typeof vexchords !== 'undefined';
-    // || !vexchordsLoaded
-    if (!vexflowLoaded || !tonalLoaded) {
-        statusDiv.innerHTML = "Failed to load VexFlow or Tonal or VexChords. Please check the console for errors.";
+    let vexchordsLoaded = typeof vexchords !== 'undefined';
+
+    if (!vexflowLoaded || !tonalLoaded || !vexchordsLoaded) {
+        statusDiv.innerHTML = "Failed to load VexFlow, Tonal, or VexChords.";
     } else {
-        statusDiv.style.display = "none";  // Hide the status div if VexFlow and Tonal.js are loaded
+        statusDiv.style.display = "none";  // Hide the status div if everything is loaded
 
         // Attach event listener to the Generate Exercise button
         document.getElementById('generateButton').addEventListener('click', () => {
@@ -20,41 +23,82 @@ window.onload = function() {
             const progression = document.getElementById('progression').value;
             const bars = document.getElementById('bars').value;
             const shape = document.getElementById('shape').value;
-        
+
             // Validate selections
             if (!key || !progression || !bars || !shape) {
                 alert('Please select a key, progression, number of bars, and chord shape.');
                 return;
             }
-        
+
             // Generate CAGED shape
             const cagedShape = getCAGEDShape(shape, key);
-            
-            // Here you can render the shape information or arpeggios using VexFlow/VexChords
-            console.log(cagedShape);
-            
-            // Render the chord shape visually using VexChords
-            renderChord(cagedShape.frets);
 
-            // Generate the exercise based on the selected key, progression, number of bars, and chord shape
-            // Display the exercise using VexFlow, below the chord shape
+            // Render the chord shape visually using VexChords
+            renderChord(cagedShape);
+
+            // Generate the musical exercise
             generateExercise();
         });
     }
 };
 
-function renderChord(frets) {
-    if (!vexchords) {
-        console.error('VexChords is not available. Please ensure it is loaded.');
+// Render the selected chord shape
+function renderChord(cagedShape) {
+    const shapeName = cagedShape.shape; // Get the shape name (e.g., 'A Shape', 'C Shape')
+    let chordData;
+    let position;
+
+    // Define chord shapes manually (as they worked in the console)
+    if (shapeName === "A Shape") {
+        chordData = [
+            [6, 'x'], [5, 0], [4, 2], [3, 2], [2, 2], [1, 0]
+        ];
+        position = 1;
+    } else if (shapeName === "C Shape") {
+        chordData = [
+            [6, 0], [5, 1], [4, 0], [3, 0], [2, 1], [1, 3]
+        ];
+        // Reverse the string order to fix inversion
+        chordData = chordData.reverse();
+        position = 1;
+    } else if (shapeName === "D Shape") {
+        chordData = [
+            [6, 'x'], [5, 'x'], [4, 0], [3, 2], [2, 3], [1, 2]
+        ];
+        // The D shape starts at the 2nd fret
+        position = 2;
+    } else if (shapeName === "E Shape") {
+        chordData = [
+            [6, 0], [5, 2], [4, 2], [3, 1], [2, 0], [1, 0]
+        ];
+        position = 1;
+    } else if (shapeName === "G Shape") {
+        chordData = [
+            [6, 3], [5, 2], [4, 0], [3, 0], [2, 3], [1, 3]
+        ];
+        // The G shape starts at the 3rd fret
+        position = 3;
+    } else {
+        console.error(`Unknown shape: ${shapeName}`);
         return;
     }
 
+    // Call the plot function with the generated chord data
+    plotChord(chordData, position);
+}
+
+// Plot the chord diagram
+function plotChord(chordData, position = 1) {
+    // Clear previous diagram before drawing a new one
+    const chordDiagram = document.getElementById('chord-diagram');
+    chordDiagram.innerHTML = ''; // Clear any previous diagrams
+
     // Render the chord diagram using VexChords
-    vexchords.draw(document.getElementById('notation'), {
-        frets: frets,  // Example frets array
-        strings: 6,    // Number of strings
-        position: 5,   // Starting fret position (adjust based on chord)
-        barres: [],    // Any barres (optional)
+    vexchords.draw(chordDiagram, {
+        chord: chordData,   // Chord data directly passed as tested from the console
+        strings: 6,         // Standard 6-string guitar
+        position: position, // Fret position (1 for open chords, or dynamic)
+        barres: [],         // No barres for now
         tuning: ['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
     });
 }

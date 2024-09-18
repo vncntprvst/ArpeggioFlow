@@ -26,7 +26,11 @@ select {
   margin-right: 20px;
 }
 
-notation {
+#chord-diagram {
+  transform: scaleX(-1);
+}
+
+#notation {
   display: flex;
   justify-content: center;
   margin-top: 20px;
