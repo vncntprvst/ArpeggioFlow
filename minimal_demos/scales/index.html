@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Arpeggio Practice Generator</title>
+  <style>
+    /* Basic styles for the fretboard and controls */
+    #fretboard {
+      width: 100%;
+      height: auto;
+      max-width: 800px;
+      margin: 20px auto;
+    }
+    .controls {
+      width: 800px;
+      margin: 20px auto;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+    }
+    .controls label {
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Arpeggio Practice Generator</h1>
+  
+  <div class="controls">
+    <div>
+      <label for="key">Select Key:</label>
+      <select id="key">
+        <option value="C">C</option>
+        <option value="G">G</option>
+        <option value="D">D</option>
+        <option value="A">A</option>
+        <option value="E">E</option>
+        <!-- Add more keys as needed -->
+      </select>
+    </div>
+    
+    <div>
+      <label for="scaleType">Select Scale Type:</label>
+      <select id="scaleType">
+        <option value="major">Major</option>
+        <option value="minor">Minor</option>
+        <option value="pentatonic">Pentatonic</option>
+        <option value="blues">Blues</option>
+        <!-- Add more scale types as needed -->
+      </select>
+    </div>
+
+    <div>
+      <label for="shape">Select CAGED Shape:</label>
+      <select id="shape">
+        <option value="C">C</option>
+        <option value="A">A</option>
+        <option value="G">G</option>
+        <option value="E">E</option>
+        <option value="D">D</option>
+      </select>
+    </div>    
+    
+    <button id="generateButton">Generate Scale Diagram</button>
+  </div>
+  
+  <div id="fretboard"></div>
+  
+  <script src="index.js" type="module"></script>
+</body>
+</html>
