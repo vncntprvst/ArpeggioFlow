@@ -1,5 +1,5 @@
 * Move frets one down on diagram (without changing position).  
-* Display Chords diagrams over each chord name.
+* Display small chords diagrams over each chord name.
 * Flow from one chord to another:
     - Select closest chord tone (unison, 1/2 step, \w step).
     - Keep in direction: keep ascending or descending.
