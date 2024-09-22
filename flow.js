@@ -1,6 +1,6 @@
 // Purpose: Main script file for the CAGED Chords Exercise Generator.
 
-// script.js
+// flow.js
 
 // Import your CAGED Shape generator function
 import { getCAGEDShape } from './cagedShapes.js';
