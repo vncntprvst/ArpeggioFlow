@@ -31,7 +31,7 @@ The application is a single-page web app that consists of HTML, CSS, and JavaScr
 ### Prerequisites
 
 - A modern web browser (Chrome, Firefox, Edge, Safari) that supports ES6 modules.
-- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed (optional, for running a local server with more features).
+- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed (optional, for running a local server with more features). Use [Parcel(https://parceljs.org/)] for a minimal configuration dynamic site. See example in `minimal_demos\scales\`. The downside is that this won't work with Github pages, but see [Vercel](https://vercel.com/) for a free hosting solution that is compatible with Parcel. 
 
 e.g., for Windows:  
 1. **Download Node.js for Windows:**
