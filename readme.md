@@ -68,6 +68,8 @@ e.g., for Windows:
 
      You should see the npm version number printed.
 
+From there, you can either install (build) packages with npm, and/or build the site (see `minimal_demos\scales\readme.md`).  
+
 ### Clone the Repository
 
 ```bash
