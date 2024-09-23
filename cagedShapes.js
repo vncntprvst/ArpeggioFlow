@@ -1,35 +1,50 @@
 // cagedShapes.js
-
-export const CAGED_SHAPES = {
+// export const CAGED_SHAPES = {
+const CAGED_SHAPES = {
     C: {
         name: "C Shape",
         baseKey: "C",
+        scaleType: "major",
         frets: [-1, 3, 2, 0, 1, 0], // Frets for C major in open position, strings 6 to 1
-        rootString: 5 // String 5 (A string)
+        rootString: 5, // String 5 (A string)
+        startFret: 0, 
+        endFret: 4 
     },
     A: {
         name: "A Shape",
         baseKey: "A",
+        scaleType: "major",
         frets: [-1, 0, 2, 2, 2, 0],
-        rootString: 5 // String 5 (A string)
+        rootString: 5, // String 5 (A string)
+        startFret: 5,
+        endFret: 9 
     },
     G: {
         name: "G Shape",
         baseKey: "G",
+        scaleType: "major",
         frets: [3, 2, 0, 0, 0, 3],
-        rootString: 6 // String 6 (low E string)
+        rootString: 6, // String 6 (low E string)
+        startFret: 3, 
+        endFret: 7
     },
     E: {
         name: "E Shape",
         baseKey: "E",
+        scaleType: "major",
         frets: [0, 2, 2, 1, 0, 0],
-        rootString: 6 // String 6 (low E string)
+        rootString: 6, // String 6 (low E string)
+        startFret: 0, 
+        endFret: 4
     },
     D: {
         name: "D Shape",
         baseKey: "D",
+        scaleType: "major",
         frets: [-1, -1, 0, 2, 3, 2],
-        rootString: 4 // String 4 (D string)
+        rootString: 4, // String 4 (D string)
+        startFret: 7,
+        endFret: 11
     }
 };
 
@@ -39,7 +54,8 @@ export const CAGED_SHAPES = {
  * @param {string} key - The musical key selected (e.g., "C", "D", "E")
  * @returns {object} - Transposed chord data including frets, barres, and position
  */
-export function getCAGEDShape(shape, key) {
+// export function getCAGEDShape(shape, key) {
+function getCAGEDShape(shape, key) {
     const shapeInfo = CAGED_SHAPES[shape];
     if (!shapeInfo) {
         console.error(`Unknown shape: ${shape}`);
@@ -135,7 +151,11 @@ function transposeShape(shapeInfo, targetKey) {
         frets: [adjustedFrets],
         barres: barres, // Include barres if any
         position: position,
-        key: targetKey
+        key: targetKey,
+        scaleType: shapeInfo.scaleType,
+        baseKey: shapeInfo.baseKey
     };
 }
 
+// Attach functions to the global window object
+window.getCAGEDShape = getCAGEDShape;

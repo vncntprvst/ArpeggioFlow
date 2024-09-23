@@ -2,34 +2,38 @@
 
 // flow.js
 
-// Import your CAGED Shape generator function
-import { getCAGEDShape } from './cagedShapes.js';
-
-// Sample chord definitions
-const aShapeChord = {
-    shape: 'A Shape',
-    frets: [['x', 0, 2, 2, 2, 0]]
+// Define the tuning
+const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
+const colors = {
+    defaultFill: "white",
+    defaultActiveFill: "#ff636c",
+    defaultStroke: "black",
+    defaultActiveStroke: "#ff636c",
+    disabled: "#aaa",
+    primaryFill: "#3273dc",
+    intervals: {
+      "1P": "#F25116",
+      "2M": "#FCFF6C",
+      "2m": "#FCFF6C",
+      "3m": "#F29727",
+      "3M": "#F29727",
+      "4P": "#2FABEE",
+      "4A": "#2FABEE",
+      "5P": "#D89D6A",
+      "5A": "#D89D6A",
+      "6M": "#D7FFAB",
+      "6m": "#D7FFAB",
+      "7M": "#96ADC8",
+      "7m": "#96ADC8"
+    }
 };
 
-const cShapeChord = {
-    shape: 'C Shape',
-    frets: [[0, 3, 2, 0, 1, 0]]
-};
 
-const dShapeChord = {
-    shape: 'D Shape',
-    frets: [['x', 'x', 0, 2, 3, 2]]
-};
+// Import the CAGED Shape generator function
+// import { getCAGEDShape } from './cagedShapes.js';
 
-const gShapeChord = {
-    shape: 'G Shape',
-    frets: [[3, 2, 0, 0, 0, 3]]
-};
-
-const eShapeChord = {
-    shape: 'E Shape',
-    frets: [[0, 2, 2, 1, 0, 0]]
-};
+// import { Fretboard, Systems } from './libs/fretboard/fretboard.esm.js';
+// import { colors } from './libs/fretboard/config.json';
 
 function renderChord(cagedShape) {
     if (typeof vexchords === 'undefined') {
@@ -66,9 +70,129 @@ function renderChord(cagedShape) {
         strings: 6,
         position: position,
         barres: cagedShape.barres || [],
-        tuning: ['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
+        tuning: tuning //['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
     });
 }
+
+// Function to render the scale diagram
+// Example usage:
+// const initialKey = 'C';
+// const initialScaleType = 'major';
+// const initialShape = 'C';
+// renderScaleDiagram(initialKey, initialScaleType, initialShape);
+function renderScaleDiagram(cagedShape) {
+    // const fretboardContainer = document.getElementById('fretboard');
+    // fretboardContainer.innerHTML = ''; // Clear previous content
+
+    // Create a new div for each chord diagram
+    // const scaleDiagram = document.createElement('div');
+    const scaleDiagram = document.getElementById('fretboard-container'); 
+    scaleDiagram.className = 'fretboard';
+    // document.getElementById('chords-container').appendChild(scaleDiagram);
+
+    // Compute startFret and endFret based on the frets array
+    let fretsArray = cagedShape.frets[0];
+    let frets = fretsArray.filter(fret => typeof fret === 'number' && fret >= 0);
+    let fretRange = { startFret: Math.min(...frets), endFret: Math.max(...frets) };
+
+    console.log('Selected Shape:', cagedShape.baseKey, 'Fret Range:', fretRange);
+  
+    // Set a fixed fretCount (e.g., 15) to accommodate all CAGED shapes
+    const fretCount = 15;
+  
+    // Create a new Fretboard instance with fixed fretCount
+    // const fretboardInstance = new fretboard.Fretboard({
+    //   el: scaleDiagram,
+    //   width: 50, 
+    //   height: 10, 
+    //   fretCount: fretCount, // Fixed fret count
+    //   tuning: tuning,
+    //   dotSize: 1,          // Dot size in pixels
+    //   dotStrokeWidth: 0.2,
+    //   stringWidth: 0.1,
+    //   fretWidth: 0.1,
+    //   scaleFrets: true,
+    //   fretLeftPadding: 10, // Optional, adjust as needed
+    // //   bottomPadding: 0,   // Optional, adjust as needed
+    //   dotText: ({ note, degree }) => {
+    //     return {
+    //         text: degree === 1 ? '1' : note,
+    //         fontSize: '0.2px',
+    //       };
+    //   }, // Display '1' for root notes
+    //   dotFill: ({ degree }) => (degree === 1 ? '#00BCD4' : '#FF7043'), // Teal for root notes, Coral for others
+    //   dotStrokeColor: '#FFFFFF', // White for stroke color
+    //   dotStrokeWidth: 1,
+    //   showFretNumbers: true,
+    // });
+
+    const fretboardConfiguration = {
+        height: 200,
+        stringsWidth: 1.5,
+        dotSize: 25,
+        fretCount: 16,
+        fretsWidth: 1.2,
+        font: 'Futura'
+      };
+
+    const fretboardInstance = new fretboard.Fretboard({
+        ...fretboardConfiguration,
+        el: scaleDiagram,
+        dotText: ({ note }) => note,
+      });
+    fretboardInstance
+        .renderScale({
+            type: 'major',
+            root: 'G',
+        })
+        .style({
+            fill: (dot, index) =>
+            dot.degree === 1 ? colors.defaultActiveFill : 'white',
+        })
+        .highlightAreas(
+            [
+            { string: 1, fret: 5 },
+            { string: 6, fret: 2 },
+            ],
+            [
+            { string: 1, fret: 13 },
+            { string: 6, fret: 9 },
+            ]
+        );
+  
+    console.log('Fretboard Instance:', fretboardInstance);
+  
+    // Render the scale on the fretboard with the CAGED system and selected shape
+    fretboardInstance.renderScale({
+      type: cagedShape.scaleType,
+      root: cagedShape.key,
+      box: {
+        system: fretboard.Systems.CAGED, // Use the Systems enumeration
+        box: cagedShape.baseKey, // Specify the CAGED shape
+      },
+    });
+  
+    // Highlight the selected CAGED shape's fret range
+    // Define start and end positions for highlighting
+    const highlightStart = { string: 6, fret: fretRange.startFret }; // 6th string (low E)
+    const highlightEnd = { string: 1, fret: fretRange.endFret };     // 1st string (high E)
+  
+    // Correctly invoke highlightAreas without nested arrays
+    fretboardInstance.highlightAreas([highlightStart, highlightEnd]);
+  
+    console.log('Highlighted Areas:', [highlightStart, highlightEnd]);
+  
+    // Apply custom styles to the highlighted areas
+    fretboardInstance.style({
+      filter: (position) => {
+        // Check if the position's fret is within the highlighted range
+        return position.fret >= highlightStart.fret && position.fret <= highlightEnd.fret;
+      },
+      fill: 'rgba(0, 123, 255, 0.2)', // Semi-transparent blue
+      stroke: '#007BFF',               // Blue border
+      strokeWidth: 2,
+    });
+  }
 
 function generateExercise() {
     const key = document.getElementById('key').value;
@@ -275,6 +399,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // Generate CAGED shape (ensure getCAGEDShape is working)
             const cagedShape = getCAGEDShape(shape, key);
+            console.log('cagedShape:', cagedShape);
+
             // For testing, use a sample chord
             // const cagedShape = aShapeChord;
 
@@ -284,6 +410,9 @@ document.addEventListener('DOMContentLoaded', function () {
             // Render the chord shape visually using VexChords
             renderChord(cagedShape);
 
+            // Render the scale diagram using Fretboard.js
+            renderScaleDiagram(cagedShape);
+
             // Generate the musical exercise
             generateExercise();
         });
@@ -292,6 +421,32 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Clear previous chords
 document.getElementById('chords-container').innerHTML = '';
+
+// Sample chord definitions
+// const aShapeChord = {
+//     shape: 'A Shape',
+//     frets: [['x', 0, 2, 2, 2, 0]]
+// };
+
+// const cShapeChord = {
+//     shape: 'C Shape',
+//     frets: [[0, 3, 2, 0, 1, 0]]
+// };
+
+// const dShapeChord = {
+//     shape: 'D Shape',
+//     frets: [['x', 'x', 0, 2, 3, 2]]
+// };
+
+// const gShapeChord = {
+//     shape: 'G Shape',
+//     frets: [[3, 2, 0, 0, 0, 3]]
+// };
+
+// const eShapeChord = {
+//     shape: 'E Shape',
+//     frets: [[0, 2, 2, 1, 0, 0]]
+// };
 
 // Render the sample chords
 // renderChord(cShapeChord);

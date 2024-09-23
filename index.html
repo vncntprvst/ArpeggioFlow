@@ -10,11 +10,21 @@
   <!-- Link to external CSS -->
   <link rel="stylesheet" href="styles.css">
 
-  <!-- VexFlow, VexChord and Tonal scripts from CDN -->
+  <!-- VexFlow -->
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
+
+  <!-- Tonal -->
   <script src="https://cdn.jsdelivr.net/npm/tonal/browser/tonal.min.js"></script>
-  <!-- <script src="https://cdn.jsdelivr.net/npm/vexchords@1.2.0/dist/vexchords.min.js"></script> -->
-  <script src="vexchords/vexchords.dev.js"></script>
+
+  <!-- VexChords -->
+  <script src="libs/vexchords/vexchords.dev.js"></script>
+
+  <!-- Fretboard.js UMD build -->
+  <script src="libs/fretboard/fretboard.umd.js"></script>
+
+  <!-- cagedShapes.js -->
+  <script src="cagedShapes.js"></script>
+
 </head>
 <body>
   <div id="status">Checking VexFlow, Tonal and VexChords Libraries...</div>
@@ -73,6 +83,9 @@
 
   <!-- Container for Chord Diagrams -->
   <div id="chords-container"></div>
+
+  <!-- Container for Fretboard Diagrams -->
+  <div id="fretboard-container"></div>
 
   <!-- Container for Music Notation -->
   <div id="notation"></div>

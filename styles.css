@@ -30,8 +30,25 @@ select {
   transform: scaleX(-1);
 }
 
+#fretboard-container {
+  width: 100px;
+  justify-content: center;
+}
+
+/* Existing styles */
+.fretboard {
+  margin: 20px auto;
+  /* Other styles */
+}
+
+/* New styles to adjust the font size of fretboard dot labels */
+.fretboard svg text {
+  font-size: 2px; /* Adjust this value */
+}
+
 #notation {
   display: flex;
   justify-content: center;
   margin-top: 20px;
 }
+

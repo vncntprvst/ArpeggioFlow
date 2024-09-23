@@ -8,7 +8,7 @@ working_doc_initial.md
 # VS Code
 .vs/
 
-# Node and NPM
+# Node, NPM, Parcel
 node_modules/
 .parcel-cache/
 dist/

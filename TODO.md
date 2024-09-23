@@ -1,3 +1,4 @@
+* Fix issue of scale diagram width 
 * Move frets one down on diagram (without changing position).  
 * Display small chords diagrams over each chord name.
 * Flow from one chord to another:
