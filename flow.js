@@ -81,13 +81,13 @@ function renderChord(cagedShape) {
 // const initialShape = 'C';
 // renderScaleDiagram(initialKey, initialScaleType, initialShape);
 function renderScaleDiagram(cagedShape) {
-    // const fretboardContainer = document.getElementById('fretboard');
-    // fretboardContainer.innerHTML = ''; // Clear previous content
+    // Clear previous content
+    document.getElementById('fretboard-container').innerHTML = '';
 
     // Create a new div for each chord diagram
     // const scaleDiagram = document.createElement('div');
     const scaleDiagram = document.getElementById('fretboard-container'); 
-    scaleDiagram.className = 'fretboard';
+    // scaleDiagram.className = 'fretboard';
     // document.getElementById('chords-container').appendChild(scaleDiagram);
 
     // Compute startFret and endFret based on the frets array
@@ -101,64 +101,64 @@ function renderScaleDiagram(cagedShape) {
     const fretCount = 15;
   
     // Create a new Fretboard instance with fixed fretCount
-    // const fretboardInstance = new fretboard.Fretboard({
-    //   el: scaleDiagram,
-    //   width: 50, 
-    //   height: 10, 
-    //   fretCount: fretCount, // Fixed fret count
-    //   tuning: tuning,
-    //   dotSize: 1,          // Dot size in pixels
-    //   dotStrokeWidth: 0.2,
-    //   stringWidth: 0.1,
-    //   fretWidth: 0.1,
-    //   scaleFrets: true,
-    //   fretLeftPadding: 10, // Optional, adjust as needed
-    // //   bottomPadding: 0,   // Optional, adjust as needed
-    //   dotText: ({ note, degree }) => {
-    //     return {
-    //         text: degree === 1 ? '1' : note,
-    //         fontSize: '0.2px',
-    //       };
-    //   }, // Display '1' for root notes
-    //   dotFill: ({ degree }) => (degree === 1 ? '#00BCD4' : '#FF7043'), // Teal for root notes, Coral for others
-    //   dotStrokeColor: '#FFFFFF', // White for stroke color
-    //   dotStrokeWidth: 1,
-    //   showFretNumbers: true,
-    // });
-
-    const fretboardConfiguration = {
-        height: 200,
-        stringsWidth: 1.5,
-        dotSize: 25,
-        fretCount: 16,
-        fretsWidth: 1.2,
-        font: 'Futura'
-      };
-
     const fretboardInstance = new fretboard.Fretboard({
-        ...fretboardConfiguration,
-        el: scaleDiagram,
-        dotText: ({ note }) => note,
-      });
-    fretboardInstance
-        .renderScale({
-            type: 'major',
-            root: 'G',
-        })
-        .style({
-            fill: (dot, index) =>
-            dot.degree === 1 ? colors.defaultActiveFill : 'white',
-        })
-        .highlightAreas(
-            [
-            { string: 1, fret: 5 },
-            { string: 6, fret: 2 },
-            ],
-            [
-            { string: 1, fret: 13 },
-            { string: 6, fret: 9 },
-            ]
-        );
+      el: scaleDiagram,
+      width: 300, 
+      height: 200, 
+      fretCount: fretCount, // Fixed fret count
+      tuning: tuning,
+      dotSize: 5,          // Dot size in pixels
+      dotStrokeWidth: 4,
+      stringWidth: 2,
+      fretWidth: 2,
+      scaleFrets: true,
+      fretLeftPadding: 10, // Optional, adjust as needed
+    //   bottomPadding: 0,   // Optional, adjust as needed
+      dotText: ({ note, degree }) => {
+        return {
+            text: degree === 1 ? '1' : note,
+            fontSize: '0.2px',
+          };
+      }, // Display '1' for root notes
+      dotFill: ({ degree }) => (degree === 1 ? '#00BCD4' : '#FF7043'), // Teal for root notes, Coral for others
+      dotStrokeColor: '#FFFFFF', // White for stroke color
+      dotStrokeWidth: 1,
+      showFretNumbers: true,
+    });
+
+    // const fretboardConfiguration = {
+    //     height: 200,
+    //     stringsWidth: 1.5,
+    //     dotSize: 25,
+    //     fretCount: 16,
+    //     fretsWidth: 1.2,
+    //     font: 'Futura'
+    //   };
+
+    // const fretboardInstance = new fretboard.Fretboard({
+    //     ...fretboardConfiguration,
+    //     el: scaleDiagram,
+    //     dotText: ({ note }) => note,
+    //   });
+    // fretboardInstance
+    //     .renderScale({
+    //         type: 'major',
+    //         root: 'G',
+    //     })
+    //     .style({
+    //         fill: (dot, index) =>
+    //         dot.degree === 1 ? colors.defaultActiveFill : 'white',
+    //     })
+    //     .highlightAreas(
+    //         [
+    //         { string: 1, fret: 5 },
+    //         { string: 6, fret: 2 },
+    //         ],
+    //         [
+    //         { string: 1, fret: 13 },
+    //         { string: 6, fret: 9 },
+    //         ]
+    //     );
   
     console.log('Fretboard Instance:', fretboardInstance);
   
@@ -404,8 +404,9 @@ document.addEventListener('DOMContentLoaded', function () {
             // For testing, use a sample chord
             // const cagedShape = aShapeChord;
 
-            // Clear previous chords
+            // Clear previous chords and fretboard diagrams
             document.getElementById('chords-container').innerHTML = '';
+            document.getElementById('fretboard-container').innerHTML = '';
 
             // Render the chord shape visually using VexChords
             renderChord(cagedShape);
@@ -419,8 +420,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-// Clear previous chords
+// Clear previous chords and fretboard diagrams
 document.getElementById('chords-container').innerHTML = '';
+document.getElementById('fretboard-container').innerHTML = '';
 
 // Sample chord definitions
 // const aShapeChord = {

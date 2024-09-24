@@ -31,20 +31,32 @@ select {
 }
 
 #fretboard-container {
-  width: 100px;
-  justify-content: center;
+  width: 50%; /* One-third page width */
+  margin: 0 auto; /* Center horizontally */
+  padding: 20px; /* Add some padding */
+  background-color: #f9f9f9; /* Light background color */
+  border: 1px solid #ddd; /* Light border */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow */
 }
 
-/* Existing styles */
-.fretboard {
+.one-third-page {
+  display: block; /* Ensure it behaves as a block element */
+}
+
+.column {
+  float: left; /* Float to the left to align with other columns */
+  box-sizing: border-box; /* Include padding and border in the element's total width and height */
+}
+
+/* .fretboard {
   margin: 20px auto;
   /* Other styles */
-}
+/* }
 
-/* New styles to adjust the font size of fretboard dot labels */
+/* Adjust the font size of fretboard dot labels
 .fretboard svg text {
-  font-size: 2px; /* Adjust this value */
-}
+  font-size: 2px; 
+} */ 
 
 #notation {
   display: flex;
