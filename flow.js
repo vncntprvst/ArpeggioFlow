@@ -82,13 +82,13 @@ function renderChord(cagedShape) {
 // renderScaleDiagram(initialKey, initialScaleType, initialShape);
 function renderScaleDiagram(cagedShape) {
     // Clear previous content
-    document.getElementById('fretboard-container').innerHTML = '';
+    // document.getElementById('fretboard-container').innerHTML = '';
 
     // Create a new div for each chord diagram
-    // const scaleDiagram = document.createElement('div');
-    const scaleDiagram = document.getElementById('fretboard-container'); 
-    // scaleDiagram.className = 'fretboard';
-    // document.getElementById('chords-container').appendChild(scaleDiagram);
+    const scaleDiagram = document.createElement('div');
+    // const scaleDiagram = document.getElementById('fretboard-container'); 
+    scaleDiagram.className = 'fretboard-diagram';
+    document.getElementById('chords-container').appendChild(scaleDiagram);
 
     // Compute startFret and endFret based on the frets array
     let fretsArray = cagedShape.frets[0];
@@ -103,13 +103,13 @@ function renderScaleDiagram(cagedShape) {
     // Create a new Fretboard instance with fixed fretCount
     const fretboardInstance = new fretboard.Fretboard({
       el: scaleDiagram,
-      width: 300, 
-      height: 200, 
+      width: 200, 
+      height: 50, 
       fretCount: fretCount, // Fixed fret count
       tuning: tuning,
-      dotSize: 5,          // Dot size in pixels
-      dotStrokeWidth: 4,
-      stringWidth: 2,
+      dotSize: 25,          // Dot size in pixels
+    //   dotStrokeWidth: 4,
+      stringWidth: 1.5,
       fretWidth: 2,
       scaleFrets: true,
       fretLeftPadding: 10, // Optional, adjust as needed
@@ -406,7 +406,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // Clear previous chords and fretboard diagrams
             document.getElementById('chords-container').innerHTML = '';
-            document.getElementById('fretboard-container').innerHTML = '';
+            // document.getElementById('fretboard-container').innerHTML = '';
 
             // Render the chord shape visually using VexChords
             renderChord(cagedShape);
@@ -422,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 // Clear previous chords and fretboard diagrams
 document.getElementById('chords-container').innerHTML = '';
-document.getElementById('fretboard-container').innerHTML = '';
+// document.getElementById('fretboard-container').innerHTML = '';
 
 // Sample chord definitions
 // const aShapeChord = {
