@@ -157,5 +157,29 @@ function transposeShape(shapeInfo, targetKey) {
     };
 }
 
+/**
+ * Convert the frets of a CAGED shape to a chord array format
+ * @param {object} cagedShape - The transposed CAGED shape object
+ * @returns {array} - Chord array format
+ */
+function convertFretsToChordArray(cagedShape, numStrings = 6) {
+    // Converts frets to chord array format
+
+    // Use the adjusted frets from cagedShape
+    let fretsArray = cagedShape.frets[0];
+
+    // Convert to chord format, handling muted ('x') strings
+    let chordArray = fretsArray.map((fret, index) => {
+        let stringNumber = numStrings - index; // Default to strings 6 (low E) to 1 (high E)
+        if (fret === 'x') {
+            return [stringNumber, 'x'];
+        } else {
+            return [stringNumber, fret];
+        }
+    });
+
+    return chordArray;
+}
+
 // Attach functions to the global window object
 window.getCAGEDShape = getCAGEDShape;

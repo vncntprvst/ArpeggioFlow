@@ -41,23 +41,13 @@ function renderChord(cagedShape) {
         return;
     }
 
-    // Use the adjusted frets from cagedShape
-    let fretsArray = cagedShape.frets[0];
-
-    // Convert frets to chord array format, handling muted ('x') strings
-    let chord = fretsArray.map((fret, index) => {
-        let stringNumber = 6 - index; // Strings 6 (low E) to 1 (high E)
-        if (fret === 'x') {
-            return [stringNumber, 'x'];
-        } else {
-            return [stringNumber, fret];
-        }
-    });
+    // Convert the frets array to a format compatible with VexChords
+    const chordArray = convertFretsToChordArray(cagedShape);
 
     // Use the position from cagedShape
     const position = cagedShape.position || 1;
 
-    console.log('Rendering chord with position:', position, 'and processed frets:', chord);
+    console.log('Rendering chord with position:', position, 'and processed frets:', chordArray);
 
     // Create a new div for each chord diagram
     const chordDiagram = document.createElement('div');
@@ -66,7 +56,7 @@ function renderChord(cagedShape) {
 
     // Render the chord diagram using VexChords
     vexchords.draw(chordDiagram, {
-        chord: chord,
+        chord: chordArray,
         strings: 6,
         position: position,
         barres: cagedShape.barres || [],
@@ -91,39 +81,38 @@ function renderScaleDiagram(cagedShape) {
     document.getElementById('chords-container').appendChild(scaleDiagram);
 
     // Compute startFret and endFret based on the frets array
-    let fretsArray = cagedShape.frets[0];
+    const position = cagedShape.position || 1;
+    let fretsArray = cagedShape.frets[0].map(fret => fret + position - 1);
+    console.log('Frets Array:', fretsArray);
     let frets = fretsArray.filter(fret => typeof fret === 'number' && fret >= 0);
+    console.log('Frets:', frets);
     let fretRange = { startFret: Math.min(...frets), endFret: Math.max(...frets) };
+    console.log('Fret Range:', fretRange);
 
     console.log('Selected Shape:', cagedShape.baseKey, 'Fret Range:', fretRange);
-  
-    // Set a fixed fretCount (e.g., 15) to accommodate all CAGED shapes
-    const fretCount = 15;
-  
-    // Create a new Fretboard instance with fixed fretCount
+    
+    // Create a new Fretboard instance
     const fretboardInstance = new fretboard.Fretboard({
-      el: scaleDiagram,
-      width: 200, 
-      height: 50, 
-      fretCount: fretCount, // Fixed fret count
-      tuning: tuning,
-      dotSize: 25,          // Dot size in pixels
-    //   dotStrokeWidth: 4,
-      stringWidth: 1.5,
-      fretWidth: 2,
-      scaleFrets: true,
-      fretLeftPadding: 10, // Optional, adjust as needed
-    //   bottomPadding: 0,   // Optional, adjust as needed
-      dotText: ({ note, degree }) => {
-        return {
-            text: degree === 1 ? '1' : note,
-            fontSize: '0.2px',
-          };
-      }, // Display '1' for root notes
-      dotFill: ({ degree }) => (degree === 1 ? '#00BCD4' : '#FF7043'), // Teal for root notes, Coral for others
-      dotStrokeColor: '#FFFFFF', // White for stroke color
-      dotStrokeWidth: 1,
-      showFretNumbers: true,
+        el: scaleDiagram,
+        height: 200,
+        stringsWidth: 1.5,
+        dotSize: 25,
+        fretCount: 16,
+        fretsWidth: 1.2,
+        font: 'Futura',
+        tuning: tuning,
+        // dotStrokeWidth: 0.2,
+        // stringWidth: 0.1,
+        // scaleFrets: true,
+        // fretLeftPadding: 10, // Optional, adjust as needed
+        // bottomPadding: 0,   // Optional, adjust as needed
+        dotText: ({ note, degree }) => {
+            return degree === 1 ? '1' : note;
+          }, // Display '1' for root notes
+        dotFill: ({ degree }) => (degree === 1 ? '#00BCD4' : '#FF7043'), // Teal for root notes, Coral for others
+        dotStrokeColor: '#FFFFFF', // White for stroke color
+        dotStrokeWidth: 1,
+        showFretNumbers: true,
     });
 
     // const fretboardConfiguration = {
@@ -404,9 +393,9 @@ document.addEventListener('DOMContentLoaded', function () {
             // For testing, use a sample chord
             // const cagedShape = aShapeChord;
 
-            // Clear previous chords and fretboard diagrams
+            // Clear previous chords and diagrams
             document.getElementById('chords-container').innerHTML = '';
-            // document.getElementById('fretboard-container').innerHTML = '';
+            document.getElementById('fretboard-container').innerHTML = '';
 
             // Render the chord shape visually using VexChords
             renderChord(cagedShape);
@@ -420,9 +409,9 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
-// Clear previous chords and fretboard diagrams
+// Clear previous chords and diagrams
 document.getElementById('chords-container').innerHTML = '';
-// document.getElementById('fretboard-container').innerHTML = '';
+document.getElementById('fretboard-container').innerHTML = '';
 
 // Sample chord definitions
 // const aShapeChord = {
