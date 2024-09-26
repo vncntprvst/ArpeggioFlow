@@ -82,13 +82,24 @@ function renderScaleDiagram(cagedShape) {
 
     // Compute startFret and endFret based on the frets array
     const position = cagedShape.position || 1;
-    let fretsArray = cagedShape.frets[0].map(fret => fret + position - 1);
+
+    // Map the scale frets to the actual fret positions based on the current shape and position
+    let fretsArray = cagedShape.scale_frets.flat().map(fret => fret + position - 1);  // Flatten all the frets across strings and adjust for the position
+    
     console.log('Frets Array:', fretsArray);
+    
+    // Filter out any invalid frets (negative or non-number values)
     let frets = fretsArray.filter(fret => typeof fret === 'number' && fret >= 0);
     console.log('Frets:', frets);
-    let fretRange = { startFret: Math.min(...frets), endFret: Math.max(...frets) };
+    
+    // Calculate the range of frets (startFret and endFret)
+    let fretRange = { 
+        startFret: Math.min(...frets), 
+        endFret: Math.max(...frets) 
+    };
     console.log('Fret Range:', fretRange);
-
+    
+    // Output the selected shape and its corresponding fret range
     console.log('Selected Shape:', cagedShape.baseKey, 'Fret Range:', fretRange);
     
     // Create a new Fretboard instance
@@ -114,40 +125,6 @@ function renderScaleDiagram(cagedShape) {
         dotStrokeWidth: 1,
         showFretNumbers: true,
     });
-
-    // const fretboardConfiguration = {
-    //     height: 200,
-    //     stringsWidth: 1.5,
-    //     dotSize: 25,
-    //     fretCount: 16,
-    //     fretsWidth: 1.2,
-    //     font: 'Futura'
-    //   };
-
-    // const fretboardInstance = new fretboard.Fretboard({
-    //     ...fretboardConfiguration,
-    //     el: scaleDiagram,
-    //     dotText: ({ note }) => note,
-    //   });
-    // fretboardInstance
-    //     .renderScale({
-    //         type: 'major',
-    //         root: 'G',
-    //     })
-    //     .style({
-    //         fill: (dot, index) =>
-    //         dot.degree === 1 ? colors.defaultActiveFill : 'white',
-    //     })
-    //     .highlightAreas(
-    //         [
-    //         { string: 1, fret: 5 },
-    //         { string: 6, fret: 2 },
-    //         ],
-    //         [
-    //         { string: 1, fret: 13 },
-    //         { string: 6, fret: 9 },
-    //         ]
-    //     );
   
     console.log('Fretboard Instance:', fretboardInstance);
   
@@ -166,10 +143,12 @@ function renderScaleDiagram(cagedShape) {
     const highlightStart = { string: 6, fret: fretRange.startFret }; // 6th string (low E)
     const highlightEnd = { string: 1, fret: fretRange.endFret };     // 1st string (high E)
   
+    console.log('Highlighted Areas:', [highlightStart, highlightEnd]);
+    
     // Correctly invoke highlightAreas without nested arrays
     fretboardInstance.highlightAreas([highlightStart, highlightEnd]);
   
-    console.log('Highlighted Areas:', [highlightStart, highlightEnd]);
+
   
     // Apply custom styles to the highlighted areas
     fretboardInstance.style({

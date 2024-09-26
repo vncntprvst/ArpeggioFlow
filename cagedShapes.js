@@ -5,7 +5,15 @@ const CAGED_SHAPES = {
         name: "C Shape",
         baseKey: "C",
         scaleType: "major",
-        frets: [-1, 3, 2, 0, 1, 0], // Frets for C major in open position, strings 6 to 1
+        chord_frets: [-1, 3, 2, 0, 1, 0], 
+        scale_frets: [
+                        [0, 1, 3],
+                        [0, 2, 3], 
+                        [0, 2, 3], 
+                        [0, 2], 
+                        [0, 1, 3], 
+                        [0, 1, 3]
+                    ],
         rootString: 5, // String 5 (A string)
         startFret: 0, 
         endFret: 4 
@@ -14,7 +22,15 @@ const CAGED_SHAPES = {
         name: "A Shape",
         baseKey: "A",
         scaleType: "major",
-        frets: [-1, 0, 2, 2, 2, 0],
+        chord_frets: [-1, 0, 2, 2, 2, 0],
+        scale_frets: [
+                        [1, 3, 5],
+                        [2, 3, 5],
+                        [2, 3, 5],
+                        [2, 4, 5],
+                        [3, 5],
+                        [1, 3, 5]
+                    ],
         rootString: 5, // String 5 (A string)
         startFret: 5,
         endFret: 9 
@@ -23,7 +39,15 @@ const CAGED_SHAPES = {
         name: "G Shape",
         baseKey: "G",
         scaleType: "major",
-        frets: [3, 2, 0, 0, 0, 3],
+        chord_frets: [3, 2, 0, 0, 0, 3],
+        scale_frets: [
+                        [5, 7, 8],
+                        [5, 7, 8],
+                        [5, 7, 9],
+                        [5, 7],
+                        [5, 6, 8],
+                        [5, 7, 8]
+                    ],
         rootString: 6, // String 6 (low E string)
         startFret: 3, 
         endFret: 7
@@ -32,7 +56,15 @@ const CAGED_SHAPES = {
         name: "E Shape",
         baseKey: "E",
         scaleType: "major",
-        frets: [0, 2, 2, 1, 0, 0],
+        chord_frets: [0, 2, 2, 1, 0, 0],
+        scale_frets: [
+                        [7, 8, 10],
+                        [7, 8, 10],
+                        [7, 9, 10],
+                        [7, 9, 10],
+                        [8, 10],
+                        [7, 8, 10]
+                    ],
         rootString: 6, // String 6 (low E string)
         startFret: 0, 
         endFret: 4
@@ -41,18 +73,27 @@ const CAGED_SHAPES = {
         name: "D Shape",
         baseKey: "D",
         scaleType: "major",
-        frets: [-1, -1, 0, 2, 3, 2],
+        chord_frets: [-1, -1, 0, 2, 3, 2],
+        scale_frets: [
+                        [10, 12, 13],
+                        [10, 12, 14],
+                        [10, 12, 14],
+                        [10, 12, 14],
+                        [10, 12, 13],
+                        [10, 12, 13]
+                    ],
         rootString: 4, // String 4 (D string)
         startFret: 7,
         endFret: 11
     }
 };
+    
 
 /**
  * Get the fretting positions for the given shape and key
  * @param {string} shape - CAGED shape selected ("C", "A", "G", "E", "D")
  * @param {string} key - The musical key selected (e.g., "C", "D", "E")
- * @returns {object} - Transposed chord data including frets, barres, and position
+ * @returns {object} - Transposed chord data including chord_frets, barres, and position
  */
 // export function getCAGEDShape(shape, key) {
 function getCAGEDShape(shape, key) {
@@ -93,11 +134,11 @@ function transposeShape(shapeInfo, targetKey) {
     }
     console.log(`Interval in semitones: ${semitones}`);
 
-    // Shift the frets in the shape by the interval
-    const originalFrets = shapeInfo.frets;
-    console.log(`Original shape frets: ${originalFrets}`);
+    // Shift the frets in the chord shape by the interval
+    const originalChordFrets = shapeInfo.chord_frets;
+    console.log(`Original shape frets: ${originalChordFrets}`);
 
-    const transposedFrets = originalFrets.map(fret => {
+    const transposedChordFrets = originalChordFrets.map(fret => {
         if (typeof fret === 'number' && fret >= 0) {
             return fret + semitones;
         } else if (fret === -1 || fret === 'x') {
@@ -106,15 +147,34 @@ function transposeShape(shapeInfo, targetKey) {
             return fret; // For any other cases
         }
     });
-    console.log(`Transposed shape frets: ${transposedFrets}`);
+    console.log(`Transposed chord shape frets: ${transposedChordFrets}`);
+
+    // Shift the frets in the scale shape by the interval
+    const originalScaleFrets = shapeInfo.scale_frets;
+    console.log(`Original shape frets: ${originalScaleFrets}`);
+
+    // Update: Since scale_frets is an array of arrays, we need to map over each string's frets
+    const transposedScaleFrets = originalScaleFrets.map(stringFrets => {
+        return stringFrets.map(fret => {
+            if (typeof fret === 'number' && fret >= 0) {
+                return fret + semitones;
+            } else if (fret === -1 || fret === 'x') {
+                return 'x'; // Muted strings remain muted
+            } else {
+                return fret; // For any other cases
+            }
+        });
+    });
+
+    console.log(`Transposed scale shape frets: ${transposedScaleFrets}`);
 
     // Determine the starting fret (position)
-    const frettedNotes = transposedFrets.filter(f => typeof f === 'number' && f > 0);
+    const frettedNotes = transposedChordFrets.filter(f => typeof f === 'number' && f > 0);
     const position = Math.min(...frettedNotes);
     console.log(`Position (starting fret): ${position}`);
 
     // Adjust frets relative to position
-    const adjustedFrets = transposedFrets.map(fret => {
+    const adjustedChordFrets = transposedChordFrets.map(fret => {
         if (typeof fret === 'number') {
             if (fret === 0) {
                 return 0; // Open strings remain 0
@@ -125,11 +185,28 @@ function transposeShape(shapeInfo, targetKey) {
             return fret; // 'x' or other non-number values
         }
     });
-    console.log(`Adjusted frets (relative to position): ${adjustedFrets}`);
+    console.log(`Adjusted frets (relative to position): ${adjustedChordFrets}`);
+
+    // Adjust scale frets relative to position
+    const adjustedScaleFrets = transposedScaleFrets.map(stringFrets => {
+        return stringFrets.map(fret => {
+            if (typeof fret === 'number') {
+                if (fret === 0) {
+                    return 0; // Open strings remain 0
+                } else if (fret > 0) {
+                    return fret - position + 1; // Adjust fret number relative to position
+                }
+            } else {
+                return fret; // 'x' or other non-number values (like muted strings)
+            }
+        });
+    });
+
+    console.log(`Adjusted scale frets (relative to position): ${adjustedScaleFrets}`);
 
     // Identify barres if needed
     const barreStrings = [];
-    adjustedFrets.forEach((fret, index) => {
+    adjustedChordFrets.forEach((fret, index) => {
         if (fret === 1) { // Since frets are relative to position
             barreStrings.push(6 - index); // Strings are numbered from 6 (low E) to 1 (high E)
         }
@@ -148,7 +225,8 @@ function transposeShape(shapeInfo, targetKey) {
 
     return {
         shape: shapeInfo.name,
-        frets: [adjustedFrets],
+        chord_frets: [adjustedChordFrets],
+        scale_frets: adjustedScaleFrets,
         barres: barres, // Include barres if any
         position: position,
         key: targetKey,
@@ -166,7 +244,7 @@ function convertFretsToChordArray(cagedShape, numStrings = 6) {
     // Converts frets to chord array format
 
     // Use the adjusted frets from cagedShape
-    let fretsArray = cagedShape.frets[0];
+    let fretsArray = cagedShape.chord_frets[0];
 
     // Convert to chord format, handling muted ('x') strings
     let chordArray = fretsArray.map((fret, index) => {
