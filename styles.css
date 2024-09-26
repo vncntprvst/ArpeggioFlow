@@ -31,7 +31,8 @@ select {
 }
 
 #fretboard-container {
-  width: 100px;
+  max-width: 50%;
+  margin: 0 auto;
   justify-content: center;
 }
 
@@ -43,7 +44,7 @@ select {
 
 /* New styles to adjust the font size of fretboard dot labels */
 .fretboard svg text {
-  font-size: 2px; /* Adjust this value */
+  font-size: 20px; /* Adjust this value */
 }
 
 #notation {
