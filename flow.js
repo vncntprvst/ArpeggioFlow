@@ -35,34 +35,34 @@ const colors = {
 // import { Fretboard, Systems } from './libs/fretboard/fretboard.esm.js';
 // import { colors } from './libs/fretboard/config.json';
 
-function renderChord(cagedShape) {
-    if (typeof vexchords === 'undefined') {
-        console.error('VexChords is not available. Please ensure it is loaded.');
-        return;
-    }
+// function renderChord(cagedShape) {
+//     if (typeof vexchords === 'undefined') {
+//         console.error('VexChords is not available. Please ensure it is loaded.');
+//         return;
+//     }
 
-    // Convert the frets array to a format compatible with VexChords
-    const chordArray = convertFretsToChordArray(cagedShape);
+//     // Convert the frets array to a format compatible with VexChords
+//     const chordArray = convertFretsToChordArray(cagedShape);
 
-    // Use the position from cagedShape
-    const position = cagedShape.position || 1;
+//     // Use the position from cagedShape
+//     const position = cagedShape.position || 1;
 
-    console.log('Rendering chord with position:', position, 'and processed frets:', chordArray);
+//     console.log('Rendering chord with position:', position, 'and processed frets:', chordArray);
 
-    // Create a new div for each chord diagram
-    const chordDiagram = document.createElement('div');
-    chordDiagram.className = 'chord-diagram';
-    document.getElementById('chords-container').appendChild(chordDiagram);
+//     // Create a new div for each chord diagram
+//     const chordDiagram = document.createElement('div');
+//     chordDiagram.className = 'chord-diagram';
+//     document.getElementById('chords-container').appendChild(chordDiagram);
 
-    // Render the chord diagram using VexChords
-    vexchords.draw(chordDiagram, {
-        chord: chordArray,
-        strings: 6,
-        position: position,
-        barres: cagedShape.barres || [],
-        tuning: tuning //['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
-    });
-}
+//     // Render the chord diagram using VexChords
+//     vexchords.draw(chordDiagram, {
+//         chord: chordArray,
+//         strings: 6,
+//         position: position,
+//         barres: cagedShape.barres || [],
+//         tuning: tuning //['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
+//     });
+// }
 
 // Function to render the scale diagram
 // Example usage:
@@ -72,13 +72,13 @@ function renderChord(cagedShape) {
 // renderScaleDiagram(initialKey, initialScaleType, initialShape);
 function renderScaleDiagram(cagedShape) {
     // Clear previous content
-    // document.getElementById('fretboard-container').innerHTML = '';
+    document.getElementById('fretboard-container').innerHTML = '';
 
     // Create a new div for each chord diagram
-    const scaleDiagram = document.createElement('div');
-    // const scaleDiagram = document.getElementById('fretboard-container'); 
+    // const scaleDiagram = document.createElement('div');
+    const scaleDiagram = document.getElementById('fretboard-container'); 
     scaleDiagram.className = 'fretboard-diagram';
-    document.getElementById('chords-container').appendChild(scaleDiagram);
+    // document.getElementById('fretboard-container').appendChild(scaleDiagram);
 
     // Compute startFret and endFret based on the frets array
     const position = cagedShape.position || 1;
@@ -373,11 +373,11 @@ document.addEventListener('DOMContentLoaded', function () {
             // const cagedShape = aShapeChord;
 
             // Clear previous chords and diagrams
-            document.getElementById('chords-container').innerHTML = '';
+            // document.getElementById('chords-container').innerHTML = '';
             document.getElementById('fretboard-container').innerHTML = '';
 
             // Render the chord shape visually using VexChords
-            renderChord(cagedShape);
+            // renderChord(cagedShape);
 
             // Render the scale diagram using Fretboard.js
             renderScaleDiagram(cagedShape);
@@ -389,7 +389,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // Clear previous chords and diagrams
-document.getElementById('chords-container').innerHTML = '';
+// document.getElementById('chords-container').innerHTML = '';
 document.getElementById('fretboard-container').innerHTML = '';
 
 // Sample chord definitions
