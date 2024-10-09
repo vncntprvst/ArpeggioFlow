@@ -41,14 +41,32 @@ select {
   box-sizing: border-box; /* Include padding and border in the element's total width and height */
 }
 
-/* .fretboard {
-  margin: 20px auto;
-  /* Other styles */
-/* }
-
 /* Adjust the font size of fretboard dot labels */
 .fretboard svg text {
   font-size: 20px;
+}
+
+/* Ensure the highlight area background is light grey */
+.highlight-areas rect {
+  fill: rgba(200, 200, 200, 0.2) !important;  /* Light grey background */
+  stroke: #AAAAAA !important;                /* Grey border */
+}
+
+/* Dull color for notes outside the scale */
+.dots .dot-out-of-scale .dot-circle {
+  fill: rgba(200, 200, 200, 0.4) !important;  /* Dull grey fill */
+  stroke: #AAAAAA !important;  /* Grey stroke */
+}
+
+/* Notes in the scale */
+.dots .dot-circle {
+  fill: #FF7043 !important;  /* Coral for scale notes */
+  stroke: #FFFFFF !important;  /* White stroke */
+}
+
+/* Teal for root notes */
+.dots .dot-degree-1 .dot-circle {
+  fill: #00BCD4 !important;
 }
 
 #notation {
