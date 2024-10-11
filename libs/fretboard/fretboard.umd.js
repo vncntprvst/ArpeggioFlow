@@ -2305,6 +2305,7 @@
     exports.Systems = void 0;
     (function (Systems) {
         Systems["pentatonic"] = "pentatonic";
+        Systems["ExtendedCAGED"] = "ExtendedCAGED";
         Systems["CAGED"] = "CAGED";
         Systems["TNPS"] = "TNPS";
     })(exports.Systems || (exports.Systems = {}));
@@ -2368,6 +2369,68 @@
                 '34-5-',
                 '71-2-',
                 '-5-6-'
+            ],
+            baseChroma: chroma('A#'),
+            baseOctave: 2
+        }
+    ];
+    const ExtendedCAGEDDefinition = [
+        {
+            box: [
+                '6-71-',
+                '34-5-',
+                '1-2--',
+                '5-6-7',
+                '2-34-',
+                '6-71-'
+            ],
+            baseChroma: chroma('G#'),
+            baseOctave: 2
+        },
+        {
+            box: [
+                '71-2',
+                '-5-6',
+                '2-34',
+                '6-71',
+                '34-5',
+                '71-2'
+            ],
+            baseChroma: chroma('E#'),
+            baseOctave: 2
+        },
+        {
+            box: [
+                '2-34-',
+                '--71-',
+                '4-5-6',
+                '1-2-3',
+                '5-6-7',
+                '2-34-'
+            ],
+            baseChroma: chroma('D#'),
+            baseOctave: 3
+        },
+        {
+            box: [
+                '34-5',
+                '71-2',
+                '5-6-',
+                '2-34',
+                '6-71',
+                '34-5'
+            ],
+            baseChroma: chroma('C'),
+            baseOctave: 3
+        },
+        {
+            box: [
+                '4-5-6',
+                '--2-3',
+                '-6-71',
+                '-34-5',
+                '-71-2',
+                '4-5-6'
             ],
             baseChroma: chroma('A#'),
             baseOctave: 2
@@ -2498,6 +2561,9 @@
         switch (system) {
             case exports.Systems.pentatonic:
                 foundBox = CAGEDDefinition[getPentatonicBoxIndex(+box, modeNumber)];
+                break;
+            case exports.Systems.ExtendedCAGED:
+                foundBox = ExtendedCAGEDDefinition[CAGED_ORDER.indexOf(`${box}`)];
                 break;
             case exports.Systems.CAGED:
                 foundBox = CAGEDDefinition[CAGED_ORDER.indexOf(`${box}`)];

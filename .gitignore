@@ -12,3 +12,6 @@ working_doc_initial.md
 node_modules/
 .parcel-cache/
 dist/
+
+# tmp
+libs/fretboard/backup/

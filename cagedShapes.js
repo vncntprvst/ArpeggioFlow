@@ -87,7 +87,94 @@ const CAGED_SHAPES = {
         endFret: 11
     }
 };
-    
+
+const EXT_CAGED_SHAPES = {
+    C: {
+        name: "C Shape",
+        baseKey: "C",
+        scaleType: "major",
+        chord_frets: [-1, 3, 2, 0, 1, 0], 
+        scale_frets: [
+                        [0, 1, 3],
+                        [0, 2, 3], 
+                        [0, 2, 3], 
+                        [0, 2], 
+                        [0, 1, 3], 
+                        [0, 1, 3]
+                    ],
+        rootString: 5, // String 5 (A string)
+        startFret: 0, 
+        endFret: 4 
+    },
+    A: {
+        name: "A Shape",
+        baseKey: "A",
+        scaleType: "major",
+        chord_frets: [-1, 0, 2, 2, 2, 0],
+        scale_frets: [
+                        [1, 3, 5],
+                        [2, 3, 5],
+                        [2, 3, 5],
+                        [2, 4, 5],
+                        [3, 5],
+                        [1, 3, 5]
+                    ],
+        rootString: 5, // String 5 (A string)
+        startFret: 5,
+        endFret: 9 
+    },
+    G: {
+        name: "G Shape",
+        baseKey: "G",
+        scaleType: "major",
+        chord_frets: [3, 2, 0, 0, 0, 3],
+        scale_frets: [
+                        [5, 7, 8],
+                        [5, 7, 8],
+                        [5, 7, 9],
+                        [5, 7],
+                        [5, 6, 8],
+                        [5, 7, 8]
+                    ],
+        rootString: 6, // String 6 (low E string)
+        startFret: 3, 
+        endFret: 7
+    },
+    E: {
+        name: "E Shape",
+        baseKey: "E",
+        scaleType: "major",
+        chord_frets: [0, 2, 2, 1, 0, 0],
+        scale_frets: [
+                        [7, 8, 10],
+                        [7, 8, 10],
+                        [7, 9, 10],
+                        [7, 9, 10],
+                        [8, 10],
+                        [7, 8, 10]
+                    ],
+        rootString: 6, // String 6 (low E string)
+        startFret: 0, 
+        endFret: 4
+    },
+    D: {
+        name: "D Shape",
+        baseKey: "D",
+        scaleType: "major",
+        chord_frets: [-1, -1, 0, 2, 3, 2],
+        scale_frets: [
+                        [10, 12, 13],
+                        [10, 12, 14],
+                        [10, 12, 14],
+                        [10, 12, 14],
+                        [10, 12, 13],
+                        [10, 12, 13]
+                    ],
+        rootString: 4, // String 4 (D string)
+        startFret: 7,
+        endFret: 11
+    }
+};
 
 /**
  * Get the fretting positions for the given shape and key
@@ -97,7 +184,8 @@ const CAGED_SHAPES = {
  */
 // export function getCAGEDShape(shape, key) {
 function getCAGEDShape(shape, key) {
-    const shapeInfo = CAGED_SHAPES[shape];
+    // const shapeInfo = CAGED_SHAPES[shape];
+    const shapeInfo = EXT_CAGED_SHAPES[shape];
     if (!shapeInfo) {
         console.error(`Unknown shape: ${shape}`);
         return null;

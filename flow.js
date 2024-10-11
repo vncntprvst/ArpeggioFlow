@@ -106,6 +106,7 @@ function renderScaleDiagram(cagedShape) {
         type: cagedShape.scaleType,
         root: cagedShape.key,
         box: {
+            // system: fretboard.Systems.ExtendedCAGED,
             system: fretboard.Systems.CAGED,
             box: cagedShape.baseKey,
         },

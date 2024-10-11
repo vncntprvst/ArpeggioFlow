@@ -81,50 +81,29 @@ cd ArpeggioFlow
 
 Due to browser security policies (CORS and the Same-Origin Policy), you cannot run this application by opening the `index.html` file directly from the file system. Instead, you need to serve it over HTTP.
 
-#### Using Python's Simple HTTP Server
+**Using Python's Simple HTTP Server**
 
 If you have Python installed, you can use its built-in HTTP server:
-
-1. **Navigate to the project directory**:
-
    ```bash
    cd /path/to/ArpeggioFlow
+   python -m http.server 8000
    ```
 
-2. **Start the server**:
-
-   - For Python 3.x:
-
-     ```bash
-     python -m http.server 8000
-     ```
-
-   - For Python 2.x:
-
-     ```bash
-     python -m SimpleHTTPServer 8000
-     ```
-
-3. **Access the application**:
-
-   Open your web browser and go to [http://localhost:8000](http://localhost:8000).
-
-#### Using Node.js and http-server (Optional)
-
+**[Alternatively] Using Node.js and http-server**
 If you prefer using Node.js:
-
-1. **Install http-server**:
-
    ```bash
    npm install -g http-server
-   ```
-
-2. **Start the server**:
-
-   ```bash
    http-server -p 8000
    ```
 
-3. **Access the application**:
-
+**Access the application**:
    Open your web browser and go to [http://localhost:8000](http://localhost:8000).
+
+### Building libraries
+e.g., freatboard.js
+```bash
+cd /path/to/fretboard.js
+npm install
+npm run build
+```
+Copy the cjs / esm / umd files to the `libs\fretboard` directory.
