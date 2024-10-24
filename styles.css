@@ -43,7 +43,7 @@ select {
 
 /* Adjust the font size of fretboard dot labels */
 .fretboard svg text {
-  font-size: 20px;
+  font-size: 14px;
 }
 
 /* Ensure the highlight area background is light grey */
@@ -56,6 +56,12 @@ select {
 .dots .dot-out-of-scale .dot-circle {
   fill: rgba(200, 200, 200, 0.4) !important;  /* Dull grey fill */
   stroke: #AAAAAA !important;  /* Grey stroke */
+}
+
+/* Notes in the box */
+.dots .dot-in-box .dot-circle {
+  fill: #FF7043 !important;  /* Coral for notes in the box */
+  stroke: #FFFFFF !important;  /* White stroke */
 }
 
 /* Notes in the scale */

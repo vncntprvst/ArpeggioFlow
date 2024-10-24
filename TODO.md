@@ -1,4 +1,4 @@
-* Fork fretboard.js and modify + extend CAGED system to conform to CHris' system, and include stretch patterns. See: 
+* Fork fretboard.js and modify + extend CAGED system to conform to Chris' system, and include stretch patterns. See: 
 https://github.com/moonwave99/fretboard.js/blob/d0afe2d7bc8e8beb397d3269d78567dcf3546523/src/fretboardSystem/systems/systems.ts#L28 
 e.g., 
     {
@@ -28,6 +28,10 @@ becomes
         baseChroma: getChroma('G#'),
         baseOctave: 2
     },        
+
+Tried it, it failed. Instead, used the cagedShapes.js code. It works. 
+But now the highlight bow is shifted. And notes outside the box are not greyed out.
+MOved to highlight branch
 
 * Move frets one down on chord diagram (without changing position).  
 * Display small chords diagrams over each chord name.

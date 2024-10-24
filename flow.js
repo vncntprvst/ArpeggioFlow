@@ -88,74 +88,98 @@ function renderScaleDiagram(cagedShape) {
         fretsWidth: 1.2,
         font: 'Futura',
         tuning: tuning,
-        dotText: ({ note, degree }) => degree === 1 ? '1' : note,
-        dotFill: ({ note, degree, inScale }) => {
-            if (inScale) {
-                return degree === 1 ? '#00BCD4' : '#FF7043';  // Teal for root, Coral for others
-            } else {
-                return "rgba(200, 200, 200, 0.4)";  // Dull grey for notes out of scale
-            }
-        },
-        dotStrokeColor: '#FFFFFF',
-        dotStrokeWidth: 1,
         showFretNumbers: true,
     });
 
-    // Render the scale and retrieve the scale data
-    let scaleData = fretboardInstance.renderScale({
+    console.log('fretboardInstance:', fretboardInstance);
+    console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(fretboardInstance)));
+
+    // Build positions from your cagedShape data
+    let positions = [];
+    for (let stringIndex = 0; stringIndex < cagedShape.scale_frets.length; stringIndex++) {
+        const stringNumber = 6 - stringIndex; // Strings numbered from 6 (low E) to 1 (high E)
+        const fretsOnString = cagedShape.scale_frets[stringIndex];
+        for (let fret of fretsOnString) {
+            if (typeof fret === 'number' && fret >= 0) {
+                positions.push({
+                    string: stringNumber,
+                    fret: fret,
+                    inBox: true // Custom property to indicate this note is in the box
+                });
+            }
+        }
+    }
+
+    // Render the scale over the fretboard
+    fretboardInstance.renderScale({
         type: cagedShape.scaleType,
         root: cagedShape.key,
-        box: {
-            // system: fretboard.Systems.ExtendedCAGED,
-            system: fretboard.Systems.CAGED,
-            box: cagedShape.baseKey,
-        },
-    });
-    console.log('Scale Data:', scaleData);
-
-    // Query all dot elements that are in the scale's chord box
-    const boxDots = document.querySelectorAll('.dot.dot-in-box');
-
-    // Extract fret numbers and string information
-    const combinedFrets = Array.from(boxDots).map(dot => {
-        const fretClass = Array.from(dot.classList).find(cls => cls.startsWith('dot-fret-'));
-        return parseInt(fretClass.split('-')[2], 10); // Parse the fret number from the class
     });
 
-    // Filter valid frets and calculate range for highlighting
-    let validFrets = combinedFrets.filter(fret => fret >= 0);
-    console.log('Adjusted combined frets:', validFrets);
+    // Access the dots rendered by renderScale()
+    const dots = fretboardInstance.dots;
 
-    let startFret = Math.min(...validFrets);
-    let endFret = Math.max(...validFrets);
-    console.log('Computed Fret Range: Start:', startFret, 'End:', endFret);
+    // Build a key map of positions in the box
+    let boxPositionsKey = {};
+    positions.forEach(pos => {
+        boxPositionsKey[`${pos.string}-${pos.fret}`] = true;
+    });
 
-    // Set up highlight coordinates for the scale shape
-    const highlightStart = { string: 6, fret: startFret };
-    const highlightEnd = { string: 1, fret: endFret };
+    // Mark dots that are in the box
+    dots.forEach(dot => {
+        const key = `${dot.string}-${dot.fret}`;
+        dot.inBox = !!boxPositionsKey[key];
+    });
 
-    console.log('Highlighted Area Coordinates:', highlightStart, highlightEnd);
+    // Calculate start and end frets for highlighting
+    const fretsInBox = positions.map(pos => pos.fret);
+    const startFret = Math.min(...fretsInBox);
+    const endFret = Math.max(...fretsInBox);
 
-    // Apply the highlighting area based on the scale data
-    fretboardInstance.highlightAreas([highlightStart, highlightEnd]);
+    console.log('Frets in Box:', fretsInBox);
+    console.log('Start Fret:', startFret);
+    console.log('End Fret:', endFret);
 
-    // Style the highlighted area
+    // Highlight the area
+    fretboardInstance.highlightAreas(
+        [{ string: 1, fret: startFret }, { string: 6, fret: endFret }]
+    );
+
+    // Style the dots
     fretboardInstance.style({
-        filter: (position) => {
-            return position.fret >= startFret && position.fret <= endFret;
+        text: (position) => position.degree === 1 ? '1' : position.note,
+        fill: (position) => {
+            if (position.inScale) {
+                if (position.degree === 1) {
+                    return '#00BCD4'; // Teal for root notes
+                } else if (position.inBox) {
+                    return '#FF7043'; // Coral for notes in the box
+                } else {
+                    return '#cccccc'; // Grey for other scale notes
+                }
+            } else {
+                return 'rgba(200, 200, 200, 0.4)'; // Dull grey for notes out of scale
+            }
         },
-        fill: 'rgba(200, 200, 200, 0.2)',  
-        stroke: '#AAAAAA',  
-        strokeWidth: 2      
+        stroke: (position) => {
+            if (position.inBox || position.degree === 1) {
+                return '#FFFFFF'; // White stroke for notes in the box and root notes
+            } else {
+                return '#AAAAAA'; // Grey stroke for other notes
+            }
+        },
+        strokeWidth: 1,
     });
 
-    // Apply dull color class for out-of-scale notes
-    document.querySelectorAll('.dot').forEach(dot => {
-        if (!dot.classList.contains('dot-in-box')) {
-            dot.classList.add('dot-out-of-scale');
-        }
-    }); 
+    // Optionally, style the highlighted area
+    fretboardInstance.style({
+        type: 'highlightArea',
+        fill: 'rgba(200, 200, 200, 0.2)',
+        stroke: '#AAAAAA',
+        strokeWidth: 2,
+    });
 }
+
 
 function generateExercise() {
     const key = document.getElementById('key').value;

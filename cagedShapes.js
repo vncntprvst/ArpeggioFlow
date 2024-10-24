@@ -24,12 +24,12 @@ const CAGED_SHAPES = {
         scaleType: "major",
         chord_frets: [-1, 0, 2, 2, 2, 0],
         scale_frets: [
-                        [1, 3, 5],
+                        [3, 5],
                         [2, 3, 5],
                         [2, 3, 5],
                         [2, 4, 5],
-                        [3, 5],
-                        [1, 3, 5]
+                        [3, 5, 6],
+                        [3, 5]
                     ],
         rootString: 5, // String 5 (A string)
         startFret: 5,
@@ -43,8 +43,8 @@ const CAGED_SHAPES = {
         scale_frets: [
                         [5, 7, 8],
                         [5, 7, 8],
-                        [5, 7, 9],
                         [5, 7],
+                        [4, 5, 7],
                         [5, 6, 8],
                         [5, 7, 8]
                     ],
@@ -76,9 +76,9 @@ const CAGED_SHAPES = {
         chord_frets: [-1, -1, 0, 2, 3, 2],
         scale_frets: [
                         [10, 12, 13],
-                        [10, 12, 14],
-                        [10, 12, 14],
-                        [10, 12, 14],
+                        [10, 12],
+                        [9, 10, 12],
+                        [9, 10, 12],
                         [10, 12, 13],
                         [10, 12, 13]
                     ],
@@ -289,7 +289,6 @@ function transposeShape(shapeInfo, targetKey) {
             }
         });
     });
-
     console.log(`Adjusted scale frets (relative to position): ${adjustedScaleFrets}`);
 
     // Identify barres if needed
