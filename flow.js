@@ -92,7 +92,6 @@ function renderScaleDiagram(cagedShape) {
     });
 
     console.log('fretboardInstance:', fretboardInstance);
-    console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(fretboardInstance)));
 
     // Build positions from your cagedShape data
     let positions = [];
@@ -116,9 +115,6 @@ function renderScaleDiagram(cagedShape) {
         root: cagedShape.key,
     });
 
-    // Access the dots rendered by renderScale()
-    const dots = fretboardInstance.dots;
-
     // Build a key map of positions in the box
     let boxPositionsKey = {};
     positions.forEach(pos => {
@@ -126,9 +122,10 @@ function renderScaleDiagram(cagedShape) {
     });
 
     // Mark dots that are in the box
-    dots.forEach(dot => {
+    fretboardInstance.dots.forEach(dot => {
         const key = `${dot.string}-${dot.fret}`;
-        dot.inBox = !!boxPositionsKey[key];
+        dot.inBox = !!boxPositionsKey[key]; // Assign inBox property
+        console.log('Dot:', dot, 'Key:', key, 'In Box:', dot.inBox);
     });
 
     // Calculate start and end frets for highlighting
@@ -140,7 +137,7 @@ function renderScaleDiagram(cagedShape) {
     console.log('Start Fret:', startFret);
     console.log('End Fret:', endFret);
 
-    // Highlight the area
+    // Highlight the area for the box
     fretboardInstance.highlightAreas(
         [{ string: 1, fret: startFret }, { string: 6, fret: endFret }]
     );
@@ -149,16 +146,12 @@ function renderScaleDiagram(cagedShape) {
     fretboardInstance.style({
         text: (position) => position.degree === 1 ? '1' : position.note,
         fill: (position) => {
-            if (position.inScale) {
-                if (position.degree === 1) {
-                    return '#00BCD4'; // Teal for root notes
-                } else if (position.inBox) {
-                    return '#FF7043'; // Coral for notes in the box
-                } else {
-                    return '#cccccc'; // Grey for other scale notes
-                }
+            if (position.degree === 1) {
+                return '#00BCD4'; // Teal for root notes
+            } else if (position.inBox) {
+                return '#FF7043'; // Coral for notes in the box
             } else {
-                return 'rgba(200, 200, 200, 0.4)'; // Dull grey for notes out of scale
+                return 'rgba(200, 200, 200, 0.4)'; // Grey for out-of-box notes
             }
         },
         stroke: (position) => {
@@ -171,15 +164,13 @@ function renderScaleDiagram(cagedShape) {
         strokeWidth: 1,
     });
 
-    // Optionally, style the highlighted area
-    fretboardInstance.style({
-        type: 'highlightArea',
-        fill: 'rgba(200, 200, 200, 0.2)',
-        stroke: '#AAAAAA',
-        strokeWidth: 2,
+    // Apply dull color class for out-of-scale notes
+    document.querySelectorAll('.dot').forEach(dot => {
+        if (!dot.classList.contains('dot-in-box')) {
+            dot.classList.add('dot-out-of-scale');
+        }
     });
 }
-
 
 function generateExercise() {
     const key = document.getElementById('key').value;

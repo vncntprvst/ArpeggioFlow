@@ -210,6 +210,7 @@ function transposeShape(shapeInfo, targetKey) {
     // Calculate the interval in semitones between baseKey and targetKey
     const baseChroma = Tonal.Note.chroma(baseKey);
     const targetChroma = Tonal.Note.chroma(targetKey);
+    console.log(`Base chroma: ${baseChroma}, Target chroma: ${targetChroma}`);
 
     if (baseChroma === null || targetChroma === null) {
         console.error(`Invalid note names: ${baseKey} or ${targetKey}`);
@@ -239,13 +240,14 @@ function transposeShape(shapeInfo, targetKey) {
 
     // Shift the frets in the scale shape by the interval
     const originalScaleFrets = shapeInfo.scale_frets;
-    console.log(`Original shape frets: ${originalScaleFrets}`);
+    console.log(`Original scale shape frets: ${originalScaleFrets}`);
 
-    // Update: Since scale_frets is an array of arrays, we need to map over each string's frets
+    // We define the shapes in the scale of C, so we just need to shift the scale shape by the interval
+    // scale_frets is an array of arrays, we need to map over each string's frets
     const transposedScaleFrets = originalScaleFrets.map(stringFrets => {
         return stringFrets.map(fret => {
             if (typeof fret === 'number' && fret >= 0) {
-                return fret + semitones;
+                return fret + targetChroma;
             } else if (fret === -1 || fret === 'x') {
                 return 'x'; // Muted strings remain muted
             } else {
@@ -253,15 +255,14 @@ function transposeShape(shapeInfo, targetKey) {
             }
         });
     });
-
     console.log(`Transposed scale shape frets: ${transposedScaleFrets}`);
 
     // Determine the starting fret (position)
     const frettedNotes = transposedChordFrets.filter(f => typeof f === 'number' && f > 0);
     const position = Math.min(...frettedNotes);
-    console.log(`Position (starting fret): ${position}`);
+    console.log(`Chord position (starting fret): ${position}`);
 
-    // Adjust frets relative to position
+    // Adjust chord frets relative to position
     const adjustedChordFrets = transposedChordFrets.map(fret => {
         if (typeof fret === 'number') {
             if (fret === 0) {
@@ -273,23 +274,7 @@ function transposeShape(shapeInfo, targetKey) {
             return fret; // 'x' or other non-number values
         }
     });
-    console.log(`Adjusted frets (relative to position): ${adjustedChordFrets}`);
-
-    // Adjust scale frets relative to position
-    const adjustedScaleFrets = transposedScaleFrets.map(stringFrets => {
-        return stringFrets.map(fret => {
-            if (typeof fret === 'number') {
-                if (fret === 0) {
-                    return 0; // Open strings remain 0
-                } else if (fret > 0) {
-                    return fret - position + 1; // Adjust fret number relative to position
-                }
-            } else {
-                return fret; // 'x' or other non-number values (like muted strings)
-            }
-        });
-    });
-    console.log(`Adjusted scale frets (relative to position): ${adjustedScaleFrets}`);
+    console.log(`Adjusted chord frets (relative to position): ${adjustedChordFrets}`);
 
     // Identify barres if needed
     const barreStrings = [];
@@ -313,7 +298,7 @@ function transposeShape(shapeInfo, targetKey) {
     return {
         shape: shapeInfo.name,
         chord_frets: [adjustedChordFrets],
-        scale_frets: adjustedScaleFrets,
+        scale_frets: transposedScaleFrets,
         barres: barres, // Include barres if any
         position: position,
         key: targetKey,
