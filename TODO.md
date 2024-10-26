@@ -1,5 +1,3 @@
-* Add stretched shapes to the extended CAGED system.
-* Add selector for system to use. 
 * Flow from one chord to another:
     - Select closest chord tone (unison, 1/2 step, \w step).
     - Keep in direction: keep ascending or descending.
@@ -45,3 +43,6 @@
     Tried it, it failed (colors and positions are wrong). Instead, used the cagedShapes.js code. It works. 
     But then the highlight bow is shifted. And notes outside the box are not greyed out.
     So created a bew function computeDotClasses to compute the classes for each dot.
+
+* [x] Add stretched shapes to the extended CAGED system.
+* [x] Add selector for system to use. 
