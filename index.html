@@ -71,14 +71,16 @@
     <label for="bars">Number of Bars:</label>
     <input type="number" id="bars" name="bars" value="4" min="1" required>
 
+    <label for="scaleSystem">Scale System:</label>
+    <select id="scaleSystem" name="scaleSystem" required onchange="updateShapeOptions()">
+      <option value="CAGED_SHAPES">CAGED Shapes</option>
+      <option value="EXT_CAGED_SHAPES" selected>Extended CAGED Shapes</option> <!-- Set default to EXT_CAGED_SHAPES -->
+    </select>
+  
     <label for="shape">Chord Shape:</label>
     <select id="shape" name="shape" required>
       <option value="" disabled selected>Select a Shape</option>
-      <option value="C">C Shape</option>
-      <option value="A">A Shape</option>
-      <option value="G">G Shape</option>
-      <option value="E">E Shape</option>
-      <option value="D">D Shape</option>
+      <!-- Options will be populated dynamically by updateShapeOptions() -->
     </select>
 
     <!-- Removed onclick attribute -->
@@ -97,6 +99,35 @@
 
   <!-- Include the main script as a module -->
   <script type="module" src="flow.js"></script>
+
+  <script>
+    function updateShapeOptions() {
+      const scaleSystem = document.getElementById('scaleSystem').value;
+      const shapeSelect = document.getElementById('shape');
+      shapeSelect.innerHTML = ''; // Clear current options
+  
+      // Define the shapes for each scale system
+      const cagedShapes = ['C', 'A', 'G', 'E', 'D'];
+      const extCagedShapes = ['C', 'A', 'A_stretched', 'G', 'E', 'E_stretched', 'D'];
+  
+      // Select appropriate shape options
+      let shapes = scaleSystem === 'EXT_CAGED_SHAPES' ? extCagedShapes : cagedShapes;
+  
+      // Populate the shape select with new options
+      shapes.forEach(shape => {
+        const option = document.createElement('option');
+        option.value = shape;
+        option.textContent = shape + ' Shape';
+        shapeSelect.appendChild(option);
+      });
+    }
+  
+    // Automatically set the default scale system and update shapes on page load
+    window.onload = function() {
+      document.getElementById('scaleSystem').value = 'EXT_CAGED_SHAPES'; // Set the default value for the scale system
+      updateShapeOptions(); // Call to update shapes based on EXT_CAGED_SHAPES
+    }
+  </script>
 
 </body>
 </html>

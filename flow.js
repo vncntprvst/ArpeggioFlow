@@ -95,8 +95,6 @@ function computeDotClasses(fretboardInstance, boxPositionsKey) {
     });
 }
 
-
-
 function renderScaleDiagram(cagedShape) {
     // Clear previous content
     document.getElementById('fretboard-container').innerHTML = '';

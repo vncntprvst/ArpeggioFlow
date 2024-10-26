@@ -123,6 +123,23 @@ const EXT_CAGED_SHAPES = {
         startFret: 5,
         endFret: 9 
     },
+    A_stretched: {
+        name: "A Shape - stretched",
+        baseKey: "A",
+        scaleType: "major",
+        chord_frets: [-1, 0, 2, 2, 2, 0],
+        scale_frets: [
+                        [3, 5, 7],
+                        [3, 5, 7],
+                        [3, 5, 7],
+                        [4, 5, 7],
+                        [5, 6],
+                        [3, 5, 7]
+                    ],
+        rootString: 5, // String 5 (A string)
+        startFret: 5,
+        endFret: 9 
+    },
     G: {
         name: "G Shape",
         baseKey: "G",
@@ -152,6 +169,23 @@ const EXT_CAGED_SHAPES = {
                         [7, 9, 10],
                         [8, 10],
                         [7, 8, 10]
+                    ],
+        rootString: 6, // String 6 (low E string)
+        startFret: 0, 
+        endFret: 4
+    },
+    E_stretched: {
+        name: "E Shape - stretched",
+        baseKey: "E",
+        scaleType: "major",
+        chord_frets: [0, 2, 2, 1, 0, 0],
+        scale_frets: [
+                        [8, 10, 12],
+                        [8, 10, 12],
+                        [9, 10, 12],
+                        [9, 10, 12],
+                        [10, 12],
+                        [8, 10, 12]
                     ],
         rootString: 6, // String 6 (low E string)
         startFret: 0, 
