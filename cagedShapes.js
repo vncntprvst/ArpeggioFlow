@@ -278,18 +278,41 @@ function transposeShape(shapeInfo, targetKey) {
 
     // We define the shapes in the scale of C, so we just need to shift the scale shape by the interval
     // scale_frets is an array of arrays, we need to map over each string's frets
-    const transposedScaleFrets = originalScaleFrets.map(stringFrets => {
+    // First, transpose the scale frets
+    let transposedScaleFrets = originalScaleFrets.map(stringFrets => {
         return stringFrets.map(fret => {
             if (typeof fret === 'number' && fret >= 0) {
-                return fret + targetChroma;
+                return fret + targetChroma;  // Transpose the fret
             } else if (fret === -1 || fret === 'x') {
-                return 'x'; // Muted strings remain muted
+                return 'x';  // Muted strings remain muted
             } else {
-                return fret; // For any other cases
+                return fret;  // Handle any other cases
             }
         });
     });
+
     console.log(`Transposed scale shape frets: ${transposedScaleFrets}`);
+
+    // Find the minimum fret value across all strings (ignoring muted strings)
+    const minTransposedFret = Math.min(
+        ...transposedScaleFrets.flat().filter(fret => typeof fret === 'number' && fret >= 0)
+    );
+
+    console.log(`Minimum transposed fret: ${minTransposedFret}`);
+
+    // If the minimum fret is greater than or equal to 12, subtract 12 from all transposed frets
+    if (minTransposedFret >= 12) {
+        transposedScaleFrets = transposedScaleFrets.map(stringFrets => {
+            return stringFrets.map(fret => {
+                if (typeof fret === 'number' && fret >= 0) {
+                    return fret - 12;  // Shift all frets down by 12
+                }
+                return fret;  // Muted strings remain muted
+            });
+        });
+    }
+
+    console.log(`Adjusted transposed scale shape frets: ${transposedScaleFrets}`);
 
     // Determine the starting fret (position)
     const frettedNotes = transposedChordFrets.filter(f => typeof f === 'number' && f > 0);

@@ -74,8 +74,8 @@ function computeDotClasses(fretboardInstance, boxPositionsKey) {
     // Apply the dot-in-box and dot-out-of-scale classes directly to the dots in fretboardInstance
     fretboardInstance.dots.forEach(dot => {
         const key = `${dot.string}-${dot.fret}`;
-        console.log('Dot:', dot); // Log the entire dot object
-        console.log('Key:', key, 'In Box:', boxPositionsKey[key]); // Log the key and inBox status
+        // console.log('Dot:', dot); // Log the entire dot object
+        // console.log('Key:', key, 'In Box:', boxPositionsKey[key]); // Log the key and inBox status
 
         // Query the DOM element using the class names for string and fret
         const dotElement = document.querySelector(`.dot.dot-string-${dot.string}.dot-fret-${dot.fret}`);
@@ -96,14 +96,15 @@ function computeDotClasses(fretboardInstance, boxPositionsKey) {
 }
 
 function renderScaleDiagram(cagedShape) {
-    // Clear previous content
-    document.getElementById('fretboard-container').innerHTML = '';
-
-    // Select the container directly
     const scaleDiagram = document.getElementById('fretboard-container'); 
-    scaleDiagram.className = 'fretboard-diagram';
+    scaleDiagram.innerHTML = ''; // Clear previous content
 
-    // Create a new Fretboard instance
+    // Set a custom width before Fretboard rendering
+    scaleDiagram.style.width = '75%';
+    scaleDiagram.style.maxWidth = '800px';
+    // console.log('Width before rendering fretboard:', scaleDiagram.style.width);
+
+    // Create the Fretboard instance
     const fretboardInstance = new fretboard.Fretboard({
         el: scaleDiagram,
         height: 200,
@@ -116,7 +117,7 @@ function renderScaleDiagram(cagedShape) {
         showFretNumbers: true,
     });
 
-    console.log('fretboardInstance:', fretboardInstance);
+    // console.log('fretboardInstance:', fretboardInstance);
 
     // Build positions from your cagedShape data
     let positions = [];
@@ -140,6 +141,8 @@ function renderScaleDiagram(cagedShape) {
         root: cagedShape.key,
     });
 
+    // console.log('Width after rendering fretboard:', scaleDiagram.style.width);
+
     // Build a key map of positions in the box
     let boxPositionsKey = {};
     positions.forEach(pos => {
@@ -150,7 +153,7 @@ function renderScaleDiagram(cagedShape) {
     fretboardInstance.dots.forEach(dot => {
         const key = `${dot.string}-${dot.fret}`;
         dot.inBox = !!boxPositionsKey[key]; // Assign inBox property
-        console.log('Dot:', dot, 'Key:', key, 'In Box:', dot.inBox);
+        // console.log('Dot:', dot, 'Key:', key, 'In Box:', dot.inBox);
     });
 
     // Compute and assign dot-in-box / dot-out-of-scale classes
@@ -161,9 +164,9 @@ function renderScaleDiagram(cagedShape) {
     const startFret = Math.min(...fretsInBox);
     const endFret = Math.max(...fretsInBox);
 
-    console.log('Frets in Box:', fretsInBox);
-    console.log('Start Fret:', startFret);
-    console.log('End Fret:', endFret);
+    // console.log('Frets in Box:', fretsInBox);
+    // console.log('Start Fret:', startFret);
+    // console.log('End Fret:', endFret);
 
     // Highlight the area for the box
     fretboardInstance.highlightAreas(
