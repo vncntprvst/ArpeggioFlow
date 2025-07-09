@@ -260,7 +260,13 @@ function generateExercise() {
         const scale = Tonal.Scale.get(`${key} major`).notes;
         const rootNote = scale[chordInfo.degree - 1];
         const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
-        let chordNotes = chordData.notes.map(note => `${note}/4`);
+
+        // Expand chord tones across multiple octaves for a wider range
+        const octaves = [3, 4, 5];
+        let chordNotes = [];
+        octaves.forEach(oct => {
+            chordData.notes.forEach(n => chordNotes.push(`${n}/${oct}`));
+        });
     
         if (!chordNotes || chordNotes.length === 0) {
             console.error(`No notes found for chord: ${rootNote}${chordInfo.quality}`);
@@ -276,24 +282,25 @@ function generateExercise() {
             : findClosestIndex(previousNote, chordNotes); // Closest note for subsequent measures
     
         // Create the measure based on direction and starting index
+        let currentIdx = startIdx;
         for (let i = 0; i < 4; i++) {
-            let currentIdx = (isAscending) ? startIdx + i : startIdx - i;
-            currentIdx = (currentIdx + chordNotes.length) % chordNotes.length; // Wrap around
-    
             const currentNote = chordNotes[currentIdx];
             measureNotes.push(new StaveNote({
                 clef: 'treble',
                 keys: [currentNote],
                 duration: 'q'
             }));
-    
+
             // Track last note for smooth transition between measures
             previousNote = currentNote;
-    
-            // Reverse direction if we hit the boundary
-            if (currentIdx === 0 || currentIdx === chordNotes.length - 1) {
+
+            // Determine next index and handle boundaries by reversing direction
+            let nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
+            if (nextIdx >= chordNotes.length || nextIdx < 0) {
                 isAscending = !isAscending;
+                nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
             }
+            currentIdx = nextIdx;
         }
     
         measures.push({
