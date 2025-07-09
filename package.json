@@ -5,13 +5,20 @@
   "main": "flow.js",
 "scripts": {
   "start": "parcel minimal_demos/scales/index.html",
-  "build": "parcel build minimal_demos/scales/index.html"
+  "build": "parcel build minimal_demos/scales/index.html",
+  "format": "prettier --write flow.js readme.md .codex/AGENTS.md test/**/*.js",
+  "lint": "eslint . --ext .js",
+  "test": "jest"
 },
   "keywords": [],
   "author": "Vincent Prevosto",
   "license": "ISC",
   "devDependencies": {
-    "parcel": "^2.12.0"
+    "parcel": "^2.12.0",
+    "prettier": "^3.2.5",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jsdom": "^24.0.0"
   },
   "dependencies": {
     "@moonwave99/fretboard.js": "^0.2.13",
