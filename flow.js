@@ -4,6 +4,9 @@
 
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
+// Calculate the playable MIDI range based on tuning (two octaves above high E)
+const minMidi = Tonal.Note.midi(tuning[0]);
+const maxMidi = Tonal.Note.midi(tuning[tuning.length - 1]) + 24;
 const colors = {
     defaultFill: "white",
     defaultActiveFill: "#ff636c",
@@ -261,11 +264,17 @@ function generateExercise() {
         const rootNote = scale[chordInfo.degree - 1];
         const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
 
-        // Expand chord tones across multiple octaves for a wider range
-        const octaves = [3, 4, 5];
+        // Expand chord tones across multiple octaves within playable range
+        const octaves = [2, 3, 4, 5];
         let chordNotes = [];
         octaves.forEach(oct => {
-            chordData.notes.forEach(n => chordNotes.push(`${n}/${oct}`));
+            chordData.notes.forEach(n => {
+                const note = `${n}/${oct}`;
+                const midi = Tonal.Note.midi(note);
+                if (midi >= minMidi && midi <= maxMidi) {
+                    chordNotes.push(note);
+                }
+            });
         });
     
         if (!chordNotes || chordNotes.length === 0) {
