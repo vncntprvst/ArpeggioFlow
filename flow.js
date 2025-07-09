@@ -8,6 +8,13 @@ const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 const minPitch = Tonal.Note.midi(tuning[0]);
 // Roughly the top of a typical fretboard (E6)
 const maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 24;
+
+// Convert a note like "C#4" to VexFlow format "c#/4"
+function toVexFlowFormat(note) {
+  const pc = Tonal.Note.pitchClass(note);
+  const octave = Tonal.Note.octave(note);
+  return `${pc.toLowerCase()}/${octave}`;
+}
 const colors = {
   defaultFill: 'white',
   defaultActiveFill: '#ff636c',
@@ -278,10 +285,11 @@ function generateExercise() {
     let chordNotes = [];
     octaves.forEach((oct) => {
       chordData.notes.forEach((n) => {
-        const note = `${n}/${oct}`;
-        const midi = Tonal.Note.midi(note);
+        // Use tonal format (e.g. "C#4") for calculations
+        const tonalNote = `${n}${oct}`;
+        const midi = Tonal.Note.midi(tonalNote);
         if (midi >= minPitch && midi <= maxPitch) {
-          chordNotes.push(note);
+          chordNotes.push(tonalNote);
         }
       });
     });
@@ -311,7 +319,7 @@ function generateExercise() {
       measureNotes.push(
         new StaveNote({
           clef: 'treble',
-          keys: [currentNote],
+          keys: [toVexFlowFormat(currentNote)],
           duration: 'q',
         })
       );
