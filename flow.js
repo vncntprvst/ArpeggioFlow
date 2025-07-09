@@ -4,30 +4,40 @@
 
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
-const colors = {
-    defaultFill: "white",
-    defaultActiveFill: "#ff636c",
-    defaultStroke: "black",
-    defaultActiveStroke: "#ff636c",
-    disabled: "#aaa",
-    primaryFill: "#3273dc",
-    intervals: {
-      "1P": "#F25116",
-      "2M": "#FCFF6C",
-      "2m": "#FCFF6C",
-      "3m": "#F29727",
-      "3M": "#F29727",
-      "4P": "#2FABEE",
-      "4A": "#2FABEE",
-      "5P": "#D89D6A",
-      "5A": "#D89D6A",
-      "6M": "#D7FFAB",
-      "6m": "#D7FFAB",
-      "7M": "#96ADC8",
-      "7m": "#96ADC8"
-    }
-};
+// Calculate the note range based on tuning (up to two octaves above high E)
+const minPitch = Tonal.Note.midi(tuning[0]);
+// Roughly the top of a typical fretboard (E6)
+const maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 24;
 
+// Convert a note like "C#4" to VexFlow format "c#/4"
+function toVexFlowFormat(note) {
+  const pc = Tonal.Note.pitchClass(note);
+  const octave = Tonal.Note.octave(note);
+  return `${pc.toLowerCase()}/${octave}`;
+}
+const colors = {
+  defaultFill: 'white',
+  defaultActiveFill: '#ff636c',
+  defaultStroke: 'black',
+  defaultActiveStroke: '#ff636c',
+  disabled: '#aaa',
+  primaryFill: '#3273dc',
+  intervals: {
+    '1P': '#F25116',
+    '2M': '#FCFF6C',
+    '2m': '#FCFF6C',
+    '3m': '#F29727',
+    '3M': '#F29727',
+    '4P': '#2FABEE',
+    '4A': '#2FABEE',
+    '5P': '#D89D6A',
+    '5A': '#D89D6A',
+    '6M': '#D7FFAB',
+    '6m': '#D7FFAB',
+    '7M': '#96ADC8',
+    '7m': '#96ADC8',
+  },
+};
 
 // Import the CAGED Shape generator function
 // import { getCAGEDShape } from './cagedShapes.js';
@@ -71,356 +81,400 @@ const colors = {
 // const initialShape = 'C';
 // renderScaleDiagram(initialKey, initialScaleType, initialShape);
 function computeDotClasses(fretboardInstance, boxPositionsKey) {
-    // Apply the dot-in-box and dot-out-of-scale classes directly to the dots in fretboardInstance
-    fretboardInstance.dots.forEach(dot => {
-        const key = `${dot.string}-${dot.fret}`;
-        // console.log('Dot:', dot); // Log the entire dot object
-        // console.log('Key:', key, 'In Box:', boxPositionsKey[key]); // Log the key and inBox status
+  // Apply the dot-in-box and dot-out-of-scale classes directly to the dots in fretboardInstance
+  fretboardInstance.dots.forEach((dot) => {
+    const key = `${dot.string}-${dot.fret}`;
+    // console.log('Dot:', dot); // Log the entire dot object
+    // console.log('Key:', key, 'In Box:', boxPositionsKey[key]); // Log the key and inBox status
 
-        // Query the DOM element using the class names for string and fret
-        const dotElement = document.querySelector(`.dot.dot-string-${dot.string}.dot-fret-${dot.fret}`);
-        
-        if (!dotElement) {
-            console.error('dotElement is undefined for dot:', dot); // Log an error if dotElement is undefined
-            return; // Skip further processing for this dot
-        }
+    // Query the DOM element using the class names for string and fret
+    const dotElement = document.querySelector(
+      `.dot.dot-string-${dot.string}.dot-fret-${dot.fret}`
+    );
 
-        if (boxPositionsKey[key]) {
-            dot.inBox = true;
-            dotElement.classList.add('dot-in-box');  // Add 'dot-in-box' class
-        } else {
-            dot.inBox = false;
-            dotElement.classList.add('dot-out-of-scale');  // Add 'dot-out-of-scale' class
-        }
-    });
+    if (!dotElement) {
+      console.error('dotElement is undefined for dot:', dot); // Log an error if dotElement is undefined
+      return; // Skip further processing for this dot
+    }
+
+    if (boxPositionsKey[key]) {
+      dot.inBox = true;
+      dotElement.classList.add('dot-in-box'); // Add 'dot-in-box' class
+    } else {
+      dot.inBox = false;
+      dotElement.classList.add('dot-out-of-scale'); // Add 'dot-out-of-scale' class
+    }
+  });
 }
 
 function renderScaleDiagram(cagedShape) {
-    const scaleDiagram = document.getElementById('fretboard-container'); 
-    scaleDiagram.innerHTML = ''; // Clear previous content
+  const scaleDiagram = document.getElementById('fretboard-container');
+  scaleDiagram.innerHTML = ''; // Clear previous content
 
-    // Set a custom width before Fretboard rendering
-    scaleDiagram.style.width = '75%';
-    scaleDiagram.style.maxWidth = '800px';
-    // console.log('Width before rendering fretboard:', scaleDiagram.style.width);
+  // Set a custom width before Fretboard rendering
+  scaleDiagram.style.width = '75%';
+  scaleDiagram.style.maxWidth = '800px';
+  // console.log('Width before rendering fretboard:', scaleDiagram.style.width);
 
-    // Create the Fretboard instance
-    const fretboardInstance = new fretboard.Fretboard({
-        el: scaleDiagram,
-        height: 200,
-        stringsWidth: 1.5,
-        dotSize: 25,
-        fretCount: 16,
-        fretsWidth: 1.2,
-        font: 'Futura',
-        tuning: tuning,
-        showFretNumbers: true,
-    });
+  // Create the Fretboard instance
+  const fretboardInstance = new fretboard.Fretboard({
+    el: scaleDiagram,
+    height: 200,
+    stringsWidth: 1.5,
+    dotSize: 25,
+    fretCount: 16,
+    fretsWidth: 1.2,
+    font: 'Futura',
+    tuning: tuning,
+    showFretNumbers: true,
+  });
 
-    // console.log('fretboardInstance:', fretboardInstance);
+  // console.log('fretboardInstance:', fretboardInstance);
 
-    // Build positions from your cagedShape data
-    let positions = [];
-    for (let stringIndex = 0; stringIndex < cagedShape.scale_frets.length; stringIndex++) {
-        const stringNumber = 6 - stringIndex; // Strings numbered from 6 (low E) to 1 (high E)
-        const fretsOnString = cagedShape.scale_frets[stringIndex];
-        for (let fret of fretsOnString) {
-            if (typeof fret === 'number' && fret >= 0) {
-                positions.push({
-                    string: stringNumber,
-                    fret: fret,
-                    inBox: true // Custom property to indicate this note is in the box
-                });
-            }
-        }
+  // Build positions from your cagedShape data
+  let positions = [];
+  for (
+    let stringIndex = 0;
+    stringIndex < cagedShape.scale_frets.length;
+    stringIndex++
+  ) {
+    const stringNumber = 6 - stringIndex; // Strings numbered from 6 (low E) to 1 (high E)
+    const fretsOnString = cagedShape.scale_frets[stringIndex];
+    for (let fret of fretsOnString) {
+      if (typeof fret === 'number' && fret >= 0) {
+        positions.push({
+          string: stringNumber,
+          fret: fret,
+          inBox: true, // Custom property to indicate this note is in the box
+        });
+      }
     }
+  }
 
-    // Render the scale over the fretboard
-    fretboardInstance.renderScale({
-        type: cagedShape.scaleType,
-        root: cagedShape.key,
-    });
+  // Render the scale over the fretboard
+  fretboardInstance.renderScale({
+    type: cagedShape.scaleType,
+    root: cagedShape.key,
+  });
 
-    // console.log('Width after rendering fretboard:', scaleDiagram.style.width);
+  // console.log('Width after rendering fretboard:', scaleDiagram.style.width);
 
-    // Build a key map of positions in the box
-    let boxPositionsKey = {};
-    positions.forEach(pos => {
-        boxPositionsKey[`${pos.string}-${pos.fret}`] = true;
-    });
+  // Build a key map of positions in the box
+  let boxPositionsKey = {};
+  positions.forEach((pos) => {
+    boxPositionsKey[`${pos.string}-${pos.fret}`] = true;
+  });
 
-    // Mark dots that are in the box
-    fretboardInstance.dots.forEach(dot => {
-        const key = `${dot.string}-${dot.fret}`;
-        dot.inBox = !!boxPositionsKey[key]; // Assign inBox property
-        // console.log('Dot:', dot, 'Key:', key, 'In Box:', dot.inBox);
-    });
+  // Mark dots that are in the box
+  fretboardInstance.dots.forEach((dot) => {
+    const key = `${dot.string}-${dot.fret}`;
+    dot.inBox = !!boxPositionsKey[key]; // Assign inBox property
+    // console.log('Dot:', dot, 'Key:', key, 'In Box:', dot.inBox);
+  });
 
-    // Compute and assign dot-in-box / dot-out-of-scale classes
-    computeDotClasses(fretboardInstance, boxPositionsKey);
+  // Compute and assign dot-in-box / dot-out-of-scale classes
+  computeDotClasses(fretboardInstance, boxPositionsKey);
 
-    // Calculate start and end frets for highlighting
-    const fretsInBox = positions.map(pos => pos.fret);
-    const startFret = Math.min(...fretsInBox);
-    const endFret = Math.max(...fretsInBox);
+  // Calculate start and end frets for highlighting
+  const fretsInBox = positions.map((pos) => pos.fret);
+  const startFret = Math.min(...fretsInBox);
+  const endFret = Math.max(...fretsInBox);
 
-    // console.log('Frets in Box:', fretsInBox);
-    // console.log('Start Fret:', startFret);
-    // console.log('End Fret:', endFret);
+  // console.log('Frets in Box:', fretsInBox);
+  // console.log('Start Fret:', startFret);
+  // console.log('End Fret:', endFret);
 
-    // Highlight the area for the box
-    fretboardInstance.highlightAreas(
-        [{ string: 1, fret: startFret }, { string: 6, fret: endFret }]
-    );
+  // Highlight the area for the box
+  fretboardInstance.highlightAreas([
+    { string: 1, fret: startFret },
+    { string: 6, fret: endFret },
+  ]);
 
-    // Style the dots
-    fretboardInstance.style({
-        text: (position) => position.degree === 1 ? '1' : position.note,
-        fill: (position) => {
-            if (position.degree === 1) {
-                return '#00BCD4'; // Teal for root notes
-            } else if (position.inBox) {
-                return '#FF7043'; // Coral for notes in the box
-            } else {
-                return 'rgba(200, 200, 200, 0.4)'; // Grey for out-of-box notes
-            }
-        },
-        stroke: (position) => {
-            if (position.inBox || position.degree === 1) {
-                return '#FFFFFF'; // White stroke for notes in the box and root notes
-            } else {
-                return '#AAAAAA'; // Grey stroke for other notes
-            }
-        },
-        strokeWidth: 1,
-    });
+  // Style the dots
+  fretboardInstance.style({
+    text: (position) => (position.degree === 1 ? '1' : position.note),
+    fill: (position) => {
+      if (position.degree === 1) {
+        return '#00BCD4'; // Teal for root notes
+      } else if (position.inBox) {
+        return '#FF7043'; // Coral for notes in the box
+      } else {
+        return 'rgba(200, 200, 200, 0.4)'; // Grey for out-of-box notes
+      }
+    },
+    stroke: (position) => {
+      if (position.inBox || position.degree === 1) {
+        return '#FFFFFF'; // White stroke for notes in the box and root notes
+      } else {
+        return '#AAAAAA'; // Grey stroke for other notes
+      }
+    },
+    strokeWidth: 1,
+  });
 }
 
 function generateExercise() {
-    const key = document.getElementById('key').value;
-    const progression = document.getElementById('progression').value;
-    const bars = parseInt(document.getElementById('bars').value);
-    const shape = document.getElementById('shape').value;
+  const key = document.getElementById('key').value;
+  const progression = document.getElementById('progression').value;
+  const bars = parseInt(document.getElementById('bars').value);
+  const shape = document.getElementById('shape').value;
 
-    // Validate selections
-    if (!key || !progression || !bars || !shape) {
-        alert('Please select a key, progression, number of bars, and chord shape.');
-        return;
-    }
+  // Validate selections
+  if (!key || !progression || !bars || !shape) {
+    alert('Please select a key, progression, number of bars, and chord shape.');
+    return;
+  }
 
-    // Clear previous notation
-    document.getElementById('notation').innerHTML = '';
+  // Clear previous notation
+  document.getElementById('notation').innerHTML = '';
 
-    // Initialize VexFlow Renderer
-    const VF = Vex.Flow;
-    const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation } = VF;
-    const div = document.getElementById('notation');
-    const renderer = new Renderer(div, Renderer.Backends.SVG);
-    const width = 1200;
-    const height = 500;
-    renderer.resize(width, height);
-    const context = renderer.getContext();
+  // Initialize VexFlow Renderer
+  const VF = Vex.Flow;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation } = VF;
+  const div = document.getElementById('notation');
+  const renderer = new Renderer(div, Renderer.Backends.SVG);
+  const width = 1200;
+  const height = 500;
+  renderer.resize(width, height);
+  const context = renderer.getContext();
 
-    // Positioning constants
-    const staveWidth = 250;
-    const staveHeight = 150;
-    let xStart = 50;
-    let yStart = 40;
-    const maxStaveWidth = width - 20;
+  // Positioning constants
+  const staveWidth = 250;
+  const staveHeight = 150;
+  let xStart = 50;
+  let yStart = 40;
+  const maxStaveWidth = width - 20;
 
-    // Progression processing
-    let chordsInProgression = progression.replace(/\s/g, '').split('-');
-    let adjustedProgression = [];
-    const totalChords = chordsInProgression.length;
-    let fullCycles = Math.floor(bars / totalChords);
-    let remainingBars = bars % totalChords;
+  // Progression processing
+  let chordsInProgression = progression.replace(/\s/g, '').split('-');
+  let adjustedProgression = [];
+  const totalChords = chordsInProgression.length;
+  let fullCycles = Math.floor(bars / totalChords);
+  let remainingBars = bars % totalChords;
 
-    for (let i = 0; i < fullCycles; i++) {
-        adjustedProgression = adjustedProgression.concat(chordsInProgression);
-    }
-    if (remainingBars > 0) {
-        adjustedProgression = adjustedProgression.concat(chordsInProgression.slice(0, remainingBars));
-    }
+  for (let i = 0; i < fullCycles; i++) {
+    adjustedProgression = adjustedProgression.concat(chordsInProgression);
+  }
+  if (remainingBars > 0) {
+    adjustedProgression = adjustedProgression.concat(
+      chordsInProgression.slice(0, remainingBars)
+    );
+  }
 
-    const measures = [];
-    let previousNote = null;
-    let isAscending = true;
-    
-    adjustedProgression.forEach((chordSymbol, measureIndex) => {
-        const chordInfo = {
-            'I': { degree: 1, quality: 'maj7' },
-            'ii': { degree: 2, quality: 'm7' },
-            'iii': { degree: 3, quality: 'm7' },
-            'IV': { degree: 4, quality: 'maj7' },
-            'V': { degree: 5, quality: '7' },
-            'vi': { degree: 6, quality: 'm7' },
-            'vii°': { degree: 7, quality: 'm7b5' }
-        }[chordSymbol];
-    
-        const scale = Tonal.Scale.get(`${key} major`).notes;
-        const rootNote = scale[chordInfo.degree - 1];
-        const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
-        let chordNotes = chordData.notes.map(note => `${note}/4`);
-    
-        if (!chordNotes || chordNotes.length === 0) {
-            console.error(`No notes found for chord: ${rootNote}${chordInfo.quality}`);
-            return;
+  const measures = [];
+  let previousNote = null;
+  let isAscending = true;
+
+  adjustedProgression.forEach((chordSymbol, measureIndex) => {
+    const chordInfo = {
+      I: { degree: 1, quality: 'maj7' },
+      ii: { degree: 2, quality: 'm7' },
+      iii: { degree: 3, quality: 'm7' },
+      IV: { degree: 4, quality: 'maj7' },
+      V: { degree: 5, quality: '7' },
+      vi: { degree: 6, quality: 'm7' },
+      'vii°': { degree: 7, quality: 'm7b5' },
+    }[chordSymbol];
+
+    const scale = Tonal.Scale.get(`${key} major`).notes;
+    const rootNote = scale[chordInfo.degree - 1];
+    const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
+
+    // Expand chord tones across multiple octaves within the guitar range
+    const octaves = [2, 3, 4, 5, 6];
+    let chordNotes = [];
+    octaves.forEach((oct) => {
+      chordData.notes.forEach((n) => {
+        // Use tonal format (e.g. "C#4") for calculations
+        const tonalNote = `${n}${oct}`;
+        const midi = Tonal.Note.midi(tonalNote);
+        if (midi >= minPitch && midi <= maxPitch) {
+          chordNotes.push(tonalNote);
         }
-    
-        // Sort notes in ascending order of pitch for controlled progression
-        chordNotes = chordNotes.sort((a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b));
-    
-        let measureNotes = [];
-        let startIdx = (measureIndex === 0)
-            ? Math.floor(Math.random() * chordNotes.length) // Random start for the first measure
-            : findClosestIndex(previousNote, chordNotes); // Closest note for subsequent measures
-    
-        // Create the measure based on direction and starting index
-        for (let i = 0; i < 4; i++) {
-            let currentIdx = (isAscending) ? startIdx + i : startIdx - i;
-            currentIdx = (currentIdx + chordNotes.length) % chordNotes.length; // Wrap around
-    
-            const currentNote = chordNotes[currentIdx];
-            measureNotes.push(new StaveNote({
-                clef: 'treble',
-                keys: [currentNote],
-                duration: 'q'
-            }));
-    
-            // Track last note for smooth transition between measures
-            previousNote = currentNote;
-    
-            // Reverse direction if we hit the boundary
-            if (currentIdx === 0 || currentIdx === chordNotes.length - 1) {
-                isAscending = !isAscending;
-            }
-        }
-    
-        measures.push({
-            chordSymbol,
-            chordName: `${rootNote}${chordInfo.quality}`,
-            notes: measureNotes
-        });
+      });
     });
 
-    // Render each measure
-    measures.forEach((measureData, index) => {
-        if (xStart + staveWidth > maxStaveWidth) {
-            xStart = 50;
-            yStart += staveHeight;
-        }
-        const stave = new Stave(xStart, yStart, staveWidth);
-        if (index === 0) {
-            stave.addClef('treble').addKeySignature(key).addTimeSignature('4/4');
-        }
-        stave.setContext(context).draw();
+    if (!chordNotes || chordNotes.length === 0) {
+      console.error(
+        `No notes found for chord: ${rootNote}${chordInfo.quality}`
+      );
+      return;
+    }
 
-        const chordAnnotation = new Annotation(measureData.chordName)
-            .setFont('Arial', 12, 'normal')
-            .setVerticalJustification(Annotation.VerticalJustify.TOP);
-        measureData.notes[0].addModifier(chordAnnotation, 0);
+    // Sort notes in ascending order of pitch for controlled progression
+    chordNotes = chordNotes.sort(
+      (a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b)
+    );
 
-        const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(measureData.notes);
-        new Formatter().joinVoices([voice]).format([voice], staveWidth - 50);
-        voice.draw(context, stave);
+    let measureNotes = [];
+    let startIdx =
+      measureIndex === 0
+        ? Math.floor(Math.random() * chordNotes.length) // Random start for the first measure
+        : findClosestIndex(previousNote, chordNotes); // Closest note for subsequent measures
 
-        xStart += stave.width;
+    // Create the measure based on direction and starting index
+    let currentIdx = startIdx;
+    for (let i = 0; i < 4; i++) {
+      const currentNote = chordNotes[currentIdx];
+      measureNotes.push(
+        new StaveNote({
+          clef: 'treble',
+          keys: [toVexFlowFormat(currentNote)],
+          duration: 'q',
+        })
+      );
+
+      // Track last note for smooth transition between measures
+      previousNote = currentNote;
+
+      // Determine next index and handle boundaries by reversing direction
+      let nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
+      if (nextIdx >= chordNotes.length || nextIdx < 0) {
+        isAscending = !isAscending;
+        nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
+      }
+      currentIdx = nextIdx;
+    }
+
+    measures.push({
+      chordSymbol,
+      chordName: `${rootNote}${chordInfo.quality}`,
+      notes: measureNotes,
     });
+  });
+
+  // Render each measure
+  measures.forEach((measureData, index) => {
+    if (xStart + staveWidth > maxStaveWidth) {
+      xStart = 50;
+      yStart += staveHeight;
+    }
+    const stave = new Stave(xStart, yStart, staveWidth);
+    if (index === 0) {
+      stave.addClef('treble').addKeySignature(key).addTimeSignature('4/4');
+    }
+    stave.setContext(context).draw();
+
+    const chordAnnotation = new Annotation(measureData.chordName)
+      .setFont('Arial', 12, 'normal')
+      .setVerticalJustification(Annotation.VerticalJustify.TOP);
+    measureData.notes[0].addModifier(chordAnnotation, 0);
+
+    const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
+      measureData.notes
+    );
+    new Formatter().joinVoices([voice]).format([voice], staveWidth - 50);
+    voice.draw(context, stave);
+
+    xStart += stave.width;
+  });
 }
 
 // Helper function to find the index of the closest note to ensure smooth transitions
 function findClosestIndex(previousNote, chordNotes) {
-    const previousFreq = Tonal.Note.freq(previousNote);
-    let closestIndex = 0;
-    let minDifference = Infinity;
+  const previousFreq = Tonal.Note.freq(previousNote);
+  let closestIndex = 0;
+  let minDifference = Infinity;
 
-    chordNotes.forEach((note, index) => {
-        const freq = Tonal.Note.freq(note);
-        const difference = Math.abs(freq - previousFreq);
-        if (difference < minDifference) {
-            minDifference = difference;
-            closestIndex = index;
-        }
-    });
-    return closestIndex;
+  chordNotes.forEach((note, index) => {
+    const freq = Tonal.Note.freq(note);
+    const difference = Math.abs(freq - previousFreq);
+    if (difference < minDifference) {
+      minDifference = difference;
+      closestIndex = index;
+    }
+  });
+  return closestIndex;
 }
 
 function findClosestNote(previousNote, chordNotes, isAscending) {
-    const previousFreq = Tonal.Note.freq(previousNote);
-    const sortedNotes = chordNotes.sort((a, b) => Math.abs(Tonal.Note.freq(a) - previousFreq) - Math.abs(Tonal.Note.freq(b) - previousFreq));
-    const candidateNote = sortedNotes[0];
-    const stepDiff = Math.abs(Tonal.Note.midi(candidateNote) - Tonal.Note.midi(previousNote));
-    return (stepDiff <= 2) ? candidateNote : getNextNoteInDirection([previousNote], chordNotes, isAscending);
+  const previousFreq = Tonal.Note.freq(previousNote);
+  const sortedNotes = chordNotes.sort(
+    (a, b) =>
+      Math.abs(Tonal.Note.freq(a) - previousFreq) -
+      Math.abs(Tonal.Note.freq(b) - previousFreq)
+  );
+  const candidateNote = sortedNotes[0];
+  const stepDiff = Math.abs(
+    Tonal.Note.midi(candidateNote) - Tonal.Note.midi(previousNote)
+  );
+  return stepDiff <= 2
+    ? candidateNote
+    : getNextNoteInDirection([previousNote], chordNotes, isAscending);
 }
 
 function getNextNoteInDirection(currentMeasureNotes, chordNotes, isAscending) {
-    const lastNote = currentMeasureNotes[currentMeasureNotes.length - 1] || chordNotes[0];
-    const idx = chordNotes.indexOf(lastNote);
-    let nextIdx = isAscending ? idx + 1 : idx - 1;
+  const lastNote =
+    currentMeasureNotes[currentMeasureNotes.length - 1] || chordNotes[0];
+  const idx = chordNotes.indexOf(lastNote);
+  let nextIdx = isAscending ? idx + 1 : idx - 1;
 
-    // Ensure we don't repeat the same note
-    nextIdx = (nextIdx + chordNotes.length) % chordNotes.length;
-    if (chordNotes[nextIdx] === lastNote) {
-        nextIdx = isAscending ? (idx + 2) % chordNotes.length : (idx - 2 + chordNotes.length) % chordNotes.length;
-    }
+  // Ensure we don't repeat the same note
+  nextIdx = (nextIdx + chordNotes.length) % chordNotes.length;
+  if (chordNotes[nextIdx] === lastNote) {
+    nextIdx = isAscending
+      ? (idx + 2) % chordNotes.length
+      : (idx - 2 + chordNotes.length) % chordNotes.length;
+  }
 
-    return chordNotes[nextIdx];
+  return chordNotes[nextIdx];
 }
 
 function reachedBoundary(note, chordNotes) {
-    const idx = chordNotes.indexOf(note);
-    return idx === 0 || idx === chordNotes.length - 1;
+  const idx = chordNotes.indexOf(note);
+  return idx === 0 || idx === chordNotes.length - 1;
 }
-
 
 // Initialize the application after DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
-    const statusDiv = document.getElementById('status');
+  const statusDiv = document.getElementById('status');
 
-    // Check if VexFlow and Tonal.js are loaded
-    let vexflowLoaded = typeof Vex !== 'undefined';
-    let tonalLoaded = typeof Tonal !== 'undefined';
-    let vexchordsLoaded = typeof vexchords !== 'undefined';
+  // Check if VexFlow and Tonal.js are loaded
+  let vexflowLoaded = typeof Vex !== 'undefined';
+  let tonalLoaded = typeof Tonal !== 'undefined';
+  let vexchordsLoaded = typeof vexchords !== 'undefined';
 
-    if (!vexflowLoaded || !tonalLoaded || !vexchordsLoaded) {
-        statusDiv.innerHTML = "Failed to load VexFlow, Tonal, or VexChords.";
-    } else {
-        statusDiv.style.display = "none";  // Hide the status div if everything is loaded
+  if (!vexflowLoaded || !tonalLoaded || !vexchordsLoaded) {
+    statusDiv.innerHTML = 'Failed to load VexFlow, Tonal, or VexChords.';
+  } else {
+    statusDiv.style.display = 'none'; // Hide the status div if everything is loaded
 
-        // Attach event listener to the Generate Exercise button
-        document.getElementById('generateButton').addEventListener('click', () => {
-            const key = document.getElementById('key').value;
-            const progression = document.getElementById('progression').value;
-            const bars = document.getElementById('bars').value;
-            const shape = document.getElementById('shape').value;
+    // Attach event listener to the Generate Exercise button
+    document.getElementById('generateButton').addEventListener('click', () => {
+      const key = document.getElementById('key').value;
+      const progression = document.getElementById('progression').value;
+      const bars = document.getElementById('bars').value;
+      const shape = document.getElementById('shape').value;
 
-            // Validate selections
-            if (!key || !progression || !bars || !shape) {
-                alert('Please select a key, progression, number of bars, and chord shape.');
-                return;
-            }
+      // Validate selections
+      if (!key || !progression || !bars || !shape) {
+        alert(
+          'Please select a key, progression, number of bars, and chord shape.'
+        );
+        return;
+      }
 
-            // Generate CAGED shape (ensure getCAGEDShape is working)
-            const cagedShape = getCAGEDShape(shape, key);
-            console.log('cagedShape:', cagedShape);
+      // Generate CAGED shape (ensure getCAGEDShape is working)
+      const cagedShape = getCAGEDShape(shape, key);
+      console.log('cagedShape:', cagedShape);
 
-            // For testing, use a sample chord
-            // const cagedShape = aShapeChord;
+      // For testing, use a sample chord
+      // const cagedShape = aShapeChord;
 
-            // Clear previous chords and diagrams
-            // document.getElementById('chords-container').innerHTML = '';
-            document.getElementById('fretboard-container').innerHTML = '';
+      // Clear previous chords and diagrams
+      // document.getElementById('chords-container').innerHTML = '';
+      document.getElementById('fretboard-container').innerHTML = '';
 
-            // Render the chord shape visually using VexChords
-            // renderChord(cagedShape);
+      // Render the chord shape visually using VexChords
+      // renderChord(cagedShape);
 
-            // Render the scale diagram using Fretboard.js
-            renderScaleDiagram(cagedShape);
+      // Render the scale diagram using Fretboard.js
+      renderScaleDiagram(cagedShape);
 
-            // Generate the musical exercise
-            generateExercise();
-        });
-    }
+      // Generate the musical exercise
+      generateExercise();
+    });
+  }
 });
 
 // Clear previous chords and diagrams

@@ -1,0 +1,25 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true
+  },
+  "extends": ["eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": 12,
+    "sourceType": "module"
+  },
+  "globals": {
+    "Tonal": "readonly",
+    "Vex": "readonly",
+    "fretboard": "readonly",
+    "Fretboard": "readonly",
+    "vexchords": "readonly",
+    "test": "readonly",
+    "expect": "readonly"
+  },
+  "rules": {
+    "no-unused-vars": "off",
+    "no-undef": "off"
+  }
+}

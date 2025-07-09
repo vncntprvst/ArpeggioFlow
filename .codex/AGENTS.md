@@ -1,11 +1,15 @@
 # AGENTS.md
 
-## 🎯 Purpose  
+## 🎯 Purpose
+
 This file guides OpenAI Codex (and similar AI agents) to work effectively within this repository by specifying structure, conventions, workflows, testing, and output expectations. AGENTS.md files are read hierarchically—root-level rules apply globally, and deeper nested AGENTS.md files override parent ones :contentReference[oaicite:0]{index=0}.
+
+The project generates written music for practicing arpeggios. Audio playback is outside the current scope.
 
 ---
 
-## 📁 Project Structure  
+## 📁 Project Structure
+
 /
 ├── src/
 │ ├── arpeggio.ts # Generates arpeggio note sequences (per chord/shape)
@@ -18,39 +22,43 @@ This file guides OpenAI Codex (and similar AI agents) to work effectively within
 ├── AGENTS.md # This guidance file
 └── package.json # Scripts & dependencies
 
-
 ---
 
-## 🧩 Coding Conventions  
-- **Language**: TypeScript  
-- **Formatting**: Prettier (`npm run format`)  
-- **Linting**: ESLint (`npm run lint`)  
-- **Naming**: `camelCase` for functions/vars, `PascalCase` for types/interfaces  
-- **Modularity**: Each function should have a single responsibility  
-- **Documentation**: Add JSDoc comments for all public/exported APIs  
+## 🧩 Coding Conventions
+
+- **Language**: TypeScript
+- **Formatting**: Prettier (`npm run format`)
+- **Linting**: ESLint (`npm run lint`)
+- **Naming**: `camelCase` for functions/vars, `PascalCase` for types/interfaces
+- **Modularity**: Each function should have a single responsibility
+- **Documentation**: Add JSDoc comments for all public/exported APIs
 - **Commits/PRs**: Provide clear messages, reference tests, pass lint/tests
 
 ---
 
-## 🔁 Agent Workflow  
-When Codex operates in this repo, it should:  
-1. Read all applicable AGENTS.md files (root & nested) :contentReference[oaicite:1]{index=1}  
-2. Analyze code structure under `/src` and `/test`  
-3. Execute natural language prompts (e.g. “Generate ii–V–I lick”)  
-4. Generate or modify code respecting style, project conventions, and modularity  
-5. Run the full test suite and linters (`npm test`, `npm run lint`, `npm run format`)  
-6. Render output via `output.ts` (music staff without TAB)  
+## 🔁 Agent Workflow
+
+When Codex operates in this repo, it should:
+
+1. Read all applicable AGENTS.md files (root & nested) :contentReference[oaicite:1]{index=1}
+2. Analyze code structure under `/src` and `/test`
+3. Execute natural language prompts (e.g. “Generate ii–V–I lick”)
+4. Generate or modify code respecting style, project conventions, and modularity
+5. Run the full test suite and linters (`npm test`, `npm run lint`, `npm run format`)
+6. Render output via `output.ts` (music staff without TAB)
 7. Include terminal logs or test output in commit or PR
 
 ---
 
-## ✅ Testing Procedures  
-Agent must verify all changes by running:  
+## ✅ Testing Procedures
+
+Agent must verify all changes by running:
+
 ```bash
-npm install          # install dependencies  
-npm run format       # format code  
-npm run lint         # lint code  
-npm test             # run unit tests  
+npm install          # install dependencies
+npm run format       # format code
+npm run lint         # lint code
+npm test             # run unit tests
 
 All checks should pass before commit or PR.
 
@@ -88,3 +96,4 @@ When auto-generating PRs, the agent should:
 
     Keep PR focused and code modular with proper documentation
 
+```
