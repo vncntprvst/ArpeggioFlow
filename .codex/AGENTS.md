@@ -1,10 +1,19 @@
 # AGENTS.md
 
+## 🎸Arpeggio Flow App
+
+This project generates written music for practicing arpeggios. It focuses on simple guitar exercises to practice arpeggios in relation to chord shapes.
+**Example 1**: generate a lick in ii V I, 4 bars: ii7 Vdom7 Imaj7 Imaj7, for D major using the CAGED shape A.
+**Example 2**: generate a lick in 4 bars, using minor arpeggios (ii, iii, vi) and the root arpeggio for Eb, in shape C.
+Each time you generate a particular exercise, clicking the "Generate Exercise" button, it picks different notes from the given arpeggios.
+The program displays a music sheet, e.g., just one line of 4 measures, which can be printed if needed. 
+Audio playback is outside the current scope.
+
+--- 
+
 ## 🎯 Purpose
 
-This file guides OpenAI Codex (and similar AI agents) to work effectively within this repository by specifying structure, conventions, workflows, testing, and output expectations. AGENTS.md files are read hierarchically—root-level rules apply globally, and deeper nested AGENTS.md files override parent ones :contentReference[oaicite:0]{index=0}.
-
-The project generates written music for practicing arpeggios. Audio playback is outside the current scope.
+This file guides AI agents to work effectively within this repository by specifying structure, conventions, workflows, testing, and output expectations. AGENTS.md files are read hierarchically. root-level rules apply globally, and deeper nested AGENTS.md files override parent ones.
 
 ---
 
@@ -26,7 +35,7 @@ The project generates written music for practicing arpeggios. Audio playback is 
 
 ## 🧩 Coding Conventions
 
-- **Language**: TypeScript
+- **Language**: JavaScript
 - **Formatting**: Prettier (`npm run format`)
 - **Linting**: ESLint (`npm run lint`)
 - **Naming**: `camelCase` for functions/vars, `PascalCase` for types/interfaces
@@ -59,6 +68,7 @@ npm install          # install dependencies
 npm run format       # format code
 npm run lint         # lint code
 npm test             # run unit tests
+test\app.test.js     # run app-specific tests
 
 All checks should pass before commit or PR.
 

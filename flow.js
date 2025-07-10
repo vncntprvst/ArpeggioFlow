@@ -1,6 +1,18 @@
-// Purpose: Main script file for the CAGED Chords Exercise Generator.
+/*
+ * flow.js
+ *
+ * Main script for the Arpeggio Flow App (CAGED Chords Exercise Generator).
+ *
+ * Features:
+ *   - Define standard guitar tuning and compute pitch range (minPitch, maxPitch).
+ *   - Convert note names for use with VexFlow notation.
+ *   - Render fretboard scale diagrams using Fretboard.js and highlight scale boxes.
+ *   - Style fretboard dots based on scale degrees and box inclusion.
+ *   - Generate musical exercises with proper voice leading across chords and measures.
+ *   - Integrate VexFlow (notation), Tonal.js (music theory), and VexChords (chord visuals).
+ */
 
-// flow.js
+// Purpose: Main script file for the CAGED Chords Exercise Generator.
 
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
@@ -239,7 +251,6 @@ function generateExercise() {
   const context = renderer.getContext();
 
   // Positioning constants
-  const staveWidth = 250;
   const staveHeight = 150;
   let xStart = 50;
   let yStart = 40;
@@ -345,6 +356,18 @@ function generateExercise() {
 
   // Render each measure
   measures.forEach((measureData, index) => {
+    // Calculate stave width based on whether it's the first measure (needs space for key signature)
+    // This dynamic width calculation ensures that the first measure can accommodate 
+    // the key signature and all notes without overflowing into the next measure
+    const staveWidth = calculateMeasureWidth(key, index === 0);
+    
+    // Debug logging for first measure
+    if (index === 0) {
+      console.log(`First measure width for key ${key}:`, staveWidth);
+      const keyInfo = Tonal.Key.majorKey(key);
+      console.log(`Number of accidentals:`, keyInfo.alteredNotes.length);
+    }
+    
     if (xStart + staveWidth > maxStaveWidth) {
       xStart = 50;
       yStart += staveHeight;
@@ -363,12 +386,14 @@ function generateExercise() {
     const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
       measureData.notes
     );
-    new Formatter().joinVoices([voice]).format([voice], staveWidth - 50);
+    new Formatter().joinVoices([voice]).format([voice], stave.width - 50);
     voice.draw(context, stave);
 
     xStart += stave.width;
   });
 }
+
+// This function has been moved above to prevent duplicate definitions
 
 // Helper function to find the index of the closest note to ensure smooth transitions
 function findClosestIndex(previousNote, chordNotes) {
@@ -385,6 +410,42 @@ function findClosestIndex(previousNote, chordNotes) {
     }
   });
   return closestIndex;
+}
+
+// Calculate the required width for a measure based on key signature complexity
+function calculateMeasureWidth(key, isFirstMeasure) {
+  if (!isFirstMeasure) {
+    return 250; // Default width for non-first measures
+  }
+
+  // Get the key info to determine how many accidentals we have
+  const keyInfo = Tonal.Key.majorKey(key);
+  const accidentalCount = keyInfo.alteredNotes.length;
+  
+  // Base width plus additional space for each accidental
+  // First measure needs extra space for clef, key signature, and time signature
+  const baseWidth = 250;
+  
+  // More sophisticated calculation:
+  // - Clef takes ~40px
+  // - Time signature takes ~40px
+  // - Each accidental takes ~15px
+  // - Need some extra room for notes with accidentals
+  const clefWidth = 40;
+  const timeSignatureWidth = 40;
+  const extraWidthPerAccidental = 15;
+  const safetyMargin = 20;
+  
+  const keySignatureWidth = accidentalCount * extraWidthPerAccidental;
+  const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
+  
+  // Ensure a minimum width and cap the maximum to avoid extreme values
+  return Math.max(250, Math.min(400, firstMeasureWidth));
+}
+
+// Make function available globally for testing
+if (typeof window !== 'undefined') {
+  window.calculateMeasureWidth = calculateMeasureWidth;
 }
 
 function findClosestNote(previousNote, chordNotes, isAscending) {
