@@ -318,13 +318,12 @@ function generateExercise() {
     );
 
     let measureNotes = [];
-    let startIdx =
+    const startNote =
       measureIndex === 0
-        ? Math.floor(Math.random() * chordNotes.length) // Random start for the first measure
-        : findClosestIndex(previousNote, chordNotes); // Closest note for subsequent measures
+        ? chordNotes[Math.floor(Math.random() * chordNotes.length)] // Random start for first measure
+        : findClosestNote(previousNote, chordNotes, isAscending);
 
-    // Create the measure based on direction and starting index
-    let currentIdx = startIdx;
+    let currentIdx = chordNotes.indexOf(startNote);
     for (let i = 0; i < 4; i++) {
       const currentNote = chordNotes[currentIdx];
       measureNotes.push(
@@ -357,17 +356,17 @@ function generateExercise() {
   // Render each measure
   measures.forEach((measureData, index) => {
     // Calculate stave width based on whether it's the first measure (needs space for key signature)
-    // This dynamic width calculation ensures that the first measure can accommodate 
+    // This dynamic width calculation ensures that the first measure can accommodate
     // the key signature and all notes without overflowing into the next measure
     const staveWidth = calculateMeasureWidth(key, index === 0);
-    
+
     // Debug logging for first measure
     if (index === 0) {
       console.log(`First measure width for key ${key}:`, staveWidth);
       const keyInfo = Tonal.Key.majorKey(key);
       console.log(`Number of accidentals:`, keyInfo.alteredNotes.length);
     }
-    
+
     if (xStart + staveWidth > maxStaveWidth) {
       xStart = 50;
       yStart += staveHeight;
@@ -421,11 +420,11 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   // Get the key info to determine how many accidentals we have
   const keyInfo = Tonal.Key.majorKey(key);
   const accidentalCount = keyInfo.alteredNotes.length;
-  
+
   // Base width plus additional space for each accidental
   // First measure needs extra space for clef, key signature, and time signature
   const baseWidth = 250;
-  
+
   // More sophisticated calculation:
   // - Clef takes ~40px
   // - Time signature takes ~40px
@@ -435,10 +434,15 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   const timeSignatureWidth = 40;
   const extraWidthPerAccidental = 15;
   const safetyMargin = 20;
-  
+
   const keySignatureWidth = accidentalCount * extraWidthPerAccidental;
-  const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
-  
+  const firstMeasureWidth =
+    baseWidth +
+    clefWidth +
+    timeSignatureWidth +
+    keySignatureWidth +
+    safetyMargin;
+
   // Ensure a minimum width and cap the maximum to avoid extreme values
   return Math.max(250, Math.min(400, firstMeasureWidth));
 }
@@ -449,16 +453,24 @@ if (typeof window !== 'undefined') {
 }
 
 function findClosestNote(previousNote, chordNotes, isAscending) {
-  const previousFreq = Tonal.Note.freq(previousNote);
-  const sortedNotes = chordNotes.sort(
+  const prevMidi = Tonal.Note.midi(previousNote);
+  // Prefer notes in the current direction to maintain melodic flow
+  const directional = chordNotes.filter((note) => {
+    const diff = Tonal.Note.midi(note) - prevMidi;
+    return isAscending ? diff >= 0 : diff <= 0;
+  });
+
+  const candidates = directional.length > 0 ? directional : chordNotes;
+
+  candidates.sort(
     (a, b) =>
-      Math.abs(Tonal.Note.freq(a) - previousFreq) -
-      Math.abs(Tonal.Note.freq(b) - previousFreq)
+      Math.abs(Tonal.Note.midi(a) - prevMidi) -
+      Math.abs(Tonal.Note.midi(b) - prevMidi)
   );
-  const candidateNote = sortedNotes[0];
-  const stepDiff = Math.abs(
-    Tonal.Note.midi(candidateNote) - Tonal.Note.midi(previousNote)
-  );
+
+  const candidateNote = candidates[0];
+  const stepDiff = Math.abs(Tonal.Note.midi(candidateNote) - prevMidi);
+
   return stepDiff <= 2
     ? candidateNote
     : getNextNoteInDirection([previousNote], chordNotes, isAscending);
