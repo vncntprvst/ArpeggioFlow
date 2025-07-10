@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Measure Width</title>
+</head>
+<body>
+    <h1>Test Measure Width Calculation</h1>
+    
+    <div>
+        <label for="testKey">Select Key:</label>
+        <select id="testKey">
+            <option value="C">C (no accidentals)</option>
+            <option value="G">G (1 sharp)</option>
+            <option value="D">D (2 sharps)</option>
+            <option value="A">A (3 sharps)</option>
+            <option value="F">F (1 flat)</option>
+            <option value="Bb">Bb (2 flats)</option>
+        </select>
+        <button onclick="testWidth()">Test Width</button>
+    </div>
+    
+    <div id="results"></div>
+    
+    <script src="https://unpkg.com/tonal@4.8.0/browser/tonal.min.js"></script>
+    <script>
+        // Mock the calculateMeasureWidth function
+        function calculateMeasureWidth(key, isFirstMeasure) {
+          if (!isFirstMeasure) {
+            return 250; // Default width for non-first measures
+          }
+
+          // Get the key info to determine how many accidentals we have
+          const keyInfo = Tonal.Key.majorKey(key);
+          const accidentalCount = keyInfo.alteredNotes.length;
+          
+          // Base width plus additional space for each accidental
+          // First measure needs extra space for clef, key signature, and time signature
+          const baseWidth = 250;
+          
+          // More sophisticated calculation:
+          // - Clef takes ~40px
+          // - Time signature takes ~40px
+          // - Each accidental takes ~15px
+          // - Need some extra room for notes with accidentals
+          const clefWidth = 40;
+          const timeSignatureWidth = 40;
+          const extraWidthPerAccidental = 15;
+          const safetyMargin = 20;
+          
+          const keySignatureWidth = accidentalCount * extraWidthPerAccidental;
+          const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
+          
+          // Ensure a minimum width and cap the maximum to avoid extreme values
+          return Math.max(250, Math.min(400, firstMeasureWidth));
+        }
+        
+        function testWidth() {
+            const key = document.getElementById('testKey').value;
+            const firstMeasureWidth = calculateMeasureWidth(key, true);
+            const regularMeasureWidth = calculateMeasureWidth(key, false);
+            const keyInfo = Tonal.Key.majorKey(key);
+            
+            document.getElementById('results').innerHTML = `
+                <h3>Results for Key: ${key}</h3>
+                <p>Number of accidentals: ${keyInfo.alteredNotes.length}</p>
+                <p>Altered notes: ${keyInfo.alteredNotes.join(', ') || 'None'}</p>
+                <p>First measure width: ${firstMeasureWidth}px</p>
+                <p>Regular measure width: ${regularMeasureWidth}px</p>
+                <p>Extra width for first measure: ${firstMeasureWidth - regularMeasureWidth}px</p>
+            `;
+        }
+    </script>
+</body>
+</html>
