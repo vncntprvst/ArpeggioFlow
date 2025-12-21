@@ -14,18 +14,43 @@
 
 // Purpose: Main script file for the CAGED Chords Exercise Generator.
 
+// Debug flag - set to true for verbose console logging
+const DEBUG = true;
+
+function debugLog(...args) {
+  if (DEBUG) {
+    console.log('[flow]', ...args);
+  }
+}
+
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
-// Calculate the note range based on tuning (up to two octaves above high E)
-const minPitch = Tonal.Note.midi(tuning[0]);
-// Roughly the top of a typical fretboard (E6)
-const maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 24;
+
+// Guitar pitch range - computed lazily to ensure Tonal is loaded
+// E2 = MIDI 40, E4 + 24 semitones = E6 = MIDI 88
+let minPitch = null;
+let maxPitch = null;
+
+function getGuitarPitchRange() {
+  if (minPitch === null || maxPitch === null) {
+    minPitch = Tonal.Note.midi(tuning[0]); // E2 = 40
+    maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 24; // E6 = 88
+    debugLog('Guitar pitch range initialized:', { minPitch, maxPitch });
+  }
+  return { minPitch, maxPitch };
+}
 
 // Convert a note like "C#4" to VexFlow format "c#/4"
+// Guitar is a transposing instrument: it sounds one octave lower than written.
+// Since our app uses sounding pitch (e.g., D3 = open D string = MIDI 50),
+// we must add 1 octave when converting to VexFlow for proper staff display.
+// This matches standard guitar notation convention where middle C on guitar
+// is written as C4 on the treble clef but sounds as C3.
 function toVexFlowFormat(note) {
   const pc = Tonal.Note.pitchClass(note);
   const octave = Tonal.Note.octave(note);
-  return `${pc.toLowerCase()}/${octave}`;
+  // Add 1 octave for guitar transposition: sounding pitch → written pitch
+  return `${pc.toLowerCase()}/${octave + 1}`;
 }
 const colors = {
   defaultFill: 'white',
@@ -50,6 +75,9 @@ const colors = {
     '7m': '#96ADC8',
   },
 };
+
+// Note: This file depends on noteFlow.js for pure note flow functions.
+// Ensure noteFlow.js is loaded before this file in index.html.
 
 // Import the CAGED Shape generator function
 // import { getCAGEDShape } from './cagedShapes.js';
@@ -292,8 +320,12 @@ function generateExercise() {
     const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
 
     // Expand chord tones across multiple octaves within the guitar range
+    const { minPitch, maxPitch } = getGuitarPitchRange();
+    debugLog('Guitar range:', { minPitch, maxPitch, minNote: 'E2 (MIDI 40)', maxNote: 'E6 (MIDI 88)' });
+    
     const octaves = [2, 3, 4, 5, 6];
     let chordNotes = [];
+    let excludedNotes = [];
     octaves.forEach((oct) => {
       chordData.notes.forEach((n) => {
         // Use tonal format (e.g. "C#4") for calculations
@@ -301,9 +333,15 @@ function generateExercise() {
         const midi = Tonal.Note.midi(tonalNote);
         if (midi >= minPitch && midi <= maxPitch) {
           chordNotes.push(tonalNote);
+        } else {
+          excludedNotes.push({ note: tonalNote, midi, reason: midi < minPitch ? 'below min' : 'above max' });
         }
       });
     });
+    
+    if (excludedNotes.length > 0) {
+      debugLog('Excluded notes (outside guitar range):', excludedNotes);
+    }
 
     if (!chordNotes || chordNotes.length === 0) {
       console.error(
@@ -316,36 +354,64 @@ function generateExercise() {
     chordNotes = chordNotes.sort(
       (a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b)
     );
-
-    let measureNotes = [];
-    let startIdx =
-      measureIndex === 0
-        ? Math.floor(Math.random() * chordNotes.length) // Random start for the first measure
-        : findClosestIndex(previousNote, chordNotes); // Closest note for subsequent measures
-
-    // Create the measure based on direction and starting index
-    let currentIdx = startIdx;
-    for (let i = 0; i < 4; i++) {
-      const currentNote = chordNotes[currentIdx];
-      measureNotes.push(
-        new StaveNote({
-          clef: 'treble',
-          keys: [toVexFlowFormat(currentNote)],
-          duration: 'q',
-        })
-      );
-
-      // Track last note for smooth transition between measures
-      previousNote = currentNote;
-
-      // Determine next index and handle boundaries by reversing direction
-      let nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
-      if (nextIdx >= chordNotes.length || nextIdx < 0) {
-        isAscending = !isAscending;
-        nextIdx = isAscending ? currentIdx + 1 : currentIdx - 1;
-      }
-      currentIdx = nextIdx;
+    
+    // Validate all notes are within guitar range
+    const invalidNotes = chordNotes.filter(note => {
+      const midi = Tonal.Note.midi(note);
+      return midi < minPitch || midi > maxPitch;
+    });
+    if (invalidNotes.length > 0) {
+      console.error('Notes outside guitar range:', invalidNotes);
     }
+    
+    debugLog(`Chord ${rootNote}${chordInfo.quality} notes (filtered):`, chordNotes);
+
+    // Use noteFlow module to generate measure notes with proper voice leading
+    const { notes: generatedNotes, newDirection } = window.noteFlow.generateMeasureNotes(
+      chordNotes,
+      4, // notes per measure
+      previousNote,
+      isAscending,
+      Tonal.Note.freq,
+      Tonal.Note.midi
+    );
+
+    // Validate generated notes are within range
+    generatedNotes.forEach((note, idx) => {
+      const midi = Tonal.Note.midi(note);
+      if (midi < minPitch || midi > maxPitch) {
+        console.error(`Generated note ${note} (MIDI ${midi}) at position ${idx} is outside guitar range [${minPitch}, ${maxPitch}]`);
+      }
+    });
+
+    debugLog(`Measure ${measureIndex + 1} (${chordSymbol}):`, {
+      chordNotes: chordNotes.slice(0, 5).join(', ') + '...',
+      generatedNotes,
+      previousNote,
+      wasAscending: isAscending,
+      newDirection
+    });
+
+    // Update state for next measure
+    isAscending = newDirection;
+    previousNote = generatedNotes[generatedNotes.length - 1];
+
+    // Validate and log the VexFlow format conversion
+    const vexFlowNotes = generatedNotes.map(note => ({
+      original: note,
+      midi: Tonal.Note.midi(note),
+      vexFormat: toVexFlowFormat(note)
+    }));
+    debugLog(`Measure ${measureIndex + 1} VexFlow notes:`, vexFlowNotes);
+
+    // Convert generated notes to VexFlow StaveNotes
+    let measureNotes = generatedNotes.map(note => 
+      new StaveNote({
+        clef: 'treble',
+        keys: [toVexFlowFormat(note)],
+        duration: 'q',
+      })
+    );
 
     measures.push({
       chordSymbol,
@@ -363,9 +429,7 @@ function generateExercise() {
     
     // Debug logging for first measure
     if (index === 0) {
-      console.log(`First measure width for key ${key}:`, staveWidth);
-      const keyInfo = Tonal.Key.majorKey(key);
-      console.log(`Number of accidentals:`, keyInfo.alteredNotes.length);
+      debugLog(`First measure width for key ${key}:`, staveWidth);
     }
     
     if (xStart + staveWidth > maxStaveWidth) {
@@ -393,24 +457,7 @@ function generateExercise() {
   });
 }
 
-// This function has been moved above to prevent duplicate definitions
-
-// Helper function to find the index of the closest note to ensure smooth transitions
-function findClosestIndex(previousNote, chordNotes) {
-  const previousFreq = Tonal.Note.freq(previousNote);
-  let closestIndex = 0;
-  let minDifference = Infinity;
-
-  chordNotes.forEach((note, index) => {
-    const freq = Tonal.Note.freq(note);
-    const difference = Math.abs(freq - previousFreq);
-    if (difference < minDifference) {
-      minDifference = difference;
-      closestIndex = index;
-    }
-  });
-  return closestIndex;
-}
+// Note: findClosestIndex has been moved to noteFlow.js module
 
 // Calculate the required width for a measure based on key signature complexity
 function calculateMeasureWidth(key, isFirstMeasure) {
@@ -419,8 +466,23 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   }
 
   // Get the key info to determine how many accidentals we have
+  // Tonal.Key.majorKey() returns an object with 'keySignature' (e.g., "##" or "bbb")
+  // and 'alteration' (number of sharps/flats, positive for sharps, negative for flats)
   const keyInfo = Tonal.Key.majorKey(key);
-  const accidentalCount = keyInfo.alteredNotes.length;
+  
+  // Safely get accidental count - use alteration (absolute value) or keySignature length
+  let accidentalCount = 0;
+  if (keyInfo) {
+    if (typeof keyInfo.alteration === 'number') {
+      accidentalCount = Math.abs(keyInfo.alteration);
+    } else if (keyInfo.keySignature) {
+      accidentalCount = keyInfo.keySignature.length;
+    } else if (keyInfo.alteredNotes && Array.isArray(keyInfo.alteredNotes)) {
+      accidentalCount = keyInfo.alteredNotes.length;
+    }
+  }
+  
+  debugLog('calculateMeasureWidth:', { key, keyInfo, accidentalCount });
   
   // Base width plus additional space for each accidental
   // First measure needs extra space for clef, key signature, and time signature
@@ -448,43 +510,7 @@ if (typeof window !== 'undefined') {
   window.calculateMeasureWidth = calculateMeasureWidth;
 }
 
-function findClosestNote(previousNote, chordNotes, isAscending) {
-  const previousFreq = Tonal.Note.freq(previousNote);
-  const sortedNotes = chordNotes.sort(
-    (a, b) =>
-      Math.abs(Tonal.Note.freq(a) - previousFreq) -
-      Math.abs(Tonal.Note.freq(b) - previousFreq)
-  );
-  const candidateNote = sortedNotes[0];
-  const stepDiff = Math.abs(
-    Tonal.Note.midi(candidateNote) - Tonal.Note.midi(previousNote)
-  );
-  return stepDiff <= 2
-    ? candidateNote
-    : getNextNoteInDirection([previousNote], chordNotes, isAscending);
-}
-
-function getNextNoteInDirection(currentMeasureNotes, chordNotes, isAscending) {
-  const lastNote =
-    currentMeasureNotes[currentMeasureNotes.length - 1] || chordNotes[0];
-  const idx = chordNotes.indexOf(lastNote);
-  let nextIdx = isAscending ? idx + 1 : idx - 1;
-
-  // Ensure we don't repeat the same note
-  nextIdx = (nextIdx + chordNotes.length) % chordNotes.length;
-  if (chordNotes[nextIdx] === lastNote) {
-    nextIdx = isAscending
-      ? (idx + 2) % chordNotes.length
-      : (idx - 2 + chordNotes.length) % chordNotes.length;
-  }
-
-  return chordNotes[nextIdx];
-}
-
-function reachedBoundary(note, chordNotes) {
-  const idx = chordNotes.indexOf(note);
-  return idx === 0 || idx === chordNotes.length - 1;
-}
+// Note: findClosestNote, getNextNoteInDirection, reachedBoundary have been moved to noteFlow.js module
 
 // Initialize the application after DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {

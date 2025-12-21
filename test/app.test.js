@@ -42,25 +42,27 @@ test('index.html contains expected elements', () => {
 });
 
 // Mock Tonal library for consistent testing
+// The real Tonal.Key.majorKey returns 'alteration' (number) and 'keySignature' (string like "##")
+// NOT 'alteredNotes' array. This mock matches the real API.
 const mockTonal = {
   Key: {
     majorKey: (key) => {
       const keySignatures = {
-        'C': { alteredNotes: [] },
-        'G': { alteredNotes: ['F#'] },
-        'D': { alteredNotes: ['F#', 'C#'] },
-        'A': { alteredNotes: ['F#', 'C#', 'G#'] },
-        'E': { alteredNotes: ['F#', 'C#', 'G#', 'D#'] },
-        'B': { alteredNotes: ['F#', 'C#', 'G#', 'D#', 'A#'] },
-        'F#': { alteredNotes: ['F#', 'C#', 'G#', 'D#', 'A#', 'E#'] },
-        'F': { alteredNotes: ['Bb'] },
-        'Bb': { alteredNotes: ['Bb', 'Eb'] },
-        'Eb': { alteredNotes: ['Bb', 'Eb', 'Ab'] },
-        'Ab': { alteredNotes: ['Bb', 'Eb', 'Ab', 'Db'] },
-        'Db': { alteredNotes: ['Bb', 'Eb', 'Ab', 'Db', 'Gb'] },
-        'Gb': { alteredNotes: ['Bb', 'Eb', 'Ab', 'Db', 'Gb', 'Cb'] }
+        'C': { alteration: 0, keySignature: '' },
+        'G': { alteration: 1, keySignature: '#' },
+        'D': { alteration: 2, keySignature: '##' },
+        'A': { alteration: 3, keySignature: '###' },
+        'E': { alteration: 4, keySignature: '####' },
+        'B': { alteration: 5, keySignature: '#####' },
+        'F#': { alteration: 6, keySignature: '######' },
+        'F': { alteration: -1, keySignature: 'b' },
+        'Bb': { alteration: -2, keySignature: 'bb' },
+        'Eb': { alteration: -3, keySignature: 'bbb' },
+        'Ab': { alteration: -4, keySignature: 'bbbb' },
+        'Db': { alteration: -5, keySignature: 'bbbbb' },
+        'Gb': { alteration: -6, keySignature: 'bbbbbb' }
       };
-      return keySignatures[key] || { alteredNotes: [] };
+      return keySignatures[key] || { alteration: 0, keySignature: '' };
     }
   },
   Scale: {
@@ -247,9 +249,12 @@ describe('calculateMeasureWidth function', () => {
     // Set up Tonal mock
     global.Tonal = mockTonal;
     
+    // Mock debugLog to prevent console spam
+    global.debugLog = jest.fn();
+    
     // Extract and execute the calculateMeasureWidth function
     const flowJsContent = fs.readFileSync('flow.js', 'utf8');
-    const functionMatch = flowJsContent.match(/function calculateMeasureWidth\([\s\S]*?\n}/);
+    const functionMatch = flowJsContent.match(/function calculateMeasureWidth\([\s\S]*?\n\}/);
     
     if (functionMatch) {
       // Create a function in the global scope that we can access
@@ -261,39 +266,57 @@ describe('calculateMeasureWidth function', () => {
     }
   });
 
-  test('returns correct width for different key signatures', () => {
-    // Test keys with different numbers of accidentals
-    const testCases = [
-      { key: 'C', expectedWidth: 350, isFirstMeasure: true, accidentals: 0 },
-      { key: 'G', expectedWidth: 365, isFirstMeasure: true, accidentals: 1 },
-      { key: 'D', expectedWidth: 380, isFirstMeasure: true, accidentals: 2 },
-      { key: 'F', expectedWidth: 365, isFirstMeasure: true, accidentals: 1 },
-      { key: 'Bb', expectedWidth: 380, isFirstMeasure: true, accidentals: 2 },
-      { key: 'C', expectedWidth: 250, isFirstMeasure: false, accidentals: 0 }
-    ];
-
-    testCases.forEach(({ key, expectedWidth, isFirstMeasure, accidentals }) => {
-      const width = calculateMeasureWidth(key, isFirstMeasure);
-      
-      if (isFirstMeasure) {
-        expect(width).toBeGreaterThanOrEqual(expectedWidth);
-        expect(width).toBeLessThanOrEqual(400); // Should not exceed max
-        
-        // Verify the calculation logic
-        const expectedCalculation = 250 + 40 + 40 + (accidentals * 15) + 20;
-        expect(width).toBe(Math.max(250, Math.min(400, expectedCalculation)));
-      } else {
-        expect(width).toBe(250); // Non-first measures should always be 250
-      }
-    });
+  test('returns default width for non-first measures', () => {
+    expect(calculateMeasureWidth('C', false)).toBe(250);
+    expect(calculateMeasureWidth('G', false)).toBe(250);
+    expect(calculateMeasureWidth('F#', false)).toBe(250);
   });
 
-  test('handles edge cases correctly', () => {
-    // Test unknown key (should default to no accidentals)
-    expect(calculateMeasureWidth('X', true)).toBe(350);
+  test('returns correct width for keys with no accidentals', () => {
+    // C major has 0 accidentals
+    // Expected: 250 + 40 + 40 + (0 * 15) + 20 = 350
+    const width = calculateMeasureWidth('C', true);
+    expect(width).toBe(350);
+  });
+
+  test('returns correct width for keys with sharps', () => {
+    // G major has 1 sharp: 250 + 40 + 40 + (1 * 15) + 20 = 365
+    expect(calculateMeasureWidth('G', true)).toBe(365);
     
-    // Test minimum and maximum bounds
-    expect(calculateMeasureWidth('C', true)).toBeGreaterThanOrEqual(250);
-    expect(calculateMeasureWidth('F#', true)).toBeLessThanOrEqual(400);
+    // D major has 2 sharps: 250 + 40 + 40 + (2 * 15) + 20 = 380
+    expect(calculateMeasureWidth('D', true)).toBe(380);
+    
+    // A major has 3 sharps: 250 + 40 + 40 + (3 * 15) + 20 = 395
+    expect(calculateMeasureWidth('A', true)).toBe(395);
+    
+    // E major has 4 sharps: 250 + 40 + 40 + (4 * 15) + 20 = 410 -> capped at 400
+    expect(calculateMeasureWidth('E', true)).toBe(400);
+  });
+
+  test('returns correct width for keys with flats', () => {
+    // F major has 1 flat: 250 + 40 + 40 + (1 * 15) + 20 = 365
+    expect(calculateMeasureWidth('F', true)).toBe(365);
+    
+    // Bb major has 2 flats: 250 + 40 + 40 + (2 * 15) + 20 = 380
+    expect(calculateMeasureWidth('Bb', true)).toBe(380);
+  });
+
+  test('caps maximum width at 400', () => {
+    // F# major has 6 sharps: 250 + 40 + 40 + (6 * 15) + 20 = 440 -> capped at 400
+    expect(calculateMeasureWidth('F#', true)).toBe(400);
+    
+    // Gb major has 6 flats: same calculation
+    expect(calculateMeasureWidth('Gb', true)).toBe(400);
+  });
+
+  test('handles unknown keys gracefully', () => {
+    // Unknown key should default to 0 accidentals = 350
+    const width = calculateMeasureWidth('X', true);
+    expect(width).toBe(350);
+  });
+
+  test('handles null/undefined keyInfo gracefully', () => {
+    // This should not throw an error
+    expect(() => calculateMeasureWidth('InvalidKey', true)).not.toThrow();
   });
 });
