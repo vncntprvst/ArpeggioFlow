@@ -388,11 +388,11 @@ describe('noteFlow module', () => {
       }
     });
 
-    test('notes within guitar range (E2=40 to E6=88) across 100 iterations', () => {
-      // Guitar-range filtered Dm7 chord notes
+    test('notes within guitar range (E2=40 to G#5=80, 16 frets) across 100 iterations', () => {
+      // Guitar-range filtered Dm7 chord notes (within 16 frets)
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
       const MIN_MIDI = 40; // E2
-      const MAX_MIDI = 88; // E6
+      const MAX_MIDI = 80; // G#5 (fret 16 on high E string)
       
       for (let i = 0; i < 100; i++) {
         const result = generateMeasureNotes(dm7Notes, 4, null, Math.random() > 0.5, mockNoteFreq, mockNoteMidi);

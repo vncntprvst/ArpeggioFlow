@@ -27,17 +27,49 @@ function debugLog(...args) {
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 
 // Guitar pitch range - computed lazily to ensure Tonal is loaded
-// E2 = MIDI 40, E4 + 24 semitones = E6 = MIDI 88
+// E2 = MIDI 40, E4 + 16 semitones = G#5 = MIDI 80 (16 frets displayed on fretboard)
 let minPitch = null;
 let maxPitch = null;
 
 function getGuitarPitchRange() {
   if (minPitch === null || maxPitch === null) {
     minPitch = Tonal.Note.midi(tuning[0]); // E2 = 40
-    maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 24; // E6 = 88
-    debugLog('Guitar pitch range initialized:', { minPitch, maxPitch });
+    // Max pitch is 16 frets above the highest open string (E4)
+    // This ensures notes stay within the displayed fretboard (16 frets)
+    maxPitch = Tonal.Note.midi(tuning[tuning.length - 1]) + 16; // G#5 = 80
+    debugLog('Guitar pitch range initialized:', { minPitch, maxPitch, maxNote: 'G#5 (fret 16 on high E)' });
   }
   return { minPitch, maxPitch };
+}
+
+/**
+ * Convert fret positions from a CAGED shape to actual note names.
+ * @param {Array<Array<number>>} scaleFrets - Array of fret arrays for each string (low E to high E order in shape)
+ * @param {string[]} tuningNotes - Array of open string notes ['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
+ * @returns {string[]} - Array of note names (e.g., ['E2', 'F2', 'G2', ...])
+ */
+function fretPositionsToNotes(scaleFrets, tuningNotes) {
+  const notes = [];
+  
+  // scaleFrets is ordered from low E (string 6) to high E (string 1)
+  // tuningNotes is ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'] which is also low to high
+  for (let stringIndex = 0; stringIndex < scaleFrets.length; stringIndex++) {
+    const openStringNote = tuningNotes[stringIndex];
+    const openStringMidi = Tonal.Note.midi(openStringNote);
+    const fretsOnString = scaleFrets[stringIndex];
+    
+    for (const fret of fretsOnString) {
+      if (typeof fret === 'number' && fret >= 0) {
+        const midi = openStringMidi + fret;
+        const noteName = Tonal.Note.fromMidi(midi);
+        notes.push(noteName);
+      }
+    }
+  }
+  
+  // Remove duplicates and sort by pitch
+  const uniqueNotes = [...new Set(notes)];
+  return uniqueNotes.sort((a, b) => Tonal.Note.midi(a) - Tonal.Note.midi(b));
 }
 
 // Convert a note like "C#4" to VexFlow format "c#/4"
@@ -265,6 +297,22 @@ function generateExercise() {
     return;
   }
 
+  // Get the CAGED shape to access scale notes for root chord constraint
+  const cagedShape = getCAGEDShape(shape, key);
+  if (!cagedShape) {
+    console.error('Could not get CAGED shape');
+    return;
+  }
+  
+  // Convert the scale fret positions to actual note names
+  // These are the notes that the root chord (I chord) must use
+  const scaleNotesInShape = fretPositionsToNotes(cagedShape.scale_frets, tuning);
+  debugLog('Scale notes in CAGED shape:', scaleNotesInShape);
+  
+  // Get just the pitch classes for matching (e.g., ['C', 'D', 'E', 'F', 'G', 'A', 'B'])
+  const scalePitchClasses = [...new Set(scaleNotesInShape.map(n => Tonal.Note.pitchClass(n)))];
+  debugLog('Scale pitch classes:', scalePitchClasses);
+
   // Clear previous notation
   document.getElementById('notation').innerHTML = '';
 
@@ -318,10 +366,13 @@ function generateExercise() {
     const scale = Tonal.Scale.get(`${key} major`).notes;
     const rootNote = scale[chordInfo.degree - 1];
     const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
+    
+    // Check if this is the root chord (I chord)
+    const isRootChord = chordSymbol === 'I';
 
     // Expand chord tones across multiple octaves within the guitar range
     const { minPitch, maxPitch } = getGuitarPitchRange();
-    debugLog('Guitar range:', { minPitch, maxPitch, minNote: 'E2 (MIDI 40)', maxNote: 'E6 (MIDI 88)' });
+    debugLog('Guitar range:', { minPitch, maxPitch, minNote: 'E2 (MIDI 40)', maxNote: 'G#5 (MIDI 80, fret 16)' });
     
     const octaves = [2, 3, 4, 5, 6];
     let chordNotes = [];
@@ -341,6 +392,17 @@ function generateExercise() {
     
     if (excludedNotes.length > 0) {
       debugLog('Excluded notes (outside guitar range):', excludedNotes);
+    }
+    
+    // For the root chord (I), filter to only notes within the scale shape
+    if (isRootChord) {
+      const originalChordNotes = [...chordNotes];
+      chordNotes = chordNotes.filter(note => scaleNotesInShape.includes(note));
+      debugLog(`Root chord (I) filtered to scale shape:`, {
+        original: originalChordNotes,
+        filtered: chordNotes,
+        scaleNotes: scaleNotesInShape
+      });
     }
 
     if (!chordNotes || chordNotes.length === 0) {

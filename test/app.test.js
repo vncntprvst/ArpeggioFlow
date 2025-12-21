@@ -99,7 +99,7 @@ const mockTonal = {
 // Define guitar range for testing
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 const minPitch = mockTonal.Note.midi(tuning[0]); // E2 = 40
-const maxPitch = mockTonal.Note.midi(tuning[tuning.length - 1]) + 24; // E6 = 88
+const maxPitch = mockTonal.Note.midi(tuning[tuning.length - 1]) + 16; // G#5 = 80 (16 frets)
 
 // Helper function to generate chord tones within guitar range
 function getChordTonesInRange(chordNotes) {
