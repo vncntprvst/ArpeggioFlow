@@ -80,17 +80,15 @@
     <select id="progression" name="progression" required>
       <!-- <option value="" disabled selected>Select a Progression</option> -->
       <option value="ii-V-I" selected>ii - V - I</option>
-      <option value="I-ii-iii-IV-V-vi-vii°">I - ii - iii - IV - V - vi - vii°</option>
-      <option value="vii°-vi-V-IV-iii-ii-I">vii° - vi - V - IV - iii - ii - I</option>
-      <option value="I-IV-V">I - IV - V</option>
-      <option value="I-V-vi-IV">I - V - vi - IV</option>
+      <option value="I-vi-ii-V">I - vi - ii - V</option>
+      <option value="I-vi-IV-V">I - vi - IV - V</option>
       <option value="I-IV-vi-V">I - IV - vi - V</option>
-      <option value="vi-IV-I-V">vi - IV - I - V</option>
+      <option value="I-I-I-I-IV-IV-I-I-V-IV-I-V">12 bar blues</option>
     </select>
 
     <!-- Added Number of Bars Input -->
     <label for="bars">Number of Bars:</label>
-    <input type="number" id="bars" name="bars" value="4" min="1" required>
+    <input type="number" id="bars" name="bars" value="3" min="1" required>
 
     <label for="scaleSystem">Scale System:</label>
     <select id="scaleSystem" name="scaleSystem" required onchange="updateShapeOptions()">
@@ -117,7 +115,6 @@
 
   <!-- Container for Music Notation -->
   <div id="notation"></div>
-  <div id="key-debug"></div>
 
   <!-- Note flow pure functions (must load before flow.js) -->
   <script src="noteFlow.js"></script>
@@ -156,3 +153,4 @@
 
 </body>
 </html>
+

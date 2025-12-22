@@ -274,45 +274,45 @@ describe('calculateMeasureWidth function', () => {
 
   test('returns correct width for keys with no accidentals', () => {
     // C major has 0 accidentals
-    // Expected: 260 + 40 + 40 + (0 * 15) + 30 = 370
+    // Expected: 260 + 40 + 40 + (0 * 15) + 0 = 340
     const width = calculateMeasureWidth('C', true);
-    expect(width).toBe(370);
+    expect(width).toBe(340);
   });
 
   test('returns correct width for keys with sharps', () => {
-    // G major has 1 sharp: 260 + 40 + 40 + (1 * 15) + 30 = 385
-    expect(calculateMeasureWidth('G', true)).toBe(385);
+    // G major has 1 sharp: 260 + 40 + 40 + (1 * 15) + 0 = 355
+    expect(calculateMeasureWidth('G', true)).toBe(355);
     
-    // D major has 2 sharps: 260 + 40 + 40 + (2 * 15) + 30 = 400
-    expect(calculateMeasureWidth('D', true)).toBe(400);
+    // D major has 2 sharps: 260 + 40 + 40 + (2 * 15) + 0 = 370
+    expect(calculateMeasureWidth('D', true)).toBe(370);
     
-    // A major has 3 sharps: 260 + 40 + 40 + (3 * 15) + 30 = 415
-    expect(calculateMeasureWidth('A', true)).toBe(415);
+    // A major has 3 sharps: 260 + 40 + 40 + (3 * 15) + 0 = 385
+    expect(calculateMeasureWidth('A', true)).toBe(385);
     
-    // E major has 4 sharps: 260 + 40 + 40 + (4 * 15) + 30 = 430
-    expect(calculateMeasureWidth('E', true)).toBe(430);
+    // E major has 4 sharps: 260 + 40 + 40 + (4 * 15) + 0 = 400
+    expect(calculateMeasureWidth('E', true)).toBe(400);
   });
 
   test('returns correct width for keys with flats', () => {
-    // F major has 1 flat: 260 + 40 + 40 + (1 * 15) + 30 = 385
-    expect(calculateMeasureWidth('F', true)).toBe(385);
+    // F major has 1 flat: 260 + 40 + 40 + (1 * 15) + 0 = 355
+    expect(calculateMeasureWidth('F', true)).toBe(355);
     
-    // Bb major has 2 flats: 260 + 40 + 40 + (2 * 15) + 30 = 400
-    expect(calculateMeasureWidth('Bb', true)).toBe(400);
+    // Bb major has 2 flats: 260 + 40 + 40 + (2 * 15) + 0 = 370
+    expect(calculateMeasureWidth('Bb', true)).toBe(370);
   });
 
   test('caps maximum width at 520', () => {
-    // F# major has 6 sharps: 260 + 40 + 40 + (6 * 20) + 30 = 490 -> capped at 520
-    expect(calculateMeasureWidth('F#', true)).toBe(490);
+    // F# major has 6 sharps: 260 + 40 + 40 + (6 * 14) + 0 = 424
+    expect(calculateMeasureWidth('F#', true)).toBe(424);
     
     // Gb major has 6 flats: same calculation
-    expect(calculateMeasureWidth('Gb', true)).toBe(490);
+    expect(calculateMeasureWidth('Gb', true)).toBe(424);
   });
 
   test('handles unknown keys gracefully', () => {
-    // Unknown key should default to 0 accidentals = 370
+    // Unknown key should default to 0 accidentals = 340
     const width = calculateMeasureWidth('X', true);
-    expect(width).toBe(370);
+    expect(width).toBe(340);
   });
 
   test('handles null/undefined keyInfo gracefully', () => {

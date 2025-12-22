@@ -1,12 +1,35 @@
-* Fix Key signatures: 
-    - Separate major signatures: Db from C#, Gb from F#, etc. They have entirely different key signatures.
-    - Fix spacing issue in the first measure for keys with 5+ sharps or flats: the last note is pushed to the next measure.
-    - In the Key dropdown, add minor keys. Display major keys first, then minor keys (maybe with a separator).
-
 <!-- * Move frets one down on chord diagram (without changing position).   -->
 * Display small chords diagrams over each chord name.
 * Alternative exercise: Start each chord on a specific chord tone - Root, 3rd, 5th, 7th.
 * Create licks by selecting less or more notes for each measure, with sustained or silent notes. 
+
+* [X] Update the Chord Progression options to 
+    ii V I
+    I vi ii V
+    I vi IV V
+    I IV vi V
+    12 bar blues 
+
+    12 bar blues is defined as I, IV and V (i.e., tonic, subdominant and dominant). 
+    The sequence of chords is as follows:
+    I – I – I – I
+    IV – IV – I – I
+    V – IV – I – V
+
+    A 12 bar Blues example in the key of E:
+
+    E7 – E7 – E7 – E7
+    A7 – A7 – E7 – E7
+    B7 – A7 – E7 – B7 
+
+    Adjust the default value in Number of Bars accordingly (e.g., 3 for ii V I, 12 for 12 bar blues, etc.). This should still be updatable by the user. 
+
+* [X] Fix Key signatures: 
+    - Separate major signatures: Db from C#, Gb from F#, etc. They have entirely different key signatures.
+    - Fix spacing issue in the first measure for keys with 5+ sharps or flats: the last note is pushed to the next measure.
+    - In the Key dropdown, add minor keys. Display major keys first, then minor keys (maybe with a separator).
+
+
 
 * [X] Add two more constraints to the arpeggio exercise generation:
     - the notes have to stay within the first 16 frets, as displayed on the fretboard diagram. Meaning if the notes ascend beyond that, then they should reverse direction and go down. 

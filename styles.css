@@ -88,6 +88,12 @@ select {
   margin-top: clamp(24px, 4vw, 64px);
 }
 
+#notation svg {
+  max-width: 100%;
+  display: block;
+  margin: 0 auto;
+}
+
 #fretboard-container {
   margin-bottom: clamp(16px, 3vw, 48px);
 }

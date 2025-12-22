@@ -54,6 +54,30 @@ function updateKeyDebug(keyValue) {
   debugEl.textContent = `Key signature: ${keySignature} | Scale: ${tonic} ${scaleType} | CAGED: ${cagedKey} ${scaleType}`;
 }
 
+function updateBarsForProgression(progressionValue) {
+  const barsInput = document.getElementById('bars');
+  if (!barsInput) {
+    return;
+  }
+  let defaultBars = 4;
+  switch (progressionValue) {
+    case 'ii-V-I':
+      defaultBars = 3;
+      break;
+    case 'I-vi-ii-V':
+    case 'I-vi-IV-V':
+    case 'I-IV-vi-V':
+      defaultBars = 4;
+      break;
+    case 'I-I-I-I-IV-IV-I-I-V-IV-I-V':
+      defaultBars = 12;
+      break;
+    default:
+      defaultBars = progressionValue.split('-').length;
+      break;
+  }
+  barsInput.value = defaultBars;
+}
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 
@@ -363,17 +387,10 @@ function generateExercise() {
   const VF = Vex.Flow;
   const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation } = VF;
   const div = document.getElementById('notation');
-  const renderer = new Renderer(div, Renderer.Backends.SVG);
-  const width = 1200;
-  const height = 500;
-  renderer.resize(width, height);
-  const context = renderer.getContext();
-
-  // Positioning constants
-  const staveHeight = 150;
-  let xStart = 50;
-  let yStart = 40;
+  const containerWidth = div.getBoundingClientRect().width;
+  const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
   const maxStaveWidth = width - 20;
+  const maxMeasuresPerLine = 4;
 
   // Progression processing
   let chordsInProgression = progression.replace(/\s/g, '').split('-');
@@ -638,44 +655,76 @@ function generateExercise() {
     };
   });
 
-  // Render each measure
-  measures.forEach((measureData, index) => {
-    // Calculate stave width based on whether it's the first measure (needs space for key signature)
-    // This dynamic width calculation ensures that the first measure can accommodate 
-    // the key signature and all notes without overflowing into the next measure
-    const staveWidth = calculateMeasureWidth(key, index === 0);
-    
-    // Debug logging for first measure
-    if (index === 0) {
-      debugLog(`First measure width for key ${key}:`, staveWidth);
-    }
-    
-    if (xStart + staveWidth > maxStaveWidth) {
-      xStart = 50;
-      yStart += staveHeight;
-    }
-    const stave = new Stave(xStart, yStart, staveWidth);
-    if (index === 0) {
-      stave
-        .addClef('treble')
-        .addKeySignature(keyContext.keySignature)
-        .addTimeSignature('4/4');
-    }
-    stave.setContext(context).draw();
+  const measureWidths = measures.map((_, idx) =>
+    calculateMeasureWidth(key, idx === 0)
+  );
+  const lineLayouts = [];
+  let currentLine = { measures: [], width: 0 };
 
-    const chordAnnotation = new Annotation(measureData.chordName)
-      .setFont('Arial', 12, 'normal')
-      .setVerticalJustification(Annotation.VerticalJustify.TOP);
-    measureData.notes[0].addModifier(chordAnnotation, 0);
+  measureWidths.forEach((measureWidth, idx) => {
+    const needsWrap =
+      currentLine.measures.length >= maxMeasuresPerLine ||
+      (currentLine.width + measureWidth > maxStaveWidth &&
+        currentLine.measures.length > 0);
+    if (needsWrap) {
+      lineLayouts.push(currentLine);
+      currentLine = { measures: [], width: 0 };
+    }
+    currentLine.measures.push({ index: idx, width: measureWidth });
+    currentLine.width += measureWidth;
+  });
+  if (currentLine.measures.length > 0) {
+    lineLayouts.push(currentLine);
+  }
 
-    const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
-      measureData.notes
-    );
-    const availableWidth = stave.width - (index === 0 ? 90 : 50);
-    new Formatter().joinVoices([voice]).format([voice], Math.max(120, availableWidth));
-    voice.draw(context, stave);
+  const staveHeight = 170;
+  const topPadding = 80;
+  const bottomPadding = 40;
+  const height =
+    topPadding + lineLayouts.length * staveHeight + bottomPadding;
 
-    xStart += stave.width;
+  const renderer = new Renderer(div, Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const context = renderer.getContext();
+
+  // Render each measure, centered by line
+  lineLayouts.forEach((line, lineIndex) => {
+    let xStart = Math.max(20, Math.floor((width - line.width) / 2));
+    let yStart = topPadding + lineIndex * staveHeight;
+
+    line.measures.forEach(({ index, width: staveWidth }) => {
+      const measure = measures[index];
+
+      if (index === 0) {
+        debugLog(`First measure width for key ${key}:`, staveWidth);
+      }
+
+      const stave = new Stave(xStart, yStart, staveWidth);
+      if (index === 0) {
+        stave
+          .addClef('treble')
+          .addKeySignature(keyContext.keySignature)
+          .addTimeSignature('4/4');
+      }
+      stave.setContext(context).draw();
+
+      const chordAnnotation = new Annotation(measure.chordName)
+        .setFont('Arial', 12, 'normal')
+        .setVerticalJustification(Annotation.VerticalJustify.TOP)
+        .setYShift(10);
+      measure.notes[0].addModifier(chordAnnotation, 0);
+
+      const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
+        measure.notes
+      );
+      const availableWidth = stave.width - (index === 0 ? 90 : 50);
+      new Formatter()
+        .joinVoices([voice])
+        .format([voice], Math.max(120, availableWidth));
+      voice.draw(context, stave);
+
+      xStart += stave.width;
+    });
   });
 }
 
@@ -719,8 +768,8 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   // - Need some extra room for notes with accidentals
   const clefWidth = 40;
   const timeSignatureWidth = 40;
-  const extraWidthPerAccidental = accidentalCount >= 5 ? 20 : 15;
-  const safetyMargin = 30;
+  const extraWidthPerAccidental = accidentalCount >= 5 ? 14 : 15;
+  const safetyMargin = 0;
   
   const keySignatureWidth = accidentalCount * extraWidthPerAccidental;
   const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
@@ -749,17 +798,20 @@ document.addEventListener('DOMContentLoaded', function () {
     statusDiv.innerHTML = 'Failed to load VexFlow, Tonal, or VexChords.';
   } else {
     statusDiv.style.display = 'none'; // Hide the status div if everything is loaded
+    updateKeyDebug(document.getElementById('key').value);
+    updateBarsForProgression(document.getElementById('progression').value);
 
-    // updateKeyDebug(document.getElementById('key').value);
+    document.getElementById('progression').addEventListener('change', (event) => {
+      updateBarsForProgression(event.target.value);
+    });
 
-    // Attach event listener to the Generate Exercise button
     document.getElementById('key').addEventListener('change', (event) => {
       updateKeyDebug(event.target.value);
     });
 
     document.getElementById('generateButton').addEventListener('click', () => {
       const key = document.getElementById('key').value;
-      // updateKeyDebug(key);
+      updateKeyDebug(key);
       const progression = document.getElementById('progression').value;
       const bars = document.getElementById('bars').value;
       const shape = document.getElementById('shape').value;
@@ -837,6 +889,9 @@ document.getElementById('fretboard-container').innerHTML = '';
 // renderChord(eShapeChord);
 // renderChord(dShapeChord);
 // console.log('Plotting D Shape Chord');
+
+
+
 
 
 
