@@ -89,7 +89,8 @@ select {
 #notation {
   display: flex;
   justify-content: center;
-  margin-top: clamp(24px, 4vw, 64px);
+  align-items: flex-start;
+  margin-top: 8px;
 }
 
 #notation svg {
@@ -105,7 +106,14 @@ select {
 }
 
 #fretboard-container {
-  margin-bottom: clamp(16px, 3vw, 48px);
+  margin-bottom: 8px;
+}
+
+#export-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 20px;
+  text-align: center;
 }
 
 #key-debug {

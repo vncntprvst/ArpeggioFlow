@@ -1,3 +1,6 @@
+* [X] Add a title to the export image/PDF file with the Key, Chord Progression, Chord shape
+* [X] Adjust spacing between the scale diagram and the arpeggio exercise area to a fixed value, e.g., 20px, instead of a percentage. 
+
 * [X] Add an export button to export the generated exercise (including the scale fretboard at the top) as an image (PNG) or PDF.
 
 <!-- * Move frets one down on chord diagram (without changing position).   -->

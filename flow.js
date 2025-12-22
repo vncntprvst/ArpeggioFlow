@@ -78,6 +78,23 @@ function updateBarsForProgression(progressionValue) {
   }
   barsInput.value = defaultBars;
 }
+
+function updateExportTitle() {
+  const titleEl = document.getElementById('export-title');
+  if (!titleEl) {
+    return;
+  }
+  const key = document.getElementById('key')?.value || '';
+  const progressionSelect = document.getElementById('progression');
+  const progressionLabel =
+    progressionSelect?.selectedOptions?.[0]?.textContent ||
+    progressionSelect?.value ||
+    '';
+  const shapeSelect = document.getElementById('shape');
+  const shapeLabel =
+    shapeSelect?.selectedOptions?.[0]?.textContent || shapeSelect?.value || '';
+  titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | Shape: ${shapeLabel}`;
+}
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 
@@ -678,8 +695,8 @@ function generateExercise() {
   }
 
   const staveHeight = 170;
-  const topPadding = 80;
-  const bottomPadding = 40;
+  const topPadding = 60;
+  const bottomPadding = 30;
   const height =
     topPadding + lineLayouts.length * staveHeight + bottomPadding;
 
@@ -762,6 +779,7 @@ async function exportExerciseAsPng() {
     alert('Please generate an exercise before exporting.');
     return;
   }
+  updateExportTitle();
   if (!window.html2canvas) {
     alert('Export failed: html2canvas is not available.');
     return;
@@ -784,6 +802,7 @@ async function exportExerciseAsPdf() {
     alert('Please generate an exercise before exporting.');
     return;
   }
+  updateExportTitle();
   if (!window.html2canvas) {
     alert('Export failed: html2canvas is not available.');
     return;
@@ -880,14 +899,21 @@ document.addEventListener('DOMContentLoaded', function () {
   } else {
     statusDiv.style.display = 'none'; // Hide the status div if everything is loaded
     updateKeyDebug(document.getElementById('key').value);
+    updateExportTitle();
     updateBarsForProgression(document.getElementById('progression').value);
 
     document.getElementById('progression').addEventListener('change', (event) => {
       updateBarsForProgression(event.target.value);
+      updateExportTitle();
     });
 
     document.getElementById('key').addEventListener('change', (event) => {
       updateKeyDebug(event.target.value);
+      updateExportTitle();
+    });
+    
+    document.getElementById('shape').addEventListener('change', () => {
+      updateExportTitle();
     });
 
     document.getElementById('generateButton').addEventListener('click', () => {
@@ -929,6 +955,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
       // Generate the musical exercise
       generateExercise();
+      updateExportTitle();
     });
 
     const exportPngButton = document.getElementById('exportPngButton');
