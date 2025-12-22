@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" type="image/x-icon" href="favicons\music_note_32.ico" sizes="32x32">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="favicons/music_note_32.ico" sizes="32x32" />
 
-  <title>Arpeggio Practice Generator</title>
+  <title>Arpeggio Flow – Arpeggio Practice Generator</title>
 
-  <!-- Link to external CSS -->
-  <link rel="stylesheet" href="styles.css">
+  <!-- Styles -->
+  <link rel="stylesheet" href="styles.css" />
 
   <!-- VexFlow -->
   <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.2/build/cjs/vexflow.js"></script>
@@ -21,10 +21,6 @@
 
   <!-- Fretboard.js UMD build -->
   <script src="libs/fretboard/fretboard.umd.js"></script>
-  <!-- <script>
-      console.log('Fretboard:', typeof Fretboard);
-      console.log('fretboard:', typeof fretboard);
-  </script> -->
 
   <!-- cagedShapes.js -->
   <script src="cagedShapes.js"></script>
@@ -34,119 +30,213 @@
 
   <!-- jsPDF for PDF export -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-
 </head>
+
 <body>
-  <div id="status">Checking VexFlow, Tonal and VexChords Libraries...</div>
+  <div class="page">
+    <!-- App header -->
+    <header class="app-header">
+      <div class="app-header-main">
+        <div class="app-title">
+          <h1>Arpeggio Flow</h1>
+          <p class="app-tagline">
+            Generate arpeggio exercises from keys, progressions and CAGED shapes.
+          </p>
+        </div>
 
-  <h1>Arpeggio Practice Generator</h1>
+        <a
+          href="https://github.com/vncntprvst/ArpeggioFlow"
+          class="app-header-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          View on GitHub
+        </a>
+      </div>
 
-  <!-- Form for User Input -->
-  <form id="exerciseForm">
-    <label for="key">Key:</label>
-    <select id="key" name="key" required>
-      <!-- <option value="" disabled selected>Select a Key</option> -->
-      <optgroup label="Major">
-        <option value="C" selected>C</option>
-        <option value="G">G</option>
-        <option value="D">D</option>
-        <option value="A">A</option>
-        <option value="E">E</option>
-        <option value="B">B</option>
-        <option value="F#">F#</option>
-        <option value="C#">C#</option>
-        <option value="F">F</option>
-        <option value="Bb">Bb</option>
-        <option value="Eb">Eb</option>
-        <option value="Ab">Ab</option>
-        <option value="Db">Db</option>
-        <option value="Gb">Gb</option>
-        <option value="Cb">Cb</option>
-      </optgroup>
-      <optgroup label="Minor">
-        <option value="Am">A minor</option>
-        <option value="Em">E minor</option>
-        <option value="Bm">B minor</option>
-        <option value="F#m">F# minor</option>
-        <option value="C#m">C# minor</option>
-        <option value="G#m">G# minor</option>
-        <option value="D#m">D# minor</option>
-        <option value="A#m">A# minor</option>
-        <option value="Dm">D minor</option>
-        <option value="Gm">G minor</option>
-        <option value="Cm">C minor</option>
-        <option value="Fm">F minor</option>
-        <option value="Bbm">Bb minor</option>
-        <option value="Ebm">Eb minor</option>
-        <option value="Abm">Ab minor</option>
-      </optgroup>
-    </select>
+      <!-- Library status (hidden once everything is loaded) -->
+      <div id="status" class="status-banner">
+        Checking VexFlow, Tonal and VexChords Libraries...
+      </div>
+    </header>
 
-    <label for="progression">Chord Progression:</label>
-    <select id="progression" name="progression" required>
-      <!-- <option value="" disabled selected>Select a Progression</option> -->
-      <option value="ii-V-I" selected>ii - V - I</option>
-      <option value="I-vi-ii-V">I - vi - ii - V</option>
-      <option value="I-vi-IV-V">I - vi - IV - V</option>
-      <option value="I-IV-vi-V">I - IV - vi - V</option>
-      <option value="I-I-I-I-IV-IV-I-I-V-IV-I-V">12 bar blues</option>
-    </select>
+    <!-- Main 2‑column layout -->
+    <main class="layout">
+      <!-- Left: exercise settings -->
+      <section class="controls-panel" aria-label="Exercise settings">
+        <form id="exerciseForm" class="controls-form" novalidate>
+          <!-- Step 1: Key & scale -->
+          <div class="form-section">
+            <h2 class="section-title">1. Key &amp; Scale</h2>
 
-    <!-- Added Number of Bars Input -->
-    <label for="bars">Number of Bars:</label>
-    <input type="number" id="bars" name="bars" value="3" min="1" required>
+            <div class="form-field">
+              <label for="key">Key</label>
+              <select id="key" name="key" required>
+                <optgroup label="Major">
+                  <option value="C" selected>C</option>
+                  <option value="G">G</option>
+                  <option value="D">D</option>
+                  <option value="A">A</option>
+                  <option value="E">E</option>
+                  <option value="B">B</option>
+                  <option value="F#">F#</option>
+                  <option value="C#">C#</option>
+                  <option value="F">F</option>
+                  <option value="Bb">Bb</option>
+                  <option value="Eb">Eb</option>
+                  <option value="Ab">Ab</option>
+                  <option value="Db">Db</option>
+                  <option value="Gb">Gb</option>
+                  <option value="Cb">Cb</option>
+                </optgroup>
+                <optgroup label="Minor">
+                  <option value="Am">A minor</option>
+                  <option value="Em">E minor</option>
+                  <option value="Bm">B minor</option>
+                  <option value="F#m">F# minor</option>
+                  <option value="C#m">C# minor</option>
+                  <option value="G#m">G# minor</option>
+                  <option value="D#m">D# minor</option>
+                  <option value="A#m">A# minor</option>
+                  <option value="Dm">D minor</option>
+                  <option value="Gm">G minor</option>
+                  <option value="Cm">C minor</option>
+                  <option value="Fm">F minor</option>
+                  <option value="Bbm">Bb minor</option>
+                  <option value="Ebm">Eb minor</option>
+                  <option value="Abm">Ab minor</option>
+                </optgroup>
+              </select>
+            </div>
+          </div>
 
-    <label for="scaleSystem">Scale System:</label>
-    <select id="scaleSystem" name="scaleSystem" required onchange="updateShapeOptions()">
-      <option value="CAGED_SHAPES">CAGED Shapes</option>
-      <option value="EXT_CAGED_SHAPES" selected>Extended CAGED Shapes</option> <!-- Set default to EXT_CAGED_SHAPES -->
-    </select>
-  
-    <label for="shape">Chord Shape:</label>
-    <select id="shape" name="shape" required>
-      <option value="" disabled selected>Select a Shape</option>
-      <!-- Options will be populated dynamically by updateShapeOptions() -->
-    </select>
+          <!-- Step 2: Progression & length -->
+          <div class="form-section">
+            <h2 class="section-title">2. Progression &amp; Length</h2>
 
-    <!-- Removed onclick attribute -->
-    <button type="button" id="generateButton">Generate Exercise</button>
-    <button type="button" id="exportPngButton">Export PNG</button>
-    <button type="button" id="exportPdfButton">Export PDF</button>
-  </form>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="progression">Chord progression</label>
+                <select id="progression" name="progression" required>
+                  <option value="ii-V-I" selected>ii – V – I</option>
+                  <option value="I-vi-ii-V">I – vi – ii – V</option>
+                  <option value="I-vi-IV-V">I – vi – IV – V</option>
+                  <option value="I-IV-vi-V">I – IV – vi – V</option>
+                  <option value="I-I-I-I-IV-IV-I-I-V-IV-I-V">12 bar blues</option>
+                </select>
+              </div>
 
-  <!-- Container for Chord Diagrams -->
-  <!-- <div id="chords-container"></div> -->
-  <!-- scaleDiagram kept on plotting in chords-container, and we don't need it now -->
+              <div class="form-field">
+                <label for="bars">Number of bars</label>
+                <input
+                  type="number"
+                  id="bars"
+                  name="bars"
+                  value="3"
+                  min="1"
+                  required
+                />
+              </div>
+            </div>
+          </div>
 
-  <div id="exercise-export">
-    <div id="export-title"></div>
-    <!-- Container for Fretboard Diagrams -->
-    <div id="fretboard-container"></div>
+          <!-- Step 3: CAGED shape -->
+          <div class="form-section">
+            <h2 class="section-title">3. CAGED Shape</h2>
 
-    <!-- Container for Music Notation -->
-    <div id="notation"></div>
+            <div class="form-row">
+              <div class="form-field">
+                <label for="scaleSystem">Scale system</label>
+                <select
+                  id="scaleSystem"
+                  name="scaleSystem"
+                  required
+                  onchange="updateShapeOptions()"
+                >
+                  <option value="CAGED_SHAPES">CAGED Shapes</option>
+                  <option value="EXT_CAGED_SHAPES" selected>
+                    Extended CAGED Shapes
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-field">
+                <label for="shape">Chord shape</label>
+                <select id="shape" name="shape" required>
+                  <option value="" disabled selected>Select a Shape</option>
+                  <!-- Populated dynamically by updateShapeOptions() -->
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Primary action -->
+          <div class="form-actions">
+            <button type="button" id="generateButton">
+              Generate Exercise
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Right: preview & export -->
+      <section class="preview-panel" aria-label="Preview and export">
+        <article class="card card-preview">
+          <header class="card-header">
+            <div>
+              <h2 class="card-title">Exercise preview</h2>
+              <p class="card-subtitle">
+                Fretboard diagram and notation for the selected key and progression.
+              </p>
+            </div>
+            <!-- Key debug info populated by JS -->
+            <p id="key-debug"></p>
+          </header>
+
+          <div class="card-body">
+            <!-- Everything inside this block is exported to PNG/PDF -->
+            <div id="exercise-export">
+              <div id="export-title"></div>
+
+              <!-- Fretboard diagram -->
+              <div id="fretboard-container"></div>
+
+              <!-- Music notation -->
+              <div id="notation"></div>
+            </div>
+          </div>
+
+          <footer class="card-footer card-footer-actions">
+            <button type="button" id="exportPngButton">
+              Export PNG
+            </button>
+            <button type="button" id="exportPdfButton">
+              Export PDF
+            </button>
+          </footer>
+        </article>
+      </section>
+    </main>
   </div>
 
   <!-- Note flow pure functions (must load before flow.js) -->
   <script src="noteFlow.js"></script>
-  
-  <!-- Include the main script as a module -->
+
+  <!-- Main script -->
   <script type="module" src="flow.js?v=20250709"></script>
 
+  <!-- Shape options setup (unchanged logic) -->
   <script>
     function updateShapeOptions() {
       const scaleSystem = document.getElementById('scaleSystem').value;
       const shapeSelect = document.getElementById('shape');
       shapeSelect.innerHTML = ''; // Clear current options
-  
-      // Define the shapes for each scale system
+
       const cagedShapes = ['C', 'A', 'G', 'E', 'D'];
       const extCagedShapes = ['C', 'A', 'A_stretched', 'G', 'E', 'E_stretched', 'D'];
-  
-      // Select appropriate shape options
-      let shapes = scaleSystem === 'EXT_CAGED_SHAPES' ? extCagedShapes : cagedShapes;
-  
-      // Populate the shape select with new options
+
+      const shapes = scaleSystem === 'EXT_CAGED_SHAPES' ? extCagedShapes : cagedShapes;
+
       shapes.forEach(shape => {
         const option = document.createElement('option');
         option.value = shape;
@@ -154,14 +244,11 @@
         shapeSelect.appendChild(option);
       });
     }
-  
-    // Automatically set the default scale system and update shapes on page load
-    window.onload = function() {
-      document.getElementById('scaleSystem').value = 'EXT_CAGED_SHAPES'; // Set the default value for the scale system
-      updateShapeOptions(); // Call to update shapes based on EXT_CAGED_SHAPES
-    }
-  </script>
 
+    window.onload = function () {
+      document.getElementById('scaleSystem').value = 'EXT_CAGED_SHAPES';
+      updateShapeOptions();
+    };
+  </script>
 </body>
 </html>
-
