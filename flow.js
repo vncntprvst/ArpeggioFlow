@@ -312,6 +312,11 @@ function generateExercise() {
   // Get just the pitch classes for matching (e.g., ['C', 'D', 'E', 'F', 'G', 'A', 'B'])
   const scalePitchClasses = [...new Set(scaleNotesInShape.map(n => Tonal.Note.pitchClass(n)))];
   debugLog('Scale pitch classes:', scalePitchClasses);
+  
+  // Create a Set of scale chromas (0-11) for enharmonic-agnostic matching
+  // This ensures D# (chroma 3) matches Eb (chroma 3), F# (chroma 6) matches Gb (chroma 6), etc.
+  const scaleChromaSet = new Set(scaleNotesInShape.map(n => Tonal.Note.chroma(n)));
+  debugLog('Scale chromas:', [...scaleChromaSet]);
 
   // Clear previous notation
   document.getElementById('notation').innerHTML = '';
@@ -379,9 +384,14 @@ function generateExercise() {
     });
 
     // For the root chord (I), filter to only notes within the scale shape
+    // Use chroma (0-11) comparison for enharmonic-agnostic matching
+    // This ensures D# matches Eb, F# matches Gb, A# matches Bb, etc.
     if (filterToScale) {
-      chordNotes = chordNotes.filter(note => scaleNotesInShape.includes(note));
-      debugLog(`Filtered to scale shape:`, chordNotes);
+      chordNotes = chordNotes.filter(note => {
+        const noteChroma = Tonal.Note.chroma(note);
+        return scaleChromaSet.has(noteChroma);
+      });
+      debugLog(`Filtered to scale shape (chroma-matched):`, chordNotes);
     }
 
     // Sort notes in ascending order of pitch
