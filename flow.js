@@ -730,6 +730,87 @@ function generateExercise() {
 
 // Note: findClosestIndex has been moved to noteFlow.js module
 
+function sanitizeFilePart(value) {
+  return value
+    .toString()
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9-_]+/g, '')
+    .toLowerCase();
+}
+
+function buildExportFileName(extension) {
+  const key = document.getElementById('key')?.value || 'key';
+  const progression = document.getElementById('progression')?.value || 'progression';
+  const bars = document.getElementById('bars')?.value || 'bars';
+  const parts = [
+    'arpeggio-flow',
+    sanitizeFilePart(key),
+    sanitizeFilePart(progression),
+    sanitizeFilePart(bars)
+  ].filter(Boolean);
+  return `${parts.join('-')}.${extension}`;
+}
+
+function getExportTarget() {
+  return document.getElementById('exercise-export');
+}
+
+async function exportExerciseAsPng() {
+  const target = getExportTarget();
+  if (!target || !target.children.length) {
+    alert('Please generate an exercise before exporting.');
+    return;
+  }
+  if (!window.html2canvas) {
+    alert('Export failed: html2canvas is not available.');
+    return;
+  }
+  const canvas = await window.html2canvas(target, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    useCORS: true,
+  });
+  const dataUrl = canvas.toDataURL('image/png');
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = buildExportFileName('png');
+  link.click();
+}
+
+async function exportExerciseAsPdf() {
+  const target = getExportTarget();
+  if (!target || !target.children.length) {
+    alert('Please generate an exercise before exporting.');
+    return;
+  }
+  if (!window.html2canvas) {
+    alert('Export failed: html2canvas is not available.');
+    return;
+  }
+  if (!window.jspdf || !window.jspdf.jsPDF) {
+    alert('Export failed: jsPDF is not available.');
+    return;
+  }
+  const canvas = await window.html2canvas(target, {
+    backgroundColor: '#ffffff',
+    scale: 2,
+    useCORS: true,
+  });
+  const imgData = canvas.toDataURL('image/png');
+  const pdfWidth = canvas.width;
+  const pdfHeight = canvas.height;
+  const orientation = pdfWidth > pdfHeight ? 'landscape' : 'portrait';
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({
+    orientation,
+    unit: 'px',
+    format: [pdfWidth, pdfHeight],
+  });
+  pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+  pdf.save(buildExportFileName('pdf'));
+}
+
 // Calculate the required width for a measure based on key signature complexity
 function calculateMeasureWidth(key, isFirstMeasure) {
   if (!isFirstMeasure) {
@@ -849,6 +930,20 @@ document.addEventListener('DOMContentLoaded', function () {
       // Generate the musical exercise
       generateExercise();
     });
+
+    const exportPngButton = document.getElementById('exportPngButton');
+    if (exportPngButton) {
+      exportPngButton.addEventListener('click', () => {
+        exportExerciseAsPng();
+      });
+    }
+
+    const exportPdfButton = document.getElementById('exportPdfButton');
+    if (exportPdfButton) {
+      exportPdfButton.addEventListener('click', () => {
+        exportExerciseAsPdf();
+      });
+    }
   }
 });
 

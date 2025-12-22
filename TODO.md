@@ -1,3 +1,5 @@
+* [X] Add an export button to export the generated exercise (including the scale fretboard at the top) as an image (PNG) or PDF.
+
 <!-- * Move frets one down on chord diagram (without changing position).   -->
 * Display small chords diagrams over each chord name.
 * Alternative exercise: Start each chord on a specific chord tone - Root, 3rd, 5th, 7th.

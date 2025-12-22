@@ -29,6 +29,12 @@
   <!-- cagedShapes.js -->
   <script src="cagedShapes.js"></script>
 
+  <!-- html2canvas for export -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <!-- jsPDF for PDF export -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+
 </head>
 <body>
   <div id="status">Checking VexFlow, Tonal and VexChords Libraries...</div>
@@ -104,17 +110,21 @@
 
     <!-- Removed onclick attribute -->
     <button type="button" id="generateButton">Generate Exercise</button>
+    <button type="button" id="exportPngButton">Export PNG</button>
+    <button type="button" id="exportPdfButton">Export PDF</button>
   </form>
 
   <!-- Container for Chord Diagrams -->
   <!-- <div id="chords-container"></div> -->
   <!-- scaleDiagram kept on plotting in chords-container, and we don't need it now -->
 
-  <!-- Container for Fretboard Diagrams -->
-  <div id="fretboard-container"></div>
+  <div id="exercise-export">
+    <!-- Container for Fretboard Diagrams -->
+    <div id="fretboard-container"></div>
 
-  <!-- Container for Music Notation -->
-  <div id="notation"></div>
+    <!-- Container for Music Notation -->
+    <div id="notation"></div>
+  </div>
 
   <!-- Note flow pure functions (must load before flow.js) -->
   <script src="noteFlow.js"></script>
