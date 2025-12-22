@@ -23,6 +23,37 @@ function debugLog(...args) {
   }
 }
 
+function parseKeySelection(keyValue) {
+  const isMinor = keyValue.endsWith('m');
+  const tonic = isMinor ? keyValue.slice(0, -1) : keyValue;
+  return { tonic, isMinor };
+}
+
+function getKeyContext(keyValue) {
+  const { tonic, isMinor } = parseKeySelection(keyValue);
+  const scaleType = isMinor ? 'minor' : 'major';
+  const keySignature = isMinor ? `${tonic}m` : tonic;
+  let cagedKey = tonic;
+
+  if (isMinor) {
+    const minorKeyInfo = Tonal.Key.minorKey(tonic);
+    if (minorKeyInfo && minorKeyInfo.relativeMajor) {
+      cagedKey = minorKeyInfo.relativeMajor;
+    }
+  }
+
+  return { tonic, isMinor, scaleType, keySignature, cagedKey };
+}
+
+function updateKeyDebug(keyValue) {
+  const debugEl = document.getElementById('key-debug');
+  if (!debugEl) {
+    return;
+  }
+  const { tonic, scaleType, keySignature, cagedKey } = getKeyContext(keyValue);
+  debugEl.textContent = `Key signature: ${keySignature} | Scale: ${tonic} ${scaleType} | CAGED: ${cagedKey} ${scaleType}`;
+}
+
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
 
@@ -297,11 +328,18 @@ function generateExercise() {
     return;
   }
 
+  const keyContext = getKeyContext(key);
+
   // Get the CAGED shape to access scale notes for root chord constraint
-  const cagedShape = getCAGEDShape(shape, key);
+  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
   if (!cagedShape) {
     console.error('Could not get CAGED shape');
     return;
+  }
+
+  if (keyContext.isMinor) {
+    cagedShape.key = keyContext.tonic;
+    cagedShape.scaleType = keyContext.scaleType;
   }
   
   // Convert the scale fret positions to actual note names
@@ -355,17 +393,34 @@ function generateExercise() {
 
   // Helper function to get chord notes for a given chord symbol
   function getChordNotesForSymbol(chordSymbol, filterToScale = false) {
-    const chordInfo = {
+    const chordQualitiesMajor = {
       I: { degree: 1, quality: 'maj7' },
       ii: { degree: 2, quality: 'm7' },
       iii: { degree: 3, quality: 'm7' },
       IV: { degree: 4, quality: 'maj7' },
       V: { degree: 5, quality: '7' },
       vi: { degree: 6, quality: 'm7' },
-      'vii°': { degree: 7, quality: 'm7b5' },
-    }[chordSymbol];
+      'viiA\u00F8': { degree: 7, quality: 'm7b5' },
+      'viiA\u0173': { degree: 7, quality: 'm7b5' },
+    };
+    const chordQualitiesMinor = {
+      I: { degree: 1, quality: 'm7' },
+      ii: { degree: 2, quality: 'm7b5' },
+      iii: { degree: 3, quality: 'maj7' },
+      IV: { degree: 4, quality: 'm7' },
+      V: { degree: 5, quality: 'm7' },
+      vi: { degree: 6, quality: 'maj7' },
+      'viiA\u00F8': { degree: 7, quality: '7' },
+      'viiA\u0173': { degree: 7, quality: '7' },
+    };
 
-    const scale = Tonal.Scale.get(`${key} major`).notes;
+    const chordInfo = (keyContext.isMinor ? chordQualitiesMinor : chordQualitiesMajor)[
+      chordSymbol
+    ];
+
+    const scale = Tonal.Scale.get(
+      `${keyContext.tonic} ${keyContext.scaleType}`
+    ).notes;
     const rootNote = scale[chordInfo.degree - 1];
     const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
 
@@ -601,7 +656,10 @@ function generateExercise() {
     }
     const stave = new Stave(xStart, yStart, staveWidth);
     if (index === 0) {
-      stave.addClef('treble').addKeySignature(key).addTimeSignature('4/4');
+      stave
+        .addClef('treble')
+        .addKeySignature(keyContext.keySignature)
+        .addTimeSignature('4/4');
     }
     stave.setContext(context).draw();
 
@@ -613,7 +671,8 @@ function generateExercise() {
     const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
       measureData.notes
     );
-    new Formatter().joinVoices([voice]).format([voice], stave.width - 50);
+    const availableWidth = stave.width - (index === 0 ? 90 : 50);
+    new Formatter().joinVoices([voice]).format([voice], Math.max(120, availableWidth));
     voice.draw(context, stave);
 
     xStart += stave.width;
@@ -631,7 +690,9 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   // Get the key info to determine how many accidentals we have
   // Tonal.Key.majorKey() returns an object with 'keySignature' (e.g., "##" or "bbb")
   // and 'alteration' (number of sharps/flats, positive for sharps, negative for flats)
-  const keyInfo = Tonal.Key.majorKey(key);
+  const isMinor = typeof key === 'string' && key.endsWith('m');
+  const tonic = isMinor ? key.slice(0, -1) : key;
+  const keyInfo = isMinor ? Tonal.Key.minorKey(tonic) : Tonal.Key.majorKey(tonic);
   
   // Safely get accidental count - use alteration (absolute value) or keySignature length
   let accidentalCount = 0;
@@ -649,7 +710,7 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   
   // Base width plus additional space for each accidental
   // First measure needs extra space for clef, key signature, and time signature
-  const baseWidth = 250;
+  const baseWidth = 260;
   
   // More sophisticated calculation:
   // - Clef takes ~40px
@@ -658,14 +719,14 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   // - Need some extra room for notes with accidentals
   const clefWidth = 40;
   const timeSignatureWidth = 40;
-  const extraWidthPerAccidental = 15;
-  const safetyMargin = 20;
+  const extraWidthPerAccidental = accidentalCount >= 5 ? 20 : 15;
+  const safetyMargin = 30;
   
   const keySignatureWidth = accidentalCount * extraWidthPerAccidental;
   const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
   
   // Ensure a minimum width and cap the maximum to avoid extreme values
-  return Math.max(250, Math.min(400, firstMeasureWidth));
+  return Math.max(260, Math.min(520, firstMeasureWidth));
 }
 
 // Make function available globally for testing
@@ -689,9 +750,16 @@ document.addEventListener('DOMContentLoaded', function () {
   } else {
     statusDiv.style.display = 'none'; // Hide the status div if everything is loaded
 
+    // updateKeyDebug(document.getElementById('key').value);
+
     // Attach event listener to the Generate Exercise button
+    document.getElementById('key').addEventListener('change', (event) => {
+      updateKeyDebug(event.target.value);
+    });
+
     document.getElementById('generateButton').addEventListener('click', () => {
       const key = document.getElementById('key').value;
+      // updateKeyDebug(key);
       const progression = document.getElementById('progression').value;
       const bars = document.getElementById('bars').value;
       const shape = document.getElementById('shape').value;
@@ -705,7 +773,12 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // Generate CAGED shape (ensure getCAGEDShape is working)
-      const cagedShape = getCAGEDShape(shape, key);
+      const keyContext = getKeyContext(key);
+      const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
+      if (cagedShape && keyContext.isMinor) {
+        cagedShape.key = keyContext.tonic;
+        cagedShape.scaleType = keyContext.scaleType;
+      }
       console.log('cagedShape:', cagedShape);
 
       // For testing, use a sample chord
@@ -764,3 +837,18 @@ document.getElementById('fretboard-container').innerHTML = '';
 // renderChord(eShapeChord);
 // renderChord(dShapeChord);
 // console.log('Plotting D Shape Chord');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

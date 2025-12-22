@@ -85,6 +85,17 @@ select {
 #notation {
   display: flex;
   justify-content: center;
-  margin-top: 20px;
+  margin-top: clamp(24px, 4vw, 64px);
+}
+
+#fretboard-container {
+  margin-bottom: clamp(16px, 3vw, 48px);
+}
+
+#key-debug {
+  font-size: 12px;
+  text-align: center;
+  margin-top: 8px;
+  color: #555;
 }
 

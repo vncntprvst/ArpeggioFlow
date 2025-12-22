@@ -1,11 +1,16 @@
+* Fix Key signatures: 
+    - Separate major signatures: Db from C#, Gb from F#, etc. They have entirely different key signatures.
+    - Fix spacing issue in the first measure for keys with 5+ sharps or flats: the last note is pushed to the next measure.
+    - In the Key dropdown, add minor keys. Display major keys first, then minor keys (maybe with a separator).
 
-* Add two more constraints to the arpeggio exercise generation:
-    - the notes have to stay within the first 16 frets, as displayed on the fretboard diagram. Meaning if the notes ascend beyond that, then they should reverse direction and go down. 
-    - the notes for the root chord should be within the scale for that chord outlined in the scale diagram on top of the page. All the other notes for the other chords can be outside that scale, but the root chord notes should be within that scale. That means we need to know which notes are in the scale for that chord, so drawing those notes first, then proceeding to the other notes. That could mean that notes for the measures located before the root chord measure may be assigned going backward from the root chord measure (to preserve the flow direction) 
 <!-- * Move frets one down on chord diagram (without changing position).   -->
 * Display small chords diagrams over each chord name.
 * Alternative exercise: Start each chord on a specific chord tone - Root, 3rd, 5th, 7th.
 * Create licks by selecting less or more notes for each measure, with sustained or silent notes. 
+
+* [X] Add two more constraints to the arpeggio exercise generation:
+    - the notes have to stay within the first 16 frets, as displayed on the fretboard diagram. Meaning if the notes ascend beyond that, then they should reverse direction and go down. 
+    - the notes for the root chord should be within the scale for that chord outlined in the scale diagram on top of the page. All the other notes for the other chords can be outside that scale, but the root chord notes should be within that scale. That means we need to know which notes are in the scale for that chord, so drawing those notes first, then proceeding to the other notes. That could mean that notes for the measures located before the root chord measure may be assigned going backward from the root chord measure (to preserve the flow direction) 
 
 * [X] Flow from one chord to another:
     - Select closest chord tone (unison, 1/2 step, \w step).
