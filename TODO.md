@@ -1,7 +1,7 @@
 
 * Add two more constraints to the arpeggio exercise generation:
     - the notes have to stay within the first 16 frets, as displayed on the fretboard diagram. Meaning if the notes ascend beyond that, then they should reverse direction and go down. 
-    - the notes for the root chord should be within the scale for that chord outlined in the scale diagram. All the other notes for the other chords can be outside that scale, but the root chord notes should be within that scale. That means we need to know which notes are in the scale for that chord, so drawing those notes first, then proceeding to the other notes. That could mean that notes for the measures located before the root chord measure may be assigned going backward from the root chord measure (to preserve the flow direction) 
+    - the notes for the root chord should be within the scale for that chord outlined in the scale diagram on top of the page. All the other notes for the other chords can be outside that scale, but the root chord notes should be within that scale. That means we need to know which notes are in the scale for that chord, so drawing those notes first, then proceeding to the other notes. That could mean that notes for the measures located before the root chord measure may be assigned going backward from the root chord measure (to preserve the flow direction) 
 <!-- * Move frets one down on chord diagram (without changing position).   -->
 * Display small chords diagrams over each chord name.
 * Alternative exercise: Start each chord on a specific chord tone - Root, 3rd, 5th, 7th.

@@ -140,51 +140,53 @@ describe('noteFlow module', () => {
   });
 
   describe('findClosestNote', () => {
-    test('returns note within 2 semitones when ascending and note is above', () => {
-      // D4 (62) is 2 semitones from E4 (64) - should pick E4 when ascending
+    test('returns closest note by proximity (ascending hint)', () => {
+      // D4 (62) - closest Cmaj7 notes are C4 (60, 2 away) and E4 (64, 2 away)
+      // Both are equally close, but E4 is likely returned first due to sorting
       const closest = findClosestNote('D4', cmaj7Notes, true, mockNoteFreq, mockNoteMidi);
-      expect(closest).toBe('E4'); // E4 is at or above D4
+      const distance = Math.abs(mockNoteMidi(closest) - mockNoteMidi('D4'));
+      expect(distance).toBeLessThanOrEqual(2);
     });
 
-    test('returns note within 2 semitones when descending and note is below', () => {
-      // D4 (62) is 2 semitones from C4 (60) - should pick C4 when descending
+    test('returns closest note by proximity (descending hint)', () => {
+      // D4 (62) - closest Cmaj7 notes are C4 (60, 2 away) and E4 (64, 2 away)
       const closest = findClosestNote('D4', cmaj7Notes, false, mockNoteFreq, mockNoteMidi);
-      expect(closest).toBe('C4'); // C4 is at or below D4
+      const distance = Math.abs(mockNoteMidi(closest) - mockNoteMidi('D4'));
+      expect(distance).toBeLessThanOrEqual(2);
     });
 
-    test('respects ascending direction', () => {
-      // From E4, ascending should pick G4 or higher
+    test('prioritizes proximity over direction', () => {
+      // From E4, the closest Cmaj7 note is E4 itself (if present)
       const closest = findClosestNote('E4', cmaj7Notes, true, mockNoteFreq, mockNoteMidi);
-      const closestMidi = mockNoteMidi(closest);
-      const prevMidi = mockNoteMidi('E4');
-      expect(closestMidi).toBeGreaterThanOrEqual(prevMidi);
+      expect(closest).toBe('E4'); // E4 is in Cmaj7 and is closest to itself
     });
 
-    test('respects descending direction', () => {
-      // From E4, descending should pick E4 or lower
+    test('picks closest note regardless of requested direction', () => {
+      // From E4, closest is E4 itself, even when descending was requested
       const closest = findClosestNote('E4', cmaj7Notes, false, mockNoteFreq, mockNoteMidi);
-      const closestMidi = mockNoteMidi(closest);
-      const prevMidi = mockNoteMidi('E4');
-      expect(closestMidi).toBeLessThanOrEqual(prevMidi);
+      expect(closest).toBe('E4'); // Proximity wins
     });
 
     test('handles edge case at top of range', () => {
-      // At G5 (highest Cmaj7 note), ascending should still return G5
+      // At G5 (highest Cmaj7 note), should return G5 as it's closest to itself
       const closest = findClosestNote('G5', cmaj7Notes, true, mockNoteFreq, mockNoteMidi);
       expect(closest).toBe('G5');
     });
 
     test('handles edge case at bottom of range', () => {
-      // At C3 (lowest Cmaj7 note), descending should still return C3
+      // At C3 (lowest Cmaj7 note), should return C3 as it's closest to itself
       const closest = findClosestNote('C3', cmaj7Notes, false, mockNoteFreq, mockNoteMidi);
       expect(closest).toBe('C3');
     });
 
     test('returns note from chordNotes when previousNote is not in chord', () => {
-      // G4 is NOT in Dm7 chord, but we should still get a valid Dm7 note
+      // G4 is NOT in Dm7 chord, should return the closest Dm7 note
+      // G4 = 67, closest are F4 = 65 (2 away) and A4 = 69 (2 away)
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
       const closest = findClosestNote('G4', dm7Notes, true, mockNoteFreq, mockNoteMidi);
       expect(dm7Notes).toContain(closest);
+      const distance = Math.abs(mockNoteMidi(closest) - mockNoteMidi('G4'));
+      expect(distance).toBeLessThanOrEqual(2);
     });
 
     test('always returns a note from chordNotes array', () => {
@@ -309,36 +311,42 @@ describe('noteFlow module', () => {
       expect(firstMidi).toBeLessThanOrEqual(prevMidi);
     });
 
-    test('ascending from G4 continues to higher notes', () => {
-      // Simulating the Cmaj7 to Dm7 transition scenario from the bug report
+    test('picks closest note for smooth voice leading (ascending preference)', () => {
+      // Simulating the Cmaj7 to Dm7 transition scenario
+      // New rule: proximity first, direction adapts
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
       const previousNote = 'G4'; // Last note from Cmaj7
       const isAscending = true;
       
       const result = generateMeasureNotes(dm7Notes, 4, previousNote, isAscending, mockNoteFreq, mockNoteMidi);
       
-      // First note should be A4 (the closest Dm7 chord tone at or above G4)
+      // G4 = 67, closest Dm7 tones are F4=65 (2 semitones) and A4=69 (2 semitones)
+      // Either is acceptable for smooth voice leading
       const prevMidi = mockNoteMidi(previousNote); // G4 = 67
       const firstMidi = mockNoteMidi(result.notes[0]);
+      const distance = Math.abs(firstMidi - prevMidi);
       
-      // Should pick A4 (69) not F4 (65) or something lower
-      expect(firstMidi).toBeGreaterThanOrEqual(prevMidi);
-      expect(result.notes[0]).toBe('A4'); // A4 is the closest Dm7 tone above G4
+      // Should be within a few semitones (smooth voice leading)
+      expect(distance).toBeLessThanOrEqual(4);
     });
 
-    test('descending from E4 continues to lower notes', () => {
-      // If we're descending and at E4, next measure should start at or below
+    test('picks closest note for smooth voice leading (descending preference)', () => {
+      // If we're descending and at E4, we should pick the closest Dm7 chord tone
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
-      const previousNote = 'E4'; // Somewhere in the middle
+      const previousNote = 'E4'; // Somewhere in the middle (E4 = 64)
       const isAscending = false;
       
       const result = generateMeasureNotes(dm7Notes, 4, previousNote, isAscending, mockNoteFreq, mockNoteMidi);
       
       const prevMidi = mockNoteMidi(previousNote); // E4 = 64
       const firstMidi = mockNoteMidi(result.notes[0]);
+      const distance = Math.abs(firstMidi - prevMidi);
       
-      // Should pick D4 (62) or lower, not F4 (65) or higher
-      expect(firstMidi).toBeLessThanOrEqual(prevMidi);
+      // Closest Dm7 tones to E4 are D4=62 (2 semitones) and F4=65 (1 semitone)
+      // Should pick one of the closest for smooth voice leading
+      expect(distance).toBeLessThanOrEqual(3);
+      // F4 is closest (1 semitone away)
+      expect(result.notes[0]).toBe('F4');
     });
 
     test('all generated notes come from chordNotes array (100 iterations)', () => {

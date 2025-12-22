@@ -348,11 +348,8 @@ function generateExercise() {
     );
   }
 
-  const measures = [];
-  let previousNote = null;
-  let isAscending = true;
-
-  adjustedProgression.forEach((chordSymbol, measureIndex) => {
+  // Helper function to get chord notes for a given chord symbol
+  function getChordNotesForSymbol(chordSymbol, filterToScale = false) {
     const chordInfo = {
       I: { degree: 1, quality: 'maj7' },
       ii: { degree: 2, quality: 'm7' },
@@ -366,120 +363,214 @@ function generateExercise() {
     const scale = Tonal.Scale.get(`${key} major`).notes;
     const rootNote = scale[chordInfo.degree - 1];
     const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
-    
-    // Check if this is the root chord (I chord)
-    const isRootChord = chordSymbol === 'I';
 
-    // Expand chord tones across multiple octaves within the guitar range
     const { minPitch, maxPitch } = getGuitarPitchRange();
-    debugLog('Guitar range:', { minPitch, maxPitch, minNote: 'E2 (MIDI 40)', maxNote: 'G#5 (MIDI 80, fret 16)' });
-    
     const octaves = [2, 3, 4, 5, 6];
     let chordNotes = [];
-    let excludedNotes = [];
+    
     octaves.forEach((oct) => {
       chordData.notes.forEach((n) => {
-        // Use tonal format (e.g. "C#4") for calculations
         const tonalNote = `${n}${oct}`;
         const midi = Tonal.Note.midi(tonalNote);
         if (midi >= minPitch && midi <= maxPitch) {
           chordNotes.push(tonalNote);
-        } else {
-          excludedNotes.push({ note: tonalNote, midi, reason: midi < minPitch ? 'below min' : 'above max' });
         }
       });
     });
-    
-    if (excludedNotes.length > 0) {
-      debugLog('Excluded notes (outside guitar range):', excludedNotes);
-    }
-    
+
     // For the root chord (I), filter to only notes within the scale shape
-    if (isRootChord) {
-      const originalChordNotes = [...chordNotes];
+    if (filterToScale) {
       chordNotes = chordNotes.filter(note => scaleNotesInShape.includes(note));
-      debugLog(`Root chord (I) filtered to scale shape:`, {
-        original: originalChordNotes,
-        filtered: chordNotes,
-        scaleNotes: scaleNotesInShape
-      });
+      debugLog(`Filtered to scale shape:`, chordNotes);
     }
 
-    if (!chordNotes || chordNotes.length === 0) {
-      console.error(
-        `No notes found for chord: ${rootNote}${chordInfo.quality}`
-      );
-      return;
-    }
-
-    // Sort notes in ascending order of pitch for controlled progression
-    chordNotes = chordNotes.sort(
-      (a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b)
-    );
+    // Sort notes in ascending order of pitch
+    chordNotes = chordNotes.sort((a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b));
     
-    // Validate all notes are within guitar range
-    const invalidNotes = chordNotes.filter(note => {
-      const midi = Tonal.Note.midi(note);
-      return midi < minPitch || midi > maxPitch;
-    });
-    if (invalidNotes.length > 0) {
-      console.error('Notes outside guitar range:', invalidNotes);
-    }
-    
-    debugLog(`Chord ${rootNote}${chordInfo.quality} notes (filtered):`, chordNotes);
+    return { chordNotes, rootNote, quality: chordInfo.quality };
+  }
 
-    // Use noteFlow module to generate measure notes with proper voice leading
-    const { notes: generatedNotes, newDirection } = window.noteFlow.generateMeasureNotes(
+  // Build measure data array with chord info
+  const measureData = adjustedProgression.map((chordSymbol, idx) => {
+    const isRootChord = chordSymbol === 'I';
+    const { chordNotes, rootNote, quality } = getChordNotesForSymbol(chordSymbol, isRootChord);
+    return {
+      index: idx,
+      chordSymbol,
+      chordName: `${rootNote}${quality}`,
       chordNotes,
-      4, // notes per measure
+      isRootChord,
+      generatedNotes: null, // Will be filled in
+      direction: null, // Will be filled in
+    };
+  });
+
+  // Find the first I chord (root chord) index
+  const firstRootChordIndex = measureData.findIndex(m => m.isRootChord);
+  
+  debugLog('Measure generation strategy:', {
+    totalMeasures: measureData.length,
+    firstRootChordIndex,
+    progression: adjustedProgression
+  });
+
+  // If no I chord found, fall back to sequential generation starting from measure 0
+  const startIndex = firstRootChordIndex >= 0 ? firstRootChordIndex : 0;
+
+  // Generate the starting measure (I chord or first measure if no I chord)
+  let startMeasure = measureData[startIndex];
+  if (startMeasure.chordNotes.length === 0) {
+    console.error(`No notes found for starting chord: ${startMeasure.chordName}`);
+    return;
+  }
+
+  // Generate the first (anchor) measure - random start, ascending direction
+  const startResult = window.noteFlow.generateMeasureNotes(
+    startMeasure.chordNotes,
+    4,
+    null, // No previous note
+    true, // Start ascending
+    Tonal.Note.freq,
+    Tonal.Note.midi
+  );
+  startMeasure.generatedNotes = startResult.notes;
+  startMeasure.direction = startResult.newDirection;
+
+  debugLog(`Generated anchor measure ${startIndex + 1} (${startMeasure.chordSymbol}):`, startResult.notes);
+
+  // Generate measures AFTER the start index (forward direction)
+  for (let i = startIndex + 1; i < measureData.length; i++) {
+    const prevMeasure = measureData[i - 1];
+    const currentMeasure = measureData[i];
+    
+    if (currentMeasure.chordNotes.length === 0) {
+      console.error(`No notes for chord: ${currentMeasure.chordName}`);
+      continue;
+    }
+
+    const previousNote = prevMeasure.generatedNotes[prevMeasure.generatedNotes.length - 1];
+    const result = window.noteFlow.generateMeasureNotes(
+      currentMeasure.chordNotes,
+      4,
       previousNote,
-      isAscending,
+      prevMeasure.direction,
       Tonal.Note.freq,
       Tonal.Note.midi
     );
+    currentMeasure.generatedNotes = result.notes;
+    currentMeasure.direction = result.newDirection;
 
-    // Validate generated notes are within range
-    generatedNotes.forEach((note, idx) => {
-      const midi = Tonal.Note.midi(note);
-      if (midi < minPitch || midi > maxPitch) {
-        console.error(`Generated note ${note} (MIDI ${midi}) at position ${idx} is outside guitar range [${minPitch}, ${maxPitch}]`);
+    debugLog(`Generated measure ${i + 1} (forward, ${currentMeasure.chordSymbol}):`, result.notes);
+  }
+
+  // Generate measures BEFORE the start index (backward direction)
+  // We work backwards, using the FIRST note of the next measure as our target
+  for (let i = startIndex - 1; i >= 0; i--) {
+    const nextMeasure = measureData[i + 1];
+    const currentMeasure = measureData[i];
+    
+    if (currentMeasure.chordNotes.length === 0) {
+      console.error(`No notes for chord: ${currentMeasure.chordName}`);
+      continue;
+    }
+
+    // The target is the first note of the next measure
+    // We need to find notes that flow INTO that target
+    const targetNote = nextMeasure.generatedNotes[0];
+    const targetMidi = Tonal.Note.midi(targetNote);
+    
+    // Determine direction: if next measure's first note came from descending,
+    // this measure should end descending (so we were ascending within it)
+    // We need to figure out what direction we need to END with
+    // The next measure received our last note and continued in some direction
+    // For smooth flow, we work backwards
+    
+    // Find the closest chord tone to the target (the note we need to end on)
+    const closestToTarget = window.noteFlow.findClosestNote(
+      targetNote,
+      currentMeasure.chordNotes,
+      true, // direction hint (not critical since we prioritize proximity)
+      Tonal.Note.freq,
+      Tonal.Note.midi
+    );
+    
+    const closestMidi = Tonal.Note.midi(closestToTarget);
+    
+    // Generate this measure ending on or near closestToTarget
+    // We'll generate normally then check if we can adjust
+    // For now, generate with the target as the "previous note" (working backwards)
+    // But we need to reverse the logic - we want to END near the target
+    
+    // Strategy: Generate measure ending at closestToTarget
+    // Work out what the last note should be, then generate 4 notes ending there
+    
+    // Simple approach: Use the closestToTarget as the last note,
+    // and work backwards to generate the preceding 3 notes
+    const closestIdx = currentMeasure.chordNotes.indexOf(closestToTarget);
+    
+    // Determine direction for this measure: 
+    // If closestToTarget < targetNote, we were ascending (ended lower, going up to target)
+    // If closestToTarget > targetNote, we were descending
+    // If equal, use the next measure's entry direction
+    let measureDirection;
+    if (closestMidi < targetMidi) {
+      measureDirection = true; // ascending - we end low and flow up to target
+    } else if (closestMidi > targetMidi) {
+      measureDirection = false; // descending - we end high and flow down to target
+    } else {
+      measureDirection = true; // same note, default ascending
+    }
+    
+    // Generate notes going backwards from the end point
+    // We'll generate 4 notes where the last one is at or near closestToTarget
+    const notes = [];
+    let currentIdx = closestIdx;
+    const len = currentMeasure.chordNotes.length;
+    
+    // Build notes array in reverse (from last to first)
+    for (let n = 0; n < 4; n++) {
+      notes.unshift(currentMeasure.chordNotes[currentIdx]);
+      
+      // Move in opposite direction (since we're building backwards)
+      if (measureDirection) {
+        // Measure ends ascending, so going backwards we descend
+        currentIdx = currentIdx - 1;
+        if (currentIdx < 0) {
+          currentIdx = 1; // Bounce back
+          measureDirection = false; // Reverse
+        }
+      } else {
+        // Measure ends descending, so going backwards we ascend
+        currentIdx = currentIdx + 1;
+        if (currentIdx >= len) {
+          currentIdx = len - 2;
+          measureDirection = true; // Reverse
+        }
       }
-    });
+    }
+    
+    currentMeasure.generatedNotes = notes;
+    // Direction at the END of this measure (for consistency)
+    currentMeasure.direction = closestMidi <= targetMidi;
 
-    debugLog(`Measure ${measureIndex + 1} (${chordSymbol}):`, {
-      chordNotes: chordNotes.slice(0, 5).join(', ') + '...',
-      generatedNotes,
-      previousNote,
-      wasAscending: isAscending,
-      newDirection
-    });
+    debugLog(`Generated measure ${i + 1} (backward, ${currentMeasure.chordSymbol}):`, notes);
+  }
 
-    // Update state for next measure
-    isAscending = newDirection;
-    previousNote = generatedNotes[generatedNotes.length - 1];
-
-    // Validate and log the VexFlow format conversion
-    const vexFlowNotes = generatedNotes.map(note => ({
-      original: note,
-      midi: Tonal.Note.midi(note),
-      vexFormat: toVexFlowFormat(note)
-    }));
-    debugLog(`Measure ${measureIndex + 1} VexFlow notes:`, vexFlowNotes);
-
-    // Convert generated notes to VexFlow StaveNotes
-    let measureNotes = generatedNotes.map(note => 
+  // Now build the VexFlow notes for rendering
+  const measures = measureData.map(m => {
+    const measureNotes = m.generatedNotes.map(note =>
       new StaveNote({
         clef: 'treble',
         keys: [toVexFlowFormat(note)],
         duration: 'q',
       })
     );
-
-    measures.push({
-      chordSymbol,
-      chordName: `${rootNote}${chordInfo.quality}`,
+    
+    return {
+      chordSymbol: m.chordSymbol,
+      chordName: m.chordName,
       notes: measureNotes,
-    });
+    };
   });
 
   // Render each measure

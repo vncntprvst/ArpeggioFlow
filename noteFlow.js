@@ -41,82 +41,66 @@ function findClosestIndex(previousNote, chordNotes, noteFreq) {
 }
 
 /**
- * Find the closest chord tone that respects the current direction.
- * Prefers notes within 2 semitones in the correct direction.
- * If ascending, prefer notes at or above the previous note.
- * If descending, prefer notes at or below the previous note.
+ * Find the closest chord tone that respects smooth voice leading.
+ * Constraints: 
+ *  - proximity
+    * For each measure except the first, the first note should be
+    * the closest chord tone to the last note of the previous measure, as long
+    * as it is within defined fret and guitar range.
+    * (ideally unison, 1/2 step, or whole step - up to 4 semitones acceptable).
+ *  - direction
+    * When hitting the highest note (in pitch), reverse direction, and vice-versa.
+    * When hitting the highest note (in pitch), reverse direction, and vice-versa for lowest note.
+*   - continuity: 
+    * Keep in direction from one measure to the next: keep ascending or descending.
+ 
  * 
  * @param {string} previousNote - The previous note
  * @param {string[]} chordNotes - Array of available chord notes (sorted by pitch)
- * @param {boolean} isAscending - Current direction
+ * @param {boolean} isAscending - Current direction (used to break ties)
  * @param {function} noteFreq - Function to get frequency from note name
  * @param {function} noteMidi - Function to get MIDI number from note name
- * @returns {string} - The closest appropriate note that respects direction
+ * @returns {{ note: string, newDirection: boolean }} - The closest note and updated direction
  */
 function findClosestNote(previousNote, chordNotes, isAscending, noteFreq, noteMidi) {
   const previousMidi = noteMidi(previousNote);
   
-  // Filter notes based on direction
-  // If ascending: prefer notes at or above previous note
-  // If descending: prefer notes at or below previous note
-  const notesInDirection = chordNotes.filter(note => {
-    const midi = noteMidi(note);
-    if (isAscending) {
-      return midi >= previousMidi;
-    } else {
-      return midi <= previousMidi;
-    }
-  });
-
-  debugLog('findClosestNote - filtering by direction:', {
+  // Sort all notes by distance from previous note
+  const sortedByDistance = [...chordNotes].map(note => ({
+    note,
+    midi: noteMidi(note),
+    distance: Math.abs(noteMidi(note) - previousMidi)
+  })).sort((a, b) => a.distance - b.distance);
+  
+  debugLog('findClosestNote - sorted by distance:', {
     previousNote,
     previousMidi,
     isAscending,
-    totalNotes: chordNotes.length,
-    notesInDirection: notesInDirection.length
+    top3: sortedByDistance.slice(0, 3).map(n => `${n.note} (dist: ${n.distance})`)
   });
-
-  // If there are notes in the correct direction, find the closest one
-  if (notesInDirection.length > 0) {
-    // Sort by distance from previous note
-    const sortedByDistance = [...notesInDirection].sort(
-      (a, b) => Math.abs(noteMidi(a) - previousMidi) - Math.abs(noteMidi(b) - previousMidi)
-    );
-    
-    const candidateNote = sortedByDistance[0];
-    const stepDiff = Math.abs(noteMidi(candidateNote) - previousMidi);
-    
-    debugLog('findClosestNote - found note in direction:', {
-      candidateNote,
-      stepDiff,
-      within2Semitones: stepDiff <= 2
-    });
-    
-    // If closest note in direction is within 2 semitones, use it
-    if (stepDiff <= 2) {
-      return candidateNote;
-    }
-    
-    // Otherwise, get the first note in the direction (closest by pitch order)
-    if (isAscending) {
-      // Return the lowest note that's >= previous (first in ascending order)
-      return notesInDirection[0];
-    } else {
-      // Return the highest note that's <= previous (last in descending order) 
-      return notesInDirection[notesInDirection.length - 1];
-    }
+  
+  // The closest note is our primary choice for smooth voice leading
+  const closest = sortedByDistance[0];
+  
+  // Determine the new direction based on where this note is relative to previous
+  // If the closest note is above, we're now ascending; if below, descending
+  // If same (unison), maintain current direction
+  let newDirection = isAscending;
+  if (closest.midi > previousMidi) {
+    newDirection = true; // ascending
+  } else if (closest.midi < previousMidi) {
+    newDirection = false; // descending
   }
+  // If unison (same MIDI), keep current direction
   
-  // No notes in the desired direction - we've hit a boundary
-  // This means we need to reverse direction and pick from the other side
-  debugLog('findClosestNote - no notes in direction, reversing');
+  debugLog('findClosestNote - result:', {
+    closestNote: closest.note,
+    distance: closest.distance,
+    previousDirection: isAscending,
+    newDirection
+  });
   
-  // Find the closest note overall (will be in opposite direction)
-  const sortedByDistance = [...chordNotes].sort(
-    (a, b) => Math.abs(noteMidi(a) - previousMidi) - Math.abs(noteMidi(b) - previousMidi)
-  );
-  
-  return sortedByDistance[0];
+  return closest.note;
 }
 
 /**
@@ -230,8 +214,25 @@ function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscen
         debugLog('First note (random):', note);
       } else {
         // First note of subsequent measure: find closest chord tone
+        // This prioritizes proximity for smooth voice leading
         note = findClosestNote(previousNote, chordNotes, currentDirection, noteFreq, noteMidi);
         debugLog('First note (closest):', note);
+        
+        // Update direction based on the movement from previous note to this note
+        const prevMidi = noteMidi(previousNote);
+        const currMidi = noteMidi(note);
+        if (currMidi > prevMidi) {
+          currentDirection = true; // we moved up, so continue ascending
+        } else if (currMidi < prevMidi) {
+          currentDirection = false; // we moved down, so continue descending
+        }
+        // If same pitch (unison), keep the current direction
+        
+        debugLog('Direction updated after closest note:', {
+          prevMidi,
+          currMidi,
+          newDirection: currentDirection
+        });
       }
     } else {
       // Subsequent notes: follow direction
@@ -240,7 +241,7 @@ function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscen
 
     notes.push(note);
 
-    // Check if we need to reverse direction
+    // Check if we need to reverse direction (hit a boundary)
     currentDirection = shouldReverseDirection(note, chordNotes, currentDirection);
   }
 
