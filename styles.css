@@ -198,10 +198,7 @@ input[type="number"]:focus {
 }
 
 #key-debug {
-  margin: 0;
-  font-size: 11px;
-  color: #6b7280;
-  text-align: right;
+  display: none;
 }
 
 .card-body {
@@ -238,10 +235,16 @@ input[type="number"]:focus {
 }
 
 #fretboard-container {
+  width: 100%;
   max-width: 100%;
   margin: 0 auto 8px auto;
-  display: flex;
-  justify-content: center;
+  min-height: 220px;
+  position: relative;
+}
+
+#fretboard-container svg {
+  display: block;
+  max-width: 100%;
 }
 
 /* Music notation: keep centered and scrollable if too wide */

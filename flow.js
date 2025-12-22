@@ -255,9 +255,13 @@ function renderScaleDiagram(cagedShape) {
   const scaleDiagram = document.getElementById('fretboard-container');
   scaleDiagram.innerHTML = ''; // Clear previous content
 
-  // Set a custom width before Fretboard rendering
-  scaleDiagram.style.width = '75%';
-  scaleDiagram.style.maxWidth = '800px';
+  // Set a stable size before Fretboard rendering
+  scaleDiagram.style.width = '100%';
+  scaleDiagram.style.maxWidth = '900px';
+  scaleDiagram.style.minWidth = '320px';
+  scaleDiagram.style.height = '200px';
+  scaleDiagram.style.minHeight = '200px';
+  scaleDiagram.style.margin = '0 auto';
   // console.log('Width before rendering fretboard:', scaleDiagram.style.width);
 
   // Create the Fretboard instance
@@ -395,6 +399,7 @@ function generateExercise() {
   // Create a Set of scale chromas (0-11) for enharmonic-agnostic matching
   // This ensures D# (chroma 3) matches Eb (chroma 3), F# (chroma 6) matches Gb (chroma 6), etc.
   const scaleChromaSet = new Set(scaleNotesInShape.map(n => Tonal.Note.chroma(n)));
+  const scaleMidiSet = new Set(scaleNotesInShape.map(n => Tonal.Note.midi(n)));
   debugLog('Scale chromas:', [...scaleChromaSet]);
 
   // Clear previous notation
@@ -426,7 +431,7 @@ function generateExercise() {
   }
 
   // Helper function to get chord notes for a given chord symbol
-  function getChordNotesForSymbol(chordSymbol, filterToScale = false) {
+  function getChordNotesForSymbol(chordSymbol, filterToShape = false) {
     const chordQualitiesMajor = {
       I: { degree: 1, quality: 'maj7' },
       ii: { degree: 2, quality: 'm7' },
@@ -472,15 +477,17 @@ function generateExercise() {
       });
     });
 
-    // For the root chord (I), filter to only notes within the scale shape
-    // Use chroma (0-11) comparison for enharmonic-agnostic matching
-    // This ensures D# matches Eb, F# matches Gb, A# matches Bb, etc.
-    if (filterToScale) {
-      chordNotes = chordNotes.filter(note => {
-        const noteChroma = Tonal.Note.chroma(note);
-        return scaleChromaSet.has(noteChroma);
+    // Filter to only notes within the selected scale shape range.
+    if (filterToShape) {
+      const filteredNotes = chordNotes.filter(note => {
+        const noteMidi = Tonal.Note.midi(note);
+        return scaleMidiSet.has(noteMidi);
       });
-      debugLog(`Filtered to scale shape (chroma-matched):`, chordNotes);
+      if (filteredNotes.length > 0) {
+        chordNotes = filteredNotes;
+      } else {
+        debugLog('No chord tones found in shape range; using full chord tones.');
+      }
     }
 
     // Sort notes in ascending order of pitch
@@ -492,7 +499,7 @@ function generateExercise() {
   // Build measure data array with chord info
   const measureData = adjustedProgression.map((chordSymbol, idx) => {
     const isRootChord = chordSymbol === 'I';
-    const { chordNotes, rootNote, quality } = getChordNotesForSymbol(chordSymbol, isRootChord);
+    const { chordNotes, rootNote, quality } = getChordNotesForSymbol(chordSymbol, true);
     return {
       index: idx,
       chordSymbol,
