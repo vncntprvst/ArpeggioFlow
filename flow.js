@@ -29,6 +29,12 @@ function parseKeySelection(keyValue) {
   return { tonic, isMinor };
 }
 
+function getSelectedKeyValue() {
+  const key = document.getElementById('key')?.value || '';
+  const scaleType = document.getElementById('scaleType')?.value || 'major';
+  return scaleType === 'minor' ? `${key}m` : key;
+}
+
 function getKeyContext(keyValue) {
   const { tonic, isMinor } = parseKeySelection(keyValue);
   const scaleType = isMinor ? 'minor' : 'major';
@@ -84,7 +90,7 @@ function updateExportTitle() {
   if (!titleEl) {
     return;
   }
-  const key = document.getElementById('key')?.value || '';
+  const key = getSelectedKeyValue();
   const progressionSelect = document.getElementById('progression');
   const progressionLabel =
     progressionSelect?.selectedOptions?.[0]?.textContent ||
@@ -362,7 +368,7 @@ function renderScaleDiagram(cagedShape) {
 }
 
 function generateExercise() {
-  const key = document.getElementById('key').value;
+  const key = getSelectedKeyValue();
   const progression = document.getElementById('progression').value;
   const bars = parseInt(document.getElementById('bars').value);
   const shape = document.getElementById('shape').value;
@@ -764,7 +770,7 @@ function sanitizeFilePart(value) {
 }
 
 function buildExportFileName(extension) {
-  const key = document.getElementById('key')?.value || 'key';
+  const key = getSelectedKeyValue() || 'key';
   const progression = document.getElementById('progression')?.value || 'progression';
   const bars = document.getElementById('bars')?.value || 'bars';
   const parts = [
@@ -905,7 +911,7 @@ document.addEventListener('DOMContentLoaded', function () {
     statusDiv.innerHTML = 'Failed to load VexFlow, Tonal, or VexChords.';
   } else {
     statusDiv.style.display = 'none'; // Hide the status div if everything is loaded
-    updateKeyDebug(document.getElementById('key').value);
+    updateKeyDebug(getSelectedKeyValue());
     updateExportTitle();
     updateBarsForProgression(document.getElementById('progression').value);
 
@@ -914,8 +920,13 @@ document.addEventListener('DOMContentLoaded', function () {
       updateExportTitle();
     });
 
-    document.getElementById('key').addEventListener('change', (event) => {
-      updateKeyDebug(event.target.value);
+    document.getElementById('key').addEventListener('change', () => {
+      updateKeyDebug(getSelectedKeyValue());
+      updateExportTitle();
+    });
+
+    document.getElementById('scaleType').addEventListener('change', () => {
+      updateKeyDebug(getSelectedKeyValue());
       updateExportTitle();
     });
     
@@ -924,7 +935,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     document.getElementById('generateButton').addEventListener('click', () => {
-      const key = document.getElementById('key').value;
+      const key = getSelectedKeyValue();
       updateKeyDebug(key);
       const progression = document.getElementById('progression').value;
       const bars = document.getElementById('bars').value;
