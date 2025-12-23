@@ -162,67 +162,8 @@ function toVexFlowFormat(note) {
   // Add 1 octave for guitar transposition: sounding pitch → written pitch
   return `${pc.toLowerCase()}/${octave + 1}`;
 }
-const colors = {
-  defaultFill: 'white',
-  defaultActiveFill: '#ff636c',
-  defaultStroke: 'black',
-  defaultActiveStroke: '#ff636c',
-  disabled: '#aaa',
-  primaryFill: '#3273dc',
-  intervals: {
-    '1P': '#F25116',
-    '2M': '#FCFF6C',
-    '2m': '#FCFF6C',
-    '3m': '#F29727',
-    '3M': '#F29727',
-    '4P': '#2FABEE',
-    '4A': '#2FABEE',
-    '5P': '#D89D6A',
-    '5A': '#D89D6A',
-    '6M': '#D7FFAB',
-    '6m': '#D7FFAB',
-    '7M': '#96ADC8',
-    '7m': '#96ADC8',
-  },
-};
-
 // Note: This file depends on noteFlow.js for pure note flow functions.
 // Ensure noteFlow.js is loaded before this file in index.html.
-
-// Import the CAGED Shape generator function
-// import { getCAGEDShape } from './cagedShapes.js';
-
-// import { Fretboard, Systems } from './libs/fretboard/fretboard.esm.js';
-// import { colors } from './libs/fretboard/config.json';
-
-// function renderChord(cagedShape) {
-//     if (typeof vexchords === 'undefined') {
-//         console.error('VexChords is not available. Please ensure it is loaded.');
-//         return;
-//     }
-
-//     // Convert the frets array to a format compatible with VexChords
-//     const chordArray = convertFretsToChordArray(cagedShape);
-
-//     // Use the position from cagedShape
-//     const position = cagedShape.position || 1;
-
-//     console.log('Rendering chord with position:', position, 'and processed frets:', chordArray);
-
-//     // Create a new div for each chord diagram
-//     const chordDiagram = document.createElement('div');
-//     chordDiagram.className = 'chord-diagram';
-//     document.getElementById('chords-container').appendChild(chordDiagram);
-
-//     // Render the chord diagram using VexChords
-//     vexchords.draw(chordDiagram, {
-//         chord: chordArray,
-//         strings: 6,
-//         position: position,
-//         barres: cagedShape.barres || [],
-//         tuning: tuning //['E', 'A', 'D', 'G', 'B', 'E'] // Standard tuning
-//     });
-// }
 
 // Function to render the scale diagram
 // Example usage:
@@ -962,11 +903,7 @@ document.addEventListener('DOMContentLoaded', function () {
       // const cagedShape = aShapeChord;
 
       // Clear previous chords and diagrams
-      // document.getElementById('chords-container').innerHTML = '';
       document.getElementById('fretboard-container').innerHTML = '';
-
-      // Render the chord shape visually using VexChords
-      // renderChord(cagedShape);
 
       // Render the scale diagram using Fretboard.js
       renderScaleDiagram(cagedShape);
@@ -993,57 +930,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // Clear previous chords and diagrams
-// document.getElementById('chords-container').innerHTML = '';
 document.getElementById('fretboard-container').innerHTML = '';
-
-// Sample chord definitions
-// const aShapeChord = {
-//     shape: 'A Shape',
-//     frets: [['x', 0, 2, 2, 2, 0]]
-// };
-
-// const cShapeChord = {
-//     shape: 'C Shape',
-//     frets: [[0, 3, 2, 0, 1, 0]]
-// };
-
-// const dShapeChord = {
-//     shape: 'D Shape',
-//     frets: [['x', 'x', 0, 2, 3, 2]]
-// };
-
-// const gShapeChord = {
-//     shape: 'G Shape',
-//     frets: [[3, 2, 0, 0, 0, 3]]
-// };
-
-// const eShapeChord = {
-//     shape: 'E Shape',
-//     frets: [[0, 2, 2, 1, 0, 0]]
-// };
-
-// Render the sample chords
-// renderChord(cShapeChord);
-// renderChord(aShapeChord);
-// renderChord(gShapeChord);
-// renderChord(eShapeChord);
-// renderChord(dShapeChord);
-// console.log('Plotting D Shape Chord');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

@@ -8,6 +8,7 @@
 
 1. **Fill out the form**:
    - **Key**: Select a musical key.
+   - **Scale**: Choose Major or Minor.
    - **Chord Progression**: Choose a chord progression.
    - **Number of Bars**: Enter the number of bars for your exercise (e.g., 4).
    - **Chord Shape**: Select a chord shape based on the CAGED system (C, A, G, E, D).
@@ -26,12 +27,12 @@ A live version of the application is hosted on GitHub Pages: [Arpeggio Flow](htt
 
 ## Installation
 
-The application is a single-page web app that consists of HTML, CSS, and JavaScript files. You can run it locally by opening the `index.html` file in your web browser.
+The application is a single-page web app that consists of HTML, CSS, and JavaScript files. Serve `index.html` over HTTP to run it locally.
 
 ### Prerequisites
 
 - A modern web browser (Chrome, Firefox, Edge, Safari) that supports ES6 modules.
-- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed (optional, for running a local server with more features). Use [Parcel(https://parceljs.org/)] for a minimal configuration dynamic site. See example in `minimal_demos\scales\`. The downside is that this won't work with Github pages, but see [Vercel](https://vercel.com/) for a free hosting solution that is compatible with Parcel.
+- [Node.js](https://nodejs.org/) and [npm](https://www.npmjs.com/) installed (optional, for running tests, linting, or a Parcel dev server).
 
 e.g., for Windows:
 
@@ -66,7 +67,7 @@ e.g., for Windows:
 
      You should see the npm version number printed.
 
-From there, you can either install (build) packages with npm, and/or build the site (see `minimal_demos\scales\readme.md`).
+From there, you can install dependencies with `npm install` and optionally run `npm run start` to launch the Parcel dev server.
 
 ### Clone the Repository
 
@@ -98,6 +99,14 @@ http-server -p 8000
 
 **Access the application**:
 Open your web browser and go to [http://localhost:8000](http://localhost:8000).
+
+**[Optional] Using Parcel**
+If you prefer Parcel:
+
+```bash
+npm install
+npm run start
+```
 
 ### Building libraries
 

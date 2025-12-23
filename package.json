@@ -4,15 +4,15 @@
   "description": "**Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation and [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations.",
   "main": "flow.js",
   "scripts": {
-    "start": "parcel minimal_demos/scales/index.html",
-    "build": "parcel build minimal_demos/scales/index.html",
+    "start": "parcel index.html",
+    "build": "parcel build index.html",
     "format": "prettier --write flow.js readme.md .codex/AGENTS.md test/**/*.js",
     "lint": "eslint . --ext .js",
     "test": "jest"
   },
   "keywords": [],
   "author": "Vincent Prevosto",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "eslint": "8.57.0",
     "jest": "^29.7.0",
