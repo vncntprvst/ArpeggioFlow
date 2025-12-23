@@ -251,10 +251,19 @@ function buildStrudelNotePattern(notes) {
   return tokens.join(' ');
 }
 
+/**
+ * Strudel uses cycles as its fundamental timing unit, not beats.
+ * According to Strudel docs (https://strudel.cc/understand/cycles/):
+ * setcpm(bpm / bpc) where bpc = beats per cycle
+ * 
+ * This app uses bpc=4, treating each cycle as a full measure in 4/4 time.
+ * Therefore: cycles per minute = bpm / 4
+ */
+
+const BEATS_PER_CYCLE = 4;
+
 function getCyclesPerMinute(bpm) {
-  // Standard 4/4 would be BPM/4, however playback appears 2x slower,
-  // made empirical adjustment: BPM / 2 matches 
-  return bpm / 2;
+  return bpm / BEATS_PER_CYCLE;
 }
 
 function getCyclesPerSecond(bpm) {
@@ -263,7 +272,7 @@ function getCyclesPerSecond(bpm) {
 
 function buildStrudelEvaluateCode(notes, bpm) {
   const patternText = buildStrudelNotePattern(notes);
-  const measures = Math.max(1, notes.length / 4);
+  const measures = getMeasures(notes.length);
   const cyclesPerMinute = getCyclesPerMinute(bpm);
   const cyclesPerSecond = getCyclesPerSecond(bpm);
   return [
@@ -295,6 +304,12 @@ function applyStrudelTempo(api, bpm) {
   return false;
 }
 
+function getMeasures(notesLength) {
+  // Adjust for the beats per cycle
+  // Formula: notesLength / (2 * BEATS_PER_CYCLE) 
+  return Math.max(1, notesLength / (2 * BEATS_PER_CYCLE));
+}
+
 async function playStrudelExercise(notes) {
   if (!notes.length) {
     setPlaybackBanner('Generate an exercise before playing.', 'warning');
@@ -310,7 +325,7 @@ async function playStrudelExercise(notes) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
     return;
   }
-  const measures = Math.max(1, notes.length / 4);
+  const measures = getMeasures(notes.length); 
   let pattern = api.note(patternText).slow(measures);
 
   if (typeof pattern.cpm === 'function') {
