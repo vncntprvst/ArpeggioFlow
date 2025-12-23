@@ -35,6 +35,278 @@ function getSelectedKeyValue() {
   return scaleType === 'minor' ? `${key}m` : key;
 }
 
+function getSelectedPlaybackEngine() {
+  return document.getElementById('playbackEngine')?.value || 'off';
+}
+
+function getSelectedTempoBpm() {
+  const tempoValue = parseInt(
+    document.getElementById('tempoBpm')?.value || '120',
+    10
+  );
+  if (!Number.isFinite(tempoValue) || tempoValue <= 0) {
+    return 120;
+  }
+  return tempoValue;
+}
+
+const playbackState = {
+  engine: 'off',
+  notes: [],
+};
+
+const playbackUi = {
+  banner: null,
+  playButton: null,
+  stopButton: null,
+};
+
+let strudelApi = null;
+let strudelInitPromise = null;
+let strudelCdnPromise = null;
+
+const STRUDEL_CDN_URL = 'https://unpkg.com/@strudel/web@1.2.6';
+
+function getGlobalStrudelApi() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  if (typeof window.initStrudel !== 'function') {
+    return null;
+  }
+  return {
+    initStrudel: window.initStrudel,
+    note: (...args) => window.note?.(...args),
+    hush: (...args) => window.hush?.(...args),
+    evaluate: (...args) => window.evaluate?.(...args),
+    setcpm: (...args) => window.setcpm?.(...args),
+    setCpm: (...args) => window.setCpm?.(...args),
+  };
+}
+
+function waitForStrudelGlobal(timeoutMs = 3000) {
+  const api = getGlobalStrudelApi();
+  if (api) {
+    return Promise.resolve(api);
+  }
+  if (typeof document === 'undefined') {
+    return Promise.resolve(null);
+  }
+  const script = document.querySelector('script[src*="@strudel/web"]');
+  if (!script) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(getGlobalStrudelApi());
+    };
+    script.addEventListener('load', finish, { once: true });
+    script.addEventListener('error', finish, { once: true });
+    setTimeout(finish, timeoutMs);
+  });
+}
+
+function hasStrudelScriptTag() {
+  if (typeof document === 'undefined') {
+    return false;
+  }
+  return Boolean(document.querySelector('script[src*="@strudel/web"]'));
+}
+
+function loadStrudelCdn() {
+  if (strudelCdnPromise) {
+    return strudelCdnPromise;
+  }
+  strudelCdnPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-strudel-cdn="true"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve());
+      existing.addEventListener('error', () => reject(new Error('Strudel CDN failed to load.')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = STRUDEL_CDN_URL;
+    script.async = true;
+    script.dataset.strudelCdn = 'true';
+    script.addEventListener('load', () => resolve());
+    script.addEventListener('error', () => reject(new Error('Strudel CDN failed to load.')));
+    document.head.appendChild(script);
+  });
+  return strudelCdnPromise;
+}
+
+async function loadStrudelApi() {
+  if (strudelApi) {
+    return strudelApi;
+  }
+  const globalApi = getGlobalStrudelApi();
+  if (globalApi) {
+    strudelApi = globalApi;
+    return strudelApi;
+  }
+  const waitedApi = await waitForStrudelGlobal();
+  if (waitedApi) {
+    strudelApi = waitedApi;
+    return strudelApi;
+  }
+  if (hasStrudelScriptTag()) {
+    return null;
+  }
+  try {
+    strudelApi = await import('@strudel/web');
+    return strudelApi;
+  } catch (error) {
+    console.error('Failed to load Strudel:', error);
+    try {
+      await loadStrudelCdn();
+      const cdnApi = getGlobalStrudelApi();
+      if (cdnApi) {
+        strudelApi = cdnApi;
+        setPlaybackBanner('Loaded Strudel from CDN.', 'info');
+        return strudelApi;
+      }
+    } catch (cdnError) {
+      console.error('Failed to load Strudel CDN:', cdnError);
+    }
+    setPlaybackBanner('Strudel failed to load. Run via Parcel or allow CDN access.', 'warning');
+    return null;
+  }
+}
+
+async function ensureStrudelReady() {
+  const api = await loadStrudelApi();
+  if (!api) {
+    setPlaybackBanner('Strudel failed to load. Check your CDN connection.', 'warning');
+    return null;
+  }
+  if (!strudelInitPromise) {
+    strudelInitPromise = api.initStrudel();
+  }
+  await strudelInitPromise;
+  return api;
+}
+
+function setPlaybackBanner(message, tone = 'info') {
+  if (!playbackUi.banner) {
+    return;
+  }
+  if (!message) {
+    playbackUi.banner.textContent = '';
+    playbackUi.banner.classList.add('status-banner--hidden');
+    playbackUi.banner.classList.remove('status-banner--info', 'status-banner--warning');
+    return;
+  }
+  playbackUi.banner.textContent = message;
+  playbackUi.banner.classList.remove('status-banner--hidden');
+  playbackUi.banner.classList.toggle('status-banner--info', tone === 'info');
+  playbackUi.banner.classList.toggle('status-banner--warning', tone === 'warning');
+}
+
+function updatePlaybackControls() {
+  if (!playbackUi.playButton || !playbackUi.stopButton) {
+    return;
+  }
+  const canPlay =
+    playbackState.engine === 'strudel' && playbackState.notes.length > 0;
+  playbackUi.playButton.disabled = !canPlay;
+  playbackUi.stopButton.disabled = playbackState.engine !== 'strudel';
+}
+
+function updatePlaybackStateFromExercise(exerciseData) {
+  playbackState.notes = exerciseData?.generatedNotes || [];
+  updatePlaybackControls();
+  if (playbackState.engine === 'strudel') {
+    if (playbackState.notes.length) {
+      const bpm = getSelectedTempoBpm();
+      setPlaybackBanner(`Strudel ready at ${bpm} BPM. Click Play to hear the exercise.`, 'info');
+    } else {
+      setPlaybackBanner('Generate an exercise to enable playback.', 'warning');
+    }
+  }
+}
+
+function toStrudelNote(note) {
+  if (typeof note !== 'string') {
+    return null;
+  }
+  const match = note.trim().match(/^([A-Ga-g])([#b]?)(-?\d+)$/);
+  if (!match) {
+    return null;
+  }
+  const letter = match[1].toLowerCase();
+  const accidental = match[2] || '';
+  const octave = match[3];
+  return `${letter}${accidental}${octave}`;
+}
+
+function buildStrudelNotePattern(notes) {
+  const tokens = notes
+    .map(toStrudelNote)
+    .filter((token) => token && token.length > 0);
+  return tokens.join(' ');
+}
+
+function getCyclesPerMinute(bpm) {
+  // In 4/4, one cycle = one bar, so cycles per minute = BPM / 4.
+  return bpm / 4;
+}
+
+function applyStrudelTempo(api, bpm) {
+  const cyclesPerMinute = getCyclesPerMinute(bpm);
+  if (typeof api.setcpm === 'function') {
+    api.setcpm(cyclesPerMinute);
+    return true;
+  }
+  if (typeof api.setCpm === 'function') {
+    api.setCpm(cyclesPerMinute);
+    return true;
+  }
+  return false;
+}
+
+async function playStrudelExercise(notes) {
+  if (!notes.length) {
+    setPlaybackBanner('Generate an exercise before playing.', 'warning');
+    return;
+  }
+  const api = await ensureStrudelReady();
+  if (!api) {
+    return;
+  }
+  const bpm = getSelectedTempoBpm();
+  const patternText = buildStrudelNotePattern(notes);
+  if (!patternText) {
+    setPlaybackBanner('No playable notes were generated.', 'warning');
+    return;
+  }
+  const measures = Math.max(1, notes.length / 4);
+  const pattern = api.note(patternText).slow(measures);
+  const tempoApplied = applyStrudelTempo(api, bpm);
+  if (!tempoApplied && typeof pattern.cpm === 'function') {
+    pattern.cpm(getCyclesPerMinute(bpm));
+  }
+  pattern.play();
+  setPlaybackBanner(`Playing via Strudel at ${bpm} BPM.`, 'info');
+}
+
+async function stopStrudelExercise() {
+  if (!strudelInitPromise) {
+    setPlaybackBanner('Strudel is idle. Click Play to start.', 'warning');
+    return;
+  }
+  const api = await ensureStrudelReady();
+  if (!api) {
+    return;
+  }
+  api.hush();
+  setPlaybackBanner('Playback stopped.', 'info');
+}
+
 function getKeyContext(keyValue) {
   const { tonic, isMinor } = parseKeySelection(keyValue);
   const scaleType = isMinor ? 'minor' : 'major';
@@ -610,6 +882,7 @@ function generateExercise() {
   }
 
   // Now build the VexFlow notes for rendering
+  const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
   const measures = measureData.map(m => {
     const measureNotes = m.generatedNotes.map(note =>
       new StaveNote({
@@ -697,6 +970,8 @@ function generateExercise() {
       xStart += stave.width;
     });
   });
+
+  return { generatedNotes };
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
@@ -856,6 +1131,12 @@ document.addEventListener('DOMContentLoaded', function () {
     updateExportTitle();
     updateBarsForProgression(document.getElementById('progression').value);
 
+    playbackUi.banner = document.getElementById('playback-banner');
+    playbackUi.playButton = document.getElementById('playbackPlayButton');
+    playbackUi.stopButton = document.getElementById('playbackStopButton');
+    playbackState.engine = getSelectedPlaybackEngine();
+    updatePlaybackControls();
+
     document.getElementById('progression').addEventListener('change', (event) => {
       updateBarsForProgression(event.target.value);
       updateExportTitle();
@@ -874,6 +1155,49 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('shape').addEventListener('change', () => {
       updateExportTitle();
     });
+
+    const playbackEngineSelect = document.getElementById('playbackEngine');
+    if (playbackEngineSelect) {
+      playbackEngineSelect.addEventListener('change', () => {
+        playbackState.engine = getSelectedPlaybackEngine();
+        updateKeyDebug(getSelectedKeyValue());
+        updateExportTitle();
+        if (playbackState.engine === 'strudel') {
+          updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+        } else {
+          setPlaybackBanner('');
+        }
+        updatePlaybackControls();
+      });
+    }
+
+    const tempoInput = document.getElementById('tempoBpm');
+    if (tempoInput) {
+      tempoInput.addEventListener('change', () => {
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+      });
+    }
+
+    if (playbackUi.playButton) {
+      playbackUi.playButton.addEventListener('click', async () => {
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        await playStrudelExercise(playbackState.notes);
+      });
+    }
+
+    if (playbackUi.stopButton) {
+      playbackUi.stopButton.addEventListener('click', async () => {
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        await stopStrudelExercise();
+      });
+    }
 
     document.getElementById('generateButton').addEventListener('click', () => {
       const key = getSelectedKeyValue();
@@ -909,8 +1233,9 @@ document.addEventListener('DOMContentLoaded', function () {
       renderScaleDiagram(cagedShape);
 
       // Generate the musical exercise
-      generateExercise();
+      const exerciseData = generateExercise();
       updateExportTitle();
+      updatePlaybackStateFromExercise(exerciseData);
     });
 
     const exportPngButton = document.getElementById('exportPngButton');

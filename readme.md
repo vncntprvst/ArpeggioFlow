@@ -12,6 +12,7 @@
    - **Chord Progression**: Choose a chord progression.
    - **Number of Bars**: Enter the number of bars for your exercise (e.g., 4).
    - **Chord Shape**: Select a chord shape based on the CAGED system (C, A, G, E, D).
+   - **Playback**: Choose Off or Strudel (Strudel is scaffolded but not wired yet).
 
 2. **Generate the Exercise**:
 
@@ -107,6 +108,14 @@ If you prefer Parcel:
 npm install
 npm run start
 ```
+
+## Playback (Strudel)
+
+Strudel integration is scaffolded for bundler use (Parcel/Vite). The UI includes a Playback selector, but the note-to-pattern adapter still needs to be wired.
+
+Dependencies are declared in `package.json` with wildcard versions; run `npm install` to lock actual versions in `package-lock.json`.
+
+Tempo is controlled via the BPM input in Step 4. The generated notes are spread across measures so longer progressions do not play faster.
 
 ### Building libraries
 

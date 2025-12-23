@@ -320,3 +320,89 @@ describe('calculateMeasureWidth function', () => {
     expect(() => calculateMeasureWidth('InvalidKey', true)).not.toThrow();
   });
 });
+
+// Test Strudel playback adapters
+describe('Strudel playback adapters', () => {
+  let toStrudelNote;
+  let buildStrudelNotePattern;
+  let getGlobalStrudelApi;
+  let getCyclesPerMinute;
+
+  beforeAll(() => {
+    const flowJsContent = fs.readFileSync('flow.js', 'utf8');
+    const toNoteMatch = flowJsContent.match(/function toStrudelNote\([\s\S]*?\n\}/);
+    const buildMatch = flowJsContent.match(/function buildStrudelNotePattern\([\s\S]*?\n\}/);
+    const cyclesMatch = flowJsContent.match(/function getCyclesPerMinute\([\s\S]*?\n\}/);
+    const globalMatch = flowJsContent.match(/function getGlobalStrudelApi\([\s\S]*?\n\}/);
+
+    if (!toNoteMatch || !buildMatch || !cyclesMatch || !globalMatch) {
+      throw new Error('Could not extract Strudel adapter functions from flow.js');
+    }
+
+    eval(`global.toStrudelNote = ${toNoteMatch[0]}`);
+    eval(`global.buildStrudelNotePattern = ${buildMatch[0]}`);
+    eval(`global.getCyclesPerMinute = ${cyclesMatch[0]}`);
+    eval(`global.getGlobalStrudelApi = ${globalMatch[0]}`);
+    toStrudelNote = global.toStrudelNote;
+    buildStrudelNotePattern = global.buildStrudelNotePattern;
+    getCyclesPerMinute = global.getCyclesPerMinute;
+    getGlobalStrudelApi = global.getGlobalStrudelApi;
+  });
+
+  test('toStrudelNote lowercases notes and preserves accidentals', () => {
+    expect(toStrudelNote('C4')).toBe('c4');
+    expect(toStrudelNote('Bb3')).toBe('bb3');
+    expect(toStrudelNote('F#5')).toBe('f#5');
+  });
+
+  test('toStrudelNote returns null for invalid input', () => {
+    expect(toStrudelNote('')).toBeNull();
+    expect(toStrudelNote('C#')).toBeNull();
+    expect(toStrudelNote('invalid')).toBeNull();
+  });
+
+  test('buildStrudelNotePattern filters invalid notes', () => {
+    const pattern = buildStrudelNotePattern(['C4', 'X9', 'Bb3', 'F#5']);
+    expect(pattern).toBe('c4 bb3 f#5');
+  });
+
+  test('getCyclesPerMinute converts bpm to cycles per minute', () => {
+    expect(getCyclesPerMinute(120)).toBe(30);
+    expect(getCyclesPerMinute(60)).toBe(15);
+  });
+
+  test('getGlobalStrudelApi returns null when initStrudel is missing', () => {
+    const originalInit = window.initStrudel;
+    const originalNote = window.note;
+    const originalHush = window.hush;
+    delete window.initStrudel;
+    delete window.note;
+    delete window.hush;
+
+    expect(getGlobalStrudelApi()).toBeNull();
+
+    window.initStrudel = originalInit;
+    window.note = originalNote;
+    window.hush = originalHush;
+  });
+
+  test('getGlobalStrudelApi returns bindings when initStrudel exists', () => {
+    window.initStrudel = jest.fn();
+    window.note = jest.fn();
+    window.hush = jest.fn();
+    window.setcpm = jest.fn();
+    window.setCpm = jest.fn();
+
+    const api = getGlobalStrudelApi();
+    expect(api).toBeTruthy();
+    expect(api.initStrudel).toBe(window.initStrudel);
+    api.note('c4');
+    api.hush();
+    api.setcpm(30);
+    api.setCpm(30);
+    expect(window.note).toHaveBeenCalledWith('c4');
+    expect(window.hush).toHaveBeenCalled();
+    expect(window.setcpm).toHaveBeenCalledWith(30);
+    expect(window.setCpm).toHaveBeenCalledWith(30);
+  });
+});

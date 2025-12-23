@@ -66,6 +66,24 @@ body {
   color: #374151;
 }
 
+.status-banner--inline {
+  margin-top: 10px;
+}
+
+.status-banner--info {
+  background: #e0f2fe;
+  color: #0f4c75;
+}
+
+.status-banner--warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-banner--hidden {
+  display: none;
+}
+
 /* ===== Main layout ===== */
 
 .layout {
@@ -219,6 +237,25 @@ input[type="number"]:focus {
   background: #ffffff;
   font-size: 13px;
   cursor: pointer;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+}
+
+.secondary-button {
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.secondary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 /* ===== Export area: fretboard + notation ===== */
