@@ -327,25 +327,29 @@ describe('Strudel playback adapters', () => {
   let buildStrudelNotePattern;
   let getGlobalStrudelApi;
   let getCyclesPerMinute;
+  let buildStrudelEvaluateCode;
 
   beforeAll(() => {
     const flowJsContent = fs.readFileSync('flow.js', 'utf8');
     const toNoteMatch = flowJsContent.match(/function toStrudelNote\([\s\S]*?\n\}/);
     const buildMatch = flowJsContent.match(/function buildStrudelNotePattern\([\s\S]*?\n\}/);
     const cyclesMatch = flowJsContent.match(/function getCyclesPerMinute\([\s\S]*?\n\}/);
+    const evalMatch = flowJsContent.match(/function buildStrudelEvaluateCode\([\s\S]*?\n\}/);
     const globalMatch = flowJsContent.match(/function getGlobalStrudelApi\([\s\S]*?\n\}/);
 
-    if (!toNoteMatch || !buildMatch || !cyclesMatch || !globalMatch) {
+    if (!toNoteMatch || !buildMatch || !cyclesMatch || !evalMatch || !globalMatch) {
       throw new Error('Could not extract Strudel adapter functions from flow.js');
     }
 
     eval(`global.toStrudelNote = ${toNoteMatch[0]}`);
     eval(`global.buildStrudelNotePattern = ${buildMatch[0]}`);
     eval(`global.getCyclesPerMinute = ${cyclesMatch[0]}`);
+    eval(`global.buildStrudelEvaluateCode = ${evalMatch[0]}`);
     eval(`global.getGlobalStrudelApi = ${globalMatch[0]}`);
     toStrudelNote = global.toStrudelNote;
     buildStrudelNotePattern = global.buildStrudelNotePattern;
     getCyclesPerMinute = global.getCyclesPerMinute;
+    buildStrudelEvaluateCode = global.buildStrudelEvaluateCode;
     getGlobalStrudelApi = global.getGlobalStrudelApi;
   });
 
@@ -369,6 +373,12 @@ describe('Strudel playback adapters', () => {
   test('getCyclesPerMinute converts bpm to cycles per minute', () => {
     expect(getCyclesPerMinute(120)).toBe(30);
     expect(getCyclesPerMinute(60)).toBe(15);
+  });
+
+  test('buildStrudelEvaluateCode uses setcpm and slow', () => {
+    const code = buildStrudelEvaluateCode(['C4', 'E4', 'G4', 'B4'], 120);
+    expect(code).toContain('setcpm(30)');
+    expect(code).toContain('note("c4 e4 g4 b4").slow(1)');
   });
 
   test('getGlobalStrudelApi returns null when initStrudel is missing', () => {
