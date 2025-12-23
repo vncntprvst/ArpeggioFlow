@@ -2,7 +2,7 @@
 
 ## Description
 
-**Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation and [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations. The application focuses solely on generating sheet music for practice; it does not include audio playback.
+**Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation, [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations, and [Fretboard.js](https://moonwave99.github.io/fretboard.js) to visualize the scales on the guitar fretboard. The application focuses on generating sheet music for practice. An audio playback feature using [Strudel](https://strudel.cc/) is also available.
 
 ## Using the Application
 
@@ -11,8 +11,8 @@
    - **Scale**: Choose Major or Minor.
    - **Chord Progression**: Choose a chord progression.
    - **Number of Bars**: Enter the number of bars for your exercise (e.g., 4).
-   - **Chord Shape**: Select a chord shape based on the CAGED system (C, A, G, E, D).
-   - **Playback**: Choose Off or Strudel (Strudel is scaffolded but not wired yet).
+   - **Chord Shape**: Select a chord shape based on the extended CAGED system (C, A, A-stretched G, E, E-stretched, D), or regular [CAGED shapes](https://appliedguitartheory.com/lessons/caged-guitar-theory-system/).
+   - **Playback**: Off by default. Choose Strudel for audio playback. Tempo can be set via the BPM input.
 
 2. **Generate the Exercise**:
 
