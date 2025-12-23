@@ -252,8 +252,9 @@ function buildStrudelNotePattern(notes) {
 }
 
 function getCyclesPerMinute(bpm) {
-  // In 4/4, one cycle = one bar, so cycles per minute = BPM / 4.
-  return bpm / 4;
+  // Standard 4/4 would be BPM/4, however playback appears 2x slower,
+  // made empirical adjustment: BPM / 2 matches 
+  return bpm / 2;
 }
 
 function getCyclesPerSecond(bpm) {
@@ -311,23 +312,19 @@ async function playStrudelExercise(notes) {
   }
   const measures = Math.max(1, notes.length / 4);
   let pattern = api.note(patternText).slow(measures);
-  let tempoApplied = applyStrudelTempo(api, bpm);
-  if (!tempoApplied && typeof pattern.cpm === 'function') {
-    pattern = pattern.cpm(getCyclesPerMinute(bpm));
-    tempoApplied = true;
-    debugLog('Strudel tempo applied via pattern.cpm:', { cyclesPerMinute: getCyclesPerMinute(bpm) });
-  } else if (!tempoApplied && typeof pattern.cps === 'function') {
-    pattern = pattern.cps(getCyclesPerSecond(bpm));
-    tempoApplied = true;
-    debugLog('Strudel tempo applied via pattern.cps:', { cyclesPerSecond: getCyclesPerSecond(bpm) });
+
+  if (typeof pattern.cpm === 'function') {
+    const cpm = getCyclesPerMinute(bpm);
+    pattern = pattern.cpm(cpm);
+    debugLog('Strudel tempo applied via pattern.cpm:', { cpm });
+  } else if (typeof pattern.cps === 'function') {
+    const cps = getCyclesPerSecond(bpm);
+    pattern = pattern.cps(cps);
+    debugLog('Strudel tempo applied via pattern.cps:', { cps });
+  } else {
+    applyStrudelTempo(api, bpm);
   }
-  if (!tempoApplied && typeof pattern.fast === 'function') {
-    const tempoFactor = bpm / 120;
-    if (Number.isFinite(tempoFactor) && tempoFactor > 0) {
-      pattern = pattern.fast(tempoFactor);
-      debugLog('Strudel tempo applied via pattern.fast:', { tempoFactor });
-    }
-  }
+
   pattern.play();
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM.`, 'info');
 }
