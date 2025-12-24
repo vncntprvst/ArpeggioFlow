@@ -303,7 +303,7 @@ input[type="number"]:focus {
   font-size: 12px;
   font-weight: 600;
   color: #374151;
-  text-transform: uppercase;
+  text-transform: none;
   letter-spacing: 0.03em;
 }
 

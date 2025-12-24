@@ -2,7 +2,7 @@
 
 ## Description
 
-**Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation, [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations, and [Fretboard.js](https://moonwave99.github.io/fretboard.js) to visualize the scales on the guitar fretboard. The application focuses on generating sheet music for practice. An audio playback feature using [Strudel](https://strudel.cc/) is also available.
+**Arpeggio Flow** is a web application designed to help musicians practice arpeggios based on different keys, chord progressions, and chord shapes. It leverages [VexFlow](https://www.vexflow.com/) for rendering musical notation, [Tonal.js](https://github.com/tonaljs/tonal) for music theory calculations, and [Fretboard.js](https://moonwave99.github.io/fretboard.js) and [Vexchord](https://github.com/0xfe/vexchords) to visualize the scales and arpeggios on the guitar fretboard. The application focuses on generating sheet music for practice. An audio playback feature using [Strudel](https://strudel.cc/) is also available.
 
 ## Using the Application
 

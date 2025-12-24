@@ -667,6 +667,27 @@ function getChordToneChromas(rootNote, quality) {
   return new Set(chordData.notes.map((note) => Tonal.Note.chroma(note)));
 }
 
+function formatChordName(rootNote, quality) {
+  if (!quality) {
+    return rootNote;
+  }
+  const normalized = quality.toLowerCase();
+  if (normalized === 'm7b5') {
+    return `${rootNote}ø7`;
+  }
+  if (normalized === 'dim') {
+    return `${rootNote}°`;
+  }
+  return `${rootNote}${normalized}`;
+}
+
+function getVexChordRenderSettings(basePosition) {
+  return {
+    position: basePosition,
+    positionText: 0,
+  };
+}
+
 // Build all chord-tone positions within the current scale shape.
 function buildArpeggioPositionsInShape(cagedShape, chordChromas) {
   const positions = [];
@@ -739,12 +760,12 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
     diagram.appendChild(box);
     container.appendChild(diagram);
 
+    const renderSettings = getVexChordRenderSettings(basePosition);
     vexchords.draw(
       box,
       {
         chord: chordArray,
-        position: basePosition,
-        positionText: basePosition > 1 ? 1 : 0,
+        ...renderSettings,
         tuning: [],
       },
       {
@@ -906,7 +927,7 @@ function generateExercise() {
     return {
       index: idx,
       chordSymbol,
-      chordName: `${rootNote}${quality}`,
+      chordName: formatChordName(rootNote, quality),
       rootNote,
       quality,
       chordNotes,
