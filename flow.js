@@ -630,6 +630,136 @@ function renderScaleDiagram(cagedShape) {
   });
 }
 
+function getArpeggioDiagramContainer() {
+  return document.getElementById('arpeggio-diagrams');
+}
+
+function getDiagramBasePosition(cagedShape) {
+  const frets = cagedShape.scale_frets
+    .flat()
+    .filter((fret) => typeof fret === 'number' && fret >= 0);
+  if (!frets.length) {
+    return 1;
+  }
+  const minFret = Math.min(...frets);
+  return minFret <= 1 ? 1 : minFret;
+}
+
+function getShapeFretBounds(cagedShape) {
+  const frets = cagedShape.scale_frets
+    .flat()
+    .filter((fret) => typeof fret === 'number' && fret >= 0);
+  if (!frets.length) {
+    return { minFret: 1, maxFret: 1 };
+  }
+  return { minFret: Math.min(...frets), maxFret: Math.max(...frets) };
+}
+
+function getRelativeFret(fret, basePosition) {
+  if (fret === 0) {
+    return 0;
+  }
+  return Math.max(1, fret - basePosition + 1);
+}
+
+function getChordToneChromas(rootNote, quality) {
+  const chordData = Tonal.Chord.get(`${rootNote}${quality}`);
+  return new Set(chordData.notes.map((note) => Tonal.Note.chroma(note)));
+}
+
+// Build all chord-tone positions within the current scale shape.
+function buildArpeggioPositionsInShape(cagedShape, chordChromas) {
+  const positions = [];
+  cagedShape.scale_frets.forEach((stringFrets, stringIndex) => {
+    const openStringNote = tuning[stringIndex];
+    const openMidi = Tonal.Note.midi(openStringNote);
+    if (!Number.isFinite(openMidi)) {
+      return;
+    }
+    stringFrets.forEach((fret) => {
+      if (typeof fret !== 'number' || fret < 0) {
+        return;
+      }
+      const noteName = Tonal.Note.fromMidi(openMidi + fret);
+      const chroma = Tonal.Note.chroma(noteName);
+      if (chroma === null || !chordChromas.has(chroma)) {
+        return;
+      }
+      positions.push({
+        stringNumber: tuning.length - stringIndex,
+        fret,
+      });
+    });
+  });
+  return positions;
+}
+
+function renderArpeggioDiagrams(measureData, cagedShape) {
+  const container = getArpeggioDiagramContainer();
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  if (!measureData?.length || !cagedShape?.scale_frets?.length) {
+    return;
+  }
+  if (typeof vexchords === 'undefined') {
+    return;
+  }
+
+  const basePosition = getDiagramBasePosition(cagedShape);
+  const { maxFret } = getShapeFretBounds(cagedShape);
+  const numFrets = Math.max(4, maxFret - basePosition + 1);
+  const seenChords = new Set();
+
+  measureData.forEach((measure) => {
+    if (seenChords.has(measure.chordName)) {
+      return;
+    }
+    seenChords.add(measure.chordName);
+    // Render every chord tone inside the selected scale shape.
+    const chordChromas = getChordToneChromas(measure.rootNote, measure.quality);
+    const positions = buildArpeggioPositionsInShape(cagedShape, chordChromas);
+    if (!positions.length) {
+      return;
+    }
+    const chordArray = positions.map((position) => [
+      position.stringNumber,
+      getRelativeFret(position.fret, basePosition),
+    ]);
+
+    const diagram = document.createElement('div');
+    diagram.className = 'arpeggio-diagram';
+    const label = document.createElement('div');
+    label.className = 'arpeggio-diagram__label';
+    label.textContent = measure.chordName;
+    const box = document.createElement('div');
+    box.className = 'arpeggio-diagram__box';
+    diagram.appendChild(label);
+    diagram.appendChild(box);
+    container.appendChild(diagram);
+
+    vexchords.draw(
+      box,
+      {
+        chord: chordArray,
+        position: basePosition,
+        positionText: basePosition > 1 ? 1 : 0,
+        tuning: [],
+      },
+      {
+        width: 100,
+        height: 120,
+        showTuning: false,
+        numFrets,
+        strokeWidth: 1,
+        defaultColor: '#1f2937',
+        bgColor: '#ffffff',
+      }
+    );
+  });
+}
+
 function generateExercise() {
   const key = getSelectedKeyValue();
   const progression = document.getElementById('progression').value;
@@ -673,6 +803,10 @@ function generateExercise() {
 
   // Clear previous notation
   document.getElementById('notation').innerHTML = '';
+  const arpeggioDiagramContainer = getArpeggioDiagramContainer();
+  if (arpeggioDiagramContainer) {
+    arpeggioDiagramContainer.innerHTML = '';
+  }
 
   // Initialize VexFlow Renderer
   const VF = Vex.Flow;
@@ -773,6 +907,8 @@ function generateExercise() {
       index: idx,
       chordSymbol,
       chordName: `${rootNote}${quality}`,
+      rootNote,
+      quality,
       chordNotes,
       isRootChord,
       generatedNotes: null, // Will be filled in
@@ -1020,6 +1156,8 @@ function generateExercise() {
       xStart += stave.width;
     });
   });
+
+  renderArpeggioDiagrams(measureData, cagedShape);
 
   return { generatedNotes };
 }
