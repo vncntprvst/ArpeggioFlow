@@ -766,16 +766,17 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
       {
         chord: chordArray,
         ...renderSettings,
-        tuning: [],
+        tuning: ['E', 'A', 'D', 'G', 'B', 'E'],
       },
       {
-        width: 100,
-        height: 120,
-        showTuning: false,
+        width: 80,
+        height: 100,
+        showTuning: true,
         numFrets,
         strokeWidth: 1,
         defaultColor: '#1f2937',
         bgColor: '#ffffff',
+        strokeColor: 'rgba(103, 40, 185, 1)',
       }
     );
   });
