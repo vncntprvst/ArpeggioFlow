@@ -50,6 +50,48 @@ function getSelectedTempoBpm() {
   return tempoValue;
 }
 
+function getSelectedStrudelSound() {
+  return document.getElementById('strudelSound')?.value || 'default';
+}
+
+function getStrudelSoundLabel(sound) {
+  switch (sound) {
+    case 'guitar':
+      return 'guitar samples';
+    case 'default':
+      return 'synth';
+    default:
+      return `${sound} sound`;
+  }
+}
+
+async function ensureGuitarSamplesLoaded(api) {
+  if (guitarSamplesLoaded) {
+    return true;
+  }
+  if (guitarSamplesPromise) {
+    return guitarSamplesPromise;
+  }
+  const samplesFn = api?.samples || window.samples;
+  if (typeof samplesFn !== 'function') {
+    return false;
+  }
+  guitarSamplesPromise = (async () => {
+    try {
+      const result = samplesFn(GUITAR_SAMPLE_MAP, GUITAR_SAMPLE_BANK);
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      guitarSamplesLoaded = true;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load guitar samples:', error);
+      return false;
+    }
+  })();
+  return guitarSamplesPromise;
+}
+
 const playbackState = {
   engine: 'off',
   notes: [],
@@ -64,8 +106,14 @@ const playbackUi = {
 let strudelApi = null;
 let strudelInitPromise = null;
 let strudelCdnPromise = null;
+let guitarSamplesPromise = null;
+let guitarSamplesLoaded = false;
 
 const STRUDEL_CDN_URL = 'https://unpkg.com/@strudel/web@1.2.6';
+const GUITAR_SAMPLE_BANK = 'github:tidalcycles/dirt-samples';
+const GUITAR_SAMPLE_MAP = {
+  gtr: 'gtr/0001_cleanC.wav',
+};
 
 function getGlobalStrudelApi() {
   if (typeof window === 'undefined') {
@@ -81,6 +129,7 @@ function getGlobalStrudelApi() {
     evaluate: (...args) => window.evaluate?.(...args),
     setcpm: (...args) => window.setcpm?.(...args),
     setCpm: (...args) => window.setCpm?.(...args),
+    samples: (...args) => window.samples?.(...args),
   };
 }
 
@@ -223,7 +272,9 @@ function updatePlaybackStateFromExercise(exerciseData) {
   if (playbackState.engine === 'strudel') {
     if (playbackState.notes.length) {
       const bpm = getSelectedTempoBpm();
-      setPlaybackBanner(`Strudel ready at ${bpm} BPM. Click Play to hear the exercise.`, 'info');
+      const sound = getSelectedStrudelSound();
+      const soundLabel = getStrudelSoundLabel(sound);
+      setPlaybackBanner(`Strudel ready at ${bpm} BPM (${soundLabel}). Click Play to hear the exercise.`, 'info');
     } else {
       setPlaybackBanner('Generate an exercise to enable playback.', 'warning');
     }
@@ -320,6 +371,7 @@ async function playStrudelExercise(notes) {
     return;
   }
   const bpm = getSelectedTempoBpm();
+  const sound = getSelectedStrudelSound();
   const patternText = buildStrudelNotePattern(notes);
   if (!patternText) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
@@ -327,6 +379,16 @@ async function playStrudelExercise(notes) {
   }
   const measures = getMeasures(notes.length); 
   let pattern = api.note(patternText).slow(measures);
+  if (sound === 'guitar') {
+    const loaded = await ensureGuitarSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      pattern = pattern.s('gtr');
+    } else {
+      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+    }
+  } else if (sound !== 'default' && typeof pattern.s === 'function') {
+    pattern = pattern.s(sound);
+  }
 
   if (typeof pattern.cpm === 'function') {
     const cpm = getCyclesPerMinute(bpm);
@@ -341,7 +403,8 @@ async function playStrudelExercise(notes) {
   }
 
   pattern.play();
-  setPlaybackBanner(`Playing via Strudel at ${bpm} BPM.`, 'info');
+  const soundLabel = getStrudelSoundLabel(sound);
+  setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
 }
 
 async function stopStrudelExercise() {
@@ -1384,6 +1447,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const tempoInput = document.getElementById('tempoBpm');
     if (tempoInput) {
       tempoInput.addEventListener('change', () => {
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+      });
+    }
+    const soundSelect = document.getElementById('strudelSound');
+    if (soundSelect) {
+      soundSelect.addEventListener('change', () => {
         if (playbackState.engine !== 'strudel') {
           return;
         }

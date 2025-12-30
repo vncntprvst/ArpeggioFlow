@@ -169,7 +169,7 @@
               <label for="playbackEngine">Playback</label>
               <select id="playbackEngine" name="playbackEngine" required>
                 <option value="off" selected>Off</option>
-                <option value="strudel">Strudel</option>
+                <option value="strudel">On (Strudel Engine)</option>
               </select>
             </div>
 
@@ -191,6 +191,17 @@
               <div class="form-field">
                 <label for="tempoBpm">Tempo (BPM)</label>
                 <input type="number" id="tempoBpm" name="tempoBpm" value="120" min="40" max="240" />
+              </div>
+              <div class="form-field">
+                <label for="strudelSound">Sound</label>
+                <select id="strudelSound" name="strudelSound">
+                  <option value="guitar" selected>Guitar</option>
+                  <option value="default">Synth</option>
+                  <option value="sine">Sine</option>
+                  <option value="triangle">Triangle</option>
+                  <option value="square">Square</option>
+                  <option value="sawtooth">Sawtooth</option>
+                </select>
               </div>
             </div>
 
