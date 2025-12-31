@@ -54,15 +54,16 @@ function getSelectedStrudelSound() {
   return document.getElementById('strudelSound')?.value || 'default';
 }
 
+function getStrudelSoundConfig(sound) {
+  return STRUDEL_SOUND_CONFIG[sound] || {
+    type: 'synth',
+    label: `${sound} sound`,
+    sample: sound,
+  };
+}
+
 function getStrudelSoundLabel(sound) {
-  switch (sound) {
-    case 'guitar':
-      return 'guitar samples';
-    case 'default':
-      return 'synth';
-    default:
-      return `${sound} sound`;
-  }
+  return getStrudelSoundConfig(sound).label;
 }
 
 async function ensureGuitarSamplesLoaded(api) {
@@ -92,6 +93,33 @@ async function ensureGuitarSamplesLoaded(api) {
   return guitarSamplesPromise;
 }
 
+async function ensureGuitarVariantSamplesLoaded(api) {
+  if (guitarVariantSamplesLoaded) {
+    return true;
+  }
+  if (guitarVariantSamplesPromise) {
+    return guitarVariantSamplesPromise;
+  }
+  const samplesFn = api?.samples || window.samples;
+  if (typeof samplesFn !== 'function') {
+    return false;
+  }
+  guitarVariantSamplesPromise = (async () => {
+    try {
+      const result = samplesFn(GUITAR_VARIANT_SAMPLE_MAP, GUITAR_VARIANT_SAMPLE_BANK);
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      guitarVariantSamplesLoaded = true;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load guitar variant samples:', error);
+      return false;
+    }
+  })();
+  return guitarVariantSamplesPromise;
+}
+
 const playbackState = {
   engine: 'off',
   notes: [],
@@ -108,11 +136,92 @@ let strudelInitPromise = null;
 let strudelCdnPromise = null;
 let guitarSamplesPromise = null;
 let guitarSamplesLoaded = false;
+let guitarVariantSamplesPromise = null;
+let guitarVariantSamplesLoaded = false;
+let soundfontsPromise = null;
+let soundfontsLoaded = false;
 
 const STRUDEL_CDN_URL = 'https://unpkg.com/@strudel/web@1.2.6';
+const STRUDEL_ESM_URL = 'https://esm.sh/@strudel/web@1.2.6?target=es2022';
+const SOUNDFONTS_ESM_URL =
+  'https://esm.sh/@strudel/soundfonts@1.2.6?bundle';
+const SOUNDFONT_BASE_URL = 'https://felixroos.github.io/webaudiofontdata/sound';
 const GUITAR_SAMPLE_BANK = 'github:tidalcycles/dirt-samples';
 const GUITAR_SAMPLE_MAP = {
   gtr: 'gtr/0001_cleanC.wav',
+};
+const GUITAR_VARIANT_SAMPLE_BANK = 'github:jarmitage/jarmitage.github.io/master/';
+const GUITAR_VARIANT_SAMPLE_MAP = {
+  guitar1: 'samples/guitar/guitar_0.wav',
+  guitar2: 'samples/guitar/guitar_1.wav',
+  guitar3: 'samples/guitar/guitar_2.wav',
+  guitar4: 'samples/guitar/guitar_3.wav',
+  guitar5: 'samples/guitar/guitar_4.wav',
+};
+const STRUDEL_SOUND_CONFIG = {
+  'gtr-pluck': { type: 'dirt', sample: 'gtr', label: 'Plucked (Koto-like)' },
+  'guitar-1': { type: 'sample-map', sample: 'guitar1', label: 'Guitar (Sample 1)' },
+  'guitar-2': { type: 'sample-map', sample: 'guitar2', label: 'Guitar (Sample 2)' },
+  'guitar-3': { type: 'sample-map', sample: 'guitar3', label: 'Guitar (Sample 3)' },
+  'guitar-4': { type: 'sample-map', sample: 'guitar4', label: 'Guitar (Sample 4)' },
+  'guitar-5': { type: 'sample-map', sample: 'guitar5', label: 'Guitar (Sample 5)' },
+  gm_acoustic_guitar_nylon: {
+    type: 'soundfont',
+    label: 'Acoustic Guitar (Nylon)',
+    sample: 'gm_acoustic_guitar_nylon',
+  },
+  gm_acoustic_guitar_steel: {
+    type: 'soundfont',
+    label: 'Acoustic Guitar (Steel)',
+    sample: 'gm_acoustic_guitar_steel',
+  },
+  gm_distortion_guitar: {
+    type: 'soundfont',
+    label: 'Distortion Guitar',
+    sample: 'gm_distortion_guitar',
+  },
+  gm_electric_guitar_clean: {
+    type: 'soundfont',
+    label: 'Electric Guitar (Clean)',
+    sample: 'gm_electric_guitar_clean',
+  },
+  gm_electric_guitar_jazz: {
+    type: 'soundfont',
+    label: 'Electric Guitar (Jazz)',
+    sample: 'gm_electric_guitar_jazz',
+  },
+  gm_electric_guitar_muted: {
+    type: 'soundfont',
+    label: 'Electric Guitar (Muted)',
+    sample: 'gm_electric_guitar_muted',
+  },
+  gm_guitar_fret_noise: {
+    type: 'soundfont',
+    label: 'Guitar Fret Noise',
+    sample: 'gm_guitar_fret_noise',
+  },
+  gm_guitar_harmonics: {
+    type: 'soundfont',
+    label: 'Guitar Harmonics',
+    sample: 'gm_guitar_harmonics',
+  },
+  gm_overdriven_guitar: {
+    type: 'soundfont',
+    label: 'Overdriven Guitar',
+    sample: 'gm_overdriven_guitar',
+  },
+  default: { type: 'synth', label: 'Synth (Default)' },
+};
+const GM_SOUNDFONT_FONTS = {
+  gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
+  gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
+  gm_distortion_guitar: ['0300_FluidR3_GM_sf2_file'],
+  gm_electric_guitar_clean: ['0270_FluidR3_GM_sf2_file'],
+  gm_electric_guitar_jazz: ['0260_FluidR3_GM_sf2_file'],
+  gm_electric_guitar_muted: ['0281_FluidR3_GM_sf2_file'],
+  gm_guitar_fret_noise: ['1200_FluidR3_GM_sf2_file'],
+  gm_guitar_harmonics: ['0310_FluidR3_GM_sf2_file'],
+  gm_overdriven_guitar: ['0290_FluidR3_GM_sf2_file'],
 };
 
 function getGlobalStrudelApi() {
@@ -130,6 +239,13 @@ function getGlobalStrudelApi() {
     setcpm: (...args) => window.setcpm?.(...args),
     setCpm: (...args) => window.setCpm?.(...args),
     samples: (...args) => window.samples?.(...args),
+    registerSound: (...args) => window.registerSound?.(...args),
+    getADSRValues: (...args) => window.getADSRValues?.(...args),
+    getSoundIndex: (...args) => window.getSoundIndex?.(...args),
+    getAudioContext: (...args) => window.getAudioContext?.(...args),
+    getParamADSR: (...args) => window.getParamADSR?.(...args),
+    getVibratoOscillator: (...args) => window.getVibratoOscillator?.(...args),
+    getPitchEnvelope: (...args) => window.getPitchEnvelope?.(...args),
   };
 }
 
@@ -189,6 +305,104 @@ function loadStrudelCdn() {
   return strudelCdnPromise;
 }
 
+async function ensureSoundfontsLoaded(api) {
+  if (soundfontsLoaded) {
+    return true;
+  }
+  if (soundfontsPromise) {
+    return soundfontsPromise;
+  }
+  if (!api || typeof api.registerSound !== 'function') {
+    return false;
+  }
+  soundfontsPromise = (async () => {
+    try {
+      const module = await import(SOUNDFONTS_ESM_URL);
+      const {
+        getFontBufferSource,
+        setSoundfontUrl,
+      } = module;
+      if (typeof getFontBufferSource !== 'function') {
+        return false;
+      }
+      if (typeof setSoundfontUrl === 'function') {
+        setSoundfontUrl(SOUNDFONT_BASE_URL);
+      }
+      const {
+        registerSound,
+        getADSRValues,
+        getSoundIndex,
+        getAudioContext,
+        getParamADSR,
+        getVibratoOscillator,
+        getPitchEnvelope,
+      } = api;
+      if (
+        typeof getADSRValues !== 'function' ||
+        typeof getSoundIndex !== 'function' ||
+        typeof getAudioContext !== 'function' ||
+        typeof getParamADSR !== 'function' ||
+        typeof getVibratoOscillator !== 'function' ||
+        typeof getPitchEnvelope !== 'function'
+      ) {
+        return false;
+      }
+      Object.entries(GM_SOUNDFONT_FONTS).forEach(([name, fonts]) => {
+        registerSound(
+          name,
+          async (startTime, event, done) => {
+            const [attack, decay, sustain, release] = getADSRValues([
+              event.attack,
+              event.decay,
+              event.sustain,
+              event.release,
+            ]);
+            const { duration } = event;
+            const fontIndex = getSoundIndex(event.n, fonts.length);
+            const fontName = fonts[fontIndex];
+            const audioContext = getAudioContext();
+            const bufferSource = await getFontBufferSource(fontName, event, audioContext);
+            bufferSource.start(startTime);
+            const gainNode = audioContext.createGain();
+            const outputNode = bufferSource.connect(gainNode);
+            const stopTime = startTime + duration;
+            getParamADSR(
+              outputNode.gain,
+              attack,
+              decay,
+              sustain,
+              release,
+              0,
+              0.3,
+              startTime,
+              stopTime,
+              'linear'
+            );
+            const tailTime = stopTime + release + 0.01;
+            const vibrato = getVibratoOscillator(bufferSource.detune, event, startTime);
+            getPitchEnvelope(bufferSource.detune, event, startTime, stopTime);
+            bufferSource.stop(tailTime);
+            bufferSource.onended = () => {
+              bufferSource.disconnect();
+              vibrato?.stop();
+              outputNode.disconnect();
+              done();
+            };
+            return { node: outputNode, stop: () => {} };
+          },
+          { type: 'soundfont', prebake: true, fonts }
+        );
+      });
+      soundfontsLoaded = true;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load soundfonts:', error);
+      return false;
+    }
+  })();
+  return soundfontsPromise;
+}
+
 async function loadStrudelApi() {
   if (strudelApi) {
     return strudelApi;
@@ -207,7 +421,7 @@ async function loadStrudelApi() {
     return null;
   }
   try {
-    strudelApi = await import('@strudel/web');
+    strudelApi = await import(STRUDEL_ESM_URL);
     return strudelApi;
   } catch (error) {
     console.error('Failed to load Strudel:', error);
@@ -372,6 +586,7 @@ async function playStrudelExercise(notes) {
   }
   const bpm = getSelectedTempoBpm();
   const sound = getSelectedStrudelSound();
+  const soundConfig = getStrudelSoundConfig(sound);
   const patternText = buildStrudelNotePattern(notes);
   if (!patternText) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
@@ -379,12 +594,26 @@ async function playStrudelExercise(notes) {
   }
   const measures = getMeasures(notes.length); 
   let pattern = api.note(patternText).slow(measures);
-  if (sound === 'guitar') {
+  if (soundConfig.type === 'dirt') {
     const loaded = await ensureGuitarSamplesLoaded(api);
     if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s('gtr');
+      pattern = pattern.s(soundConfig.sample);
     } else {
       setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+    }
+  } else if (soundConfig.type === 'sample-map') {
+    const loaded = await ensureGuitarVariantSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      pattern = pattern.s(soundConfig.sample);
+    } else {
+      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+    }
+  } else if (soundConfig.type === 'soundfont') {
+    const loaded = await ensureSoundfontsLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      pattern = pattern.s(soundConfig.sample);
+    } else {
+      setPlaybackBanner('Soundfont guitars failed to load. Using default synth.', 'warning');
     }
   } else if (sound !== 'default' && typeof pattern.s === 'function') {
     pattern = pattern.s(sound);

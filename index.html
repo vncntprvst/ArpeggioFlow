@@ -31,8 +31,6 @@
   <!-- jsPDF for PDF export -->
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
-  <!-- Strudel (web bundle) -->
-  <script src="https://unpkg.com/@strudel/web@1.2.6"></script>
 </head>
 
 <body>
@@ -163,19 +161,18 @@
 
           <!-- Step 4: Playback engine -->
           <div class="form-section">
-            <h2 class="section-title">4. Playback Engine</h2>
+            <h2 class="section-title">4. Playback</h2>
 
-            <div class="form-field">
-              <label for="playbackEngine">Playback</label>
+            <div class="form-field" style="display: none;">
+              <label for="playbackEngine">Engine</label>
               <select id="playbackEngine" name="playbackEngine" required>
-                <option value="off" selected>Off</option>
-                <option value="strudel">On (Strudel Engine)</option>
+                <option value="off">None</option>
+                <option value="strudel" selected>Strudel</option>
               </select>
             </div>
 
             <div class="form-row">
               <div class="form-field">
-                <label>Transport</label>
                 <div class="button-row">
                   <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
                     Play
@@ -195,7 +192,21 @@
               <div class="form-field">
                 <label for="strudelSound">Sound</label>
                 <select id="strudelSound" name="strudelSound">
-                  <option value="guitar" selected>Guitar</option>
+                  <!-- <option value="guitar-1">Guitar (Sample 1)</option>
+                  <option value="guitar-2">Guitar (Sample 2)</option>
+                  <option value="guitar-3">Guitar (Sample 3)</option>
+                  <option value="guitar-4">Guitar (Sample 4)</option>
+                  <option value="guitar-5">Guitar (Sample 5)</option> -->
+                  <option value="gm_electric_guitar_clean">Electric Guitar (Clean)</option>
+                  <option value="gm_electric_guitar_jazz" selected>Electric Guitar (Jazz)</option>
+                  <option value="gm_electric_guitar_muted">Electric Guitar (Muted)</option>
+                  <option value="gm_acoustic_guitar_nylon">Acoustic Guitar (Nylon)</option>
+                  <option value="gm_acoustic_guitar_steel">Acoustic Guitar (Steel)</option>
+                  <option value="gm_distortion_guitar">Distortion Guitar</option>
+                  <option value="gm_guitar_fret_noise">Guitar Fret Noise</option>
+                  <option value="gm_guitar_harmonics">Guitar Harmonics</option>
+                  <option value="gm_overdriven_guitar">Overdriven Guitar</option>
+                  <option value="gtr-pluck">Plucked (Koto-like)</option>
                   <option value="default">Synth</option>
                   <option value="sine">Sine</option>
                   <option value="triangle">Triangle</option>

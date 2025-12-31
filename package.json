@@ -21,10 +21,10 @@
     "prettier": "^3.2.5"
   },
   "dependencies": {
+    "@moonwave99/fretboard.js": "^0.2.13",
     "@strudel/core": "*",
     "@strudel/mini": "*",
     "@strudel/web": "*",
-    "@moonwave99/fretboard.js": "^0.2.13",
     "tonal": "^6.2.0"
   }
 }
