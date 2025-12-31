@@ -29,6 +29,22 @@ function parseKeySelection(keyValue) {
   return { tonic, isMinor };
 }
 
+function getVexflowKeySignature(tonic, isMinor) {
+  if (!isMinor) {
+    return tonic;
+  }
+  const keyInfo = Tonal.Key.minorKey(tonic);
+  const accidentalCount = Math.abs(
+    keyInfo?.alteration ??
+      (keyInfo?.keySignature ? keyInfo.keySignature.length : 0)
+  );
+  if (accidentalCount <= 7) {
+    return `${tonic}m`;
+  }
+  const enharmonicTonic = Tonal.Note.enharmonic(tonic);
+  return `${enharmonicTonic || tonic}m`;
+}
+
 function getSelectedKeyValue() {
   const key = document.getElementById('key')?.value || '';
   const scaleType = document.getElementById('scaleType')?.value || 'major';
@@ -653,6 +669,7 @@ function getKeyContext(keyValue) {
   const { tonic, isMinor } = parseKeySelection(keyValue);
   const scaleType = isMinor ? 'minor' : 'major';
   const keySignature = isMinor ? `${tonic}m` : tonic;
+  const vexflowKeySignature = getVexflowKeySignature(tonic, isMinor);
   let cagedKey = tonic;
 
   if (isMinor) {
@@ -662,7 +679,7 @@ function getKeyContext(keyValue) {
     }
   }
 
-  return { tonic, isMinor, scaleType, keySignature, cagedKey };
+  return { tonic, isMinor, scaleType, keySignature, vexflowKeySignature, cagedKey };
 }
 
 function updateKeyDebug(keyValue) {
@@ -670,8 +687,18 @@ function updateKeyDebug(keyValue) {
   if (!debugEl) {
     return;
   }
-  const { tonic, scaleType, keySignature, cagedKey } = getKeyContext(keyValue);
-  debugEl.textContent = `Key signature: ${keySignature} | Scale: ${tonic} ${scaleType} | CAGED: ${cagedKey} ${scaleType}`;
+  const {
+    tonic,
+    scaleType,
+    keySignature,
+    vexflowKeySignature,
+    cagedKey,
+  } = getKeyContext(keyValue);
+  const signatureLabel =
+    keySignature === vexflowKeySignature
+      ? keySignature
+      : `${keySignature} (notation: ${vexflowKeySignature})`;
+  debugEl.textContent = `Key signature: ${signatureLabel} | Scale: ${tonic} ${scaleType} | CAGED: ${cagedKey} ${scaleType}`;
 }
 
 function updateBarsForProgression(progressionValue) {
@@ -1400,7 +1427,7 @@ function generateExercise() {
   });
 
   const measureWidths = measures.map((_, idx) =>
-    calculateMeasureWidth(key, idx === 0)
+    calculateMeasureWidth(keyContext.vexflowKeySignature, idx === 0)
   );
   const lineLayouts = [];
   let currentLine = { measures: [], width: 0 };
@@ -1447,7 +1474,7 @@ function generateExercise() {
       if (index === 0) {
         stave
           .addClef('treble')
-          .addKeySignature(keyContext.keySignature)
+          .addKeySignature(keyContext.vexflowKeySignature)
           .addTimeSignature('4/4');
       }
       stave.setContext(context).draw();
