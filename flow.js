@@ -1,18 +1,19 @@
 /*
  * flow.js
  *
- * Main script for the Arpeggio Flow App (CAGED Chords Exercise Generator).
+ * Main script for the Arpeggio Flow App.
  *
  * Features:
  *   - Define standard guitar tuning and compute pitch range (minPitch, maxPitch).
- *   - Convert note names for use with VexFlow notation.
+ *   - Convert note names for use with VexFlow notation and render notation.
  *   - Render fretboard scale diagrams using Fretboard.js and highlight scale boxes.
  *   - Style fretboard dots based on scale degrees and box inclusion.
- *   - Generate musical exercises with proper voice leading across chords and measures.
- *   - Integrate VexFlow (notation), Tonal.js (music theory), and VexChords (chord visuals).
+ *   - Generate exercises from defined chord progressions or song-defined chords.
+ *   - Integrate VexFlow (notation), Tonal.js (music theory), VexChords (chord visuals),
+ *     and Strudel playback with tempo/sound controls.
  */
 
-// Purpose: Main script file for the CAGED Chords Exercise Generator.
+import { SONGS, getSongById } from './songs/songs.js';
 
 // Debug flag - set to true for verbose console logging
 const DEBUG = true;
@@ -22,6 +23,15 @@ function debugLog(...args) {
     console.log('[flow]', ...args);
   }
 }
+
+const EXERCISE_MODES = {
+  RANDOM: 'random',
+  SONG: 'song',
+};
+
+const exerciseModeState = {
+  mode: EXERCISE_MODES.RANDOM,
+};
 
 function parseKeySelection(keyValue) {
   const isMinor = keyValue.endsWith('m');
@@ -53,6 +63,18 @@ function getSelectedKeyValue() {
 
 function getSelectedPlaybackEngine() {
   return document.getElementById('playbackEngine')?.value || 'off';
+}
+
+function getSelectedExerciseMode() {
+  return exerciseModeState.mode;
+}
+
+function getSelectedSongId() {
+  return document.getElementById('songSelect')?.value || '';
+}
+
+function getSelectedSong() {
+  return getSongById(getSelectedSongId());
 }
 
 function getSelectedTempoBpm() {
@@ -726,9 +748,87 @@ function updateBarsForProgression(progressionValue) {
   barsInput.value = defaultBars;
 }
 
+function updateSongDetails(song) {
+  const keyDisplay = document.getElementById('songKeyDisplay');
+  const tempoDisplay = document.getElementById('songTempoDisplay');
+  if (keyDisplay) {
+    keyDisplay.textContent = song ? `${song.key} ${song.scaleType}` : '';
+  }
+  if (tempoDisplay) {
+    tempoDisplay.value = song ? `${song.tempoBpm}` : '';
+  }
+}
+
+function applySongDefaults(song) {
+  if (!song) {
+    return;
+  }
+  const keySelect = document.getElementById('key');
+  const scaleSelect = document.getElementById('scaleType');
+  const tempoInput = document.getElementById('tempoBpm');
+  const songTempoInput = document.getElementById('songTempoDisplay');
+  if (keySelect) {
+    keySelect.value = song.key;
+  }
+  if (scaleSelect) {
+    scaleSelect.value = song.scaleType;
+  }
+  if (tempoInput) {
+    tempoInput.value = song.tempoBpm;
+  }
+  if (songTempoInput) {
+    songTempoInput.value = song.tempoBpm;
+  }
+  updateSongDetails(song);
+  updateKeyDebug(getSelectedKeyValue());
+}
+
+function setExerciseMode(mode) {
+  exerciseModeState.mode = mode;
+  const randomPanel = document.getElementById('random-exercise-panel');
+  const songPanel = document.getElementById('song-exercise-panel');
+  const randomButton = document.getElementById('modeRandom');
+  const songButton = document.getElementById('modeSong');
+  const isSongMode = mode === EXERCISE_MODES.SONG;
+
+  if (randomPanel) {
+    randomPanel.classList.toggle('is-active', !isSongMode);
+  }
+  if (songPanel) {
+    songPanel.classList.toggle('is-active', isSongMode);
+  }
+  if (randomButton) {
+    randomButton.classList.toggle('is-active', !isSongMode);
+    randomButton.setAttribute('aria-pressed', (!isSongMode).toString());
+  }
+  if (songButton) {
+    songButton.classList.toggle('is-active', isSongMode);
+    songButton.setAttribute('aria-pressed', isSongMode.toString());
+  }
+
+  if (isSongMode) {
+    applySongDefaults(getSelectedSong());
+  }
+  updateExportTitle();
+}
+
 function updateExportTitle() {
   const titleEl = document.getElementById('export-title');
   if (!titleEl) {
+    return;
+  }
+  const shapeSelect = document.getElementById('shape');
+  const shapeLabel =
+    shapeSelect?.selectedOptions?.[0]?.textContent || shapeSelect?.value || '';
+  const mode = getSelectedExerciseMode();
+  if (mode === EXERCISE_MODES.SONG) {
+    const song = getSelectedSong();
+    if (song) {
+      const songKeyLabel = `${song.key} ${song.scaleType}`;
+      titleEl.textContent = `Song: ${song.title} | Key: ${songKeyLabel} | Shape: ${shapeLabel}`;
+    } else {
+      titleEl.textContent = `Song exercise | Shape: ${shapeLabel}`;
+    }
     return;
   }
   const key = getSelectedKeyValue();
@@ -737,9 +837,6 @@ function updateExportTitle() {
     progressionSelect?.selectedOptions?.[0]?.textContent ||
     progressionSelect?.value ||
     '';
-  const shapeSelect = document.getElementById('shape');
-  const shapeLabel =
-    shapeSelect?.selectedOptions?.[0]?.textContent || shapeSelect?.value || '';
   titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | Shape: ${shapeLabel}`;
 }
 // Define the tuning
@@ -986,18 +1083,66 @@ function getChordToneChromas(rootNote, quality) {
   return new Set(chordData.notes.map((note) => Tonal.Note.chroma(note)));
 }
 
+function parseChordSymbol(chordSymbol) {
+  if (!chordSymbol) {
+    return null;
+  }
+  const match = chordSymbol.match(/^([A-G](?:b|#)?)(.*)$/);
+  if (!match) {
+    return null;
+  }
+  return { rootNote: match[1], quality: match[2] || '' };
+}
+
 function formatChordName(rootNote, quality) {
   if (!quality) {
     return rootNote;
   }
   const normalized = quality.toLowerCase();
   if (normalized === 'm7b5') {
-    return `${rootNote}ø7`;
+    return `${rootNote}\u00f87`;
   }
   if (normalized === 'dim') {
-    return `${rootNote}°`;
+    return `${rootNote}\u00b0`;
   }
   return `${rootNote}${normalized}`;
+}
+
+function formatChordSymbol(chordSymbol) {
+  const parsed = parseChordSymbol(chordSymbol);
+  if (!parsed) {
+    return chordSymbol;
+  }
+  return formatChordName(parsed.rootNote, parsed.quality);
+}
+
+function buildChordNotesInRange(chordNoteNames) {
+  const safeNotes = Array.isArray(chordNoteNames) ? chordNoteNames : [];
+  const { minPitch, maxPitch } = getGuitarPitchRange();
+  const octaves = [2, 3, 4, 5, 6];
+  const chordNotes = [];
+  octaves.forEach((oct) => {
+    safeNotes.forEach((note) => {
+      const tonalNote = `${note}${oct}`;
+      const midi = Tonal.Note.midi(tonalNote);
+      if (midi >= minPitch && midi <= maxPitch) {
+        chordNotes.push(tonalNote);
+      }
+    });
+  });
+  return chordNotes.sort((a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b));
+}
+
+function filterChordNotesToShape(chordNotes, scaleMidiSet) {
+  const filteredNotes = chordNotes.filter((note) => {
+    const noteMidi = Tonal.Note.midi(note);
+    return scaleMidiSet.has(noteMidi);
+  });
+  if (filteredNotes.length > 0) {
+    return filteredNotes;
+  }
+  debugLog('No chord tones found in shape range; using full chord tones.');
+  return chordNotes;
 }
 
 function getVexChordRenderSettings(basePosition) {
@@ -1005,6 +1150,127 @@ function getVexChordRenderSettings(basePosition) {
     position: basePosition,
     positionText: 0,
   };
+}
+
+function prepareExerciseContext(keyValue, shape) {
+  const keyContext = getKeyContext(keyValue);
+  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
+  if (!cagedShape) {
+    console.error('Could not get CAGED shape');
+    return null;
+  }
+  if (keyContext.isMinor) {
+    cagedShape.key = keyContext.tonic;
+    cagedShape.scaleType = keyContext.scaleType;
+  }
+
+  const scaleNotesInShape = fretPositionsToNotes(
+    cagedShape.scale_frets,
+    tuning
+  );
+  debugLog('Scale notes in CAGED shape:', scaleNotesInShape);
+
+  const scalePitchClasses = [
+    ...new Set(scaleNotesInShape.map((note) => Tonal.Note.pitchClass(note))),
+  ];
+  debugLog('Scale pitch classes:', scalePitchClasses);
+
+  const scaleChromaSet = new Set(
+    scaleNotesInShape.map((note) => Tonal.Note.chroma(note))
+  );
+  const scaleMidiSet = new Set(
+    scaleNotesInShape.map((note) => Tonal.Note.midi(note))
+  );
+  debugLog('Scale chromas:', [...scaleChromaSet]);
+
+  return {
+    keyContext,
+    cagedShape,
+    scalePitchClasses,
+    scaleChromaSet,
+    scaleMidiSet,
+  };
+}
+
+function flattenSongProgression(progressionBars) {
+  if (!Array.isArray(progressionBars)) {
+    return [];
+  }
+  return progressionBars.flatMap((bar) =>
+    Array.isArray(bar) ? bar.filter(Boolean) : []
+  );
+}
+
+function getChordNotesForRomanSymbol(
+  chordSymbol,
+  keyContext,
+  scaleMidiSet,
+  filterToShape = false
+) {
+  const chordQualitiesMajor = {
+    I: { degree: 1, quality: 'maj7' },
+    ii: { degree: 2, quality: 'm7' },
+    iii: { degree: 3, quality: 'm7' },
+    IV: { degree: 4, quality: 'maj7' },
+    V: { degree: 5, quality: '7' },
+    vi: { degree: 6, quality: 'm7' },
+    'viiA\u00F8': { degree: 7, quality: 'm7b5' },
+    'viiA\u0173': { degree: 7, quality: 'm7b5' },
+  };
+  const chordQualitiesMinor = {
+    I: { degree: 1, quality: 'm7' },
+    ii: { degree: 2, quality: 'm7b5' },
+    iii: { degree: 3, quality: 'maj7' },
+    IV: { degree: 4, quality: 'm7' },
+    V: { degree: 5, quality: 'm7' },
+    vi: { degree: 6, quality: 'maj7' },
+    'viiA\u00F8': { degree: 7, quality: '7' },
+    'viiA\u0173': { degree: 7, quality: '7' },
+  };
+
+  const chordInfo = (keyContext.isMinor
+    ? chordQualitiesMinor
+    : chordQualitiesMajor)[chordSymbol];
+  if (!chordInfo) {
+    return { chordNotes: [], rootNote: '', quality: '' };
+  }
+
+  const scale = Tonal.Scale.get(
+    `${keyContext.tonic} ${keyContext.scaleType}`
+  ).notes;
+  const rootNote = scale[chordInfo.degree - 1];
+  const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
+
+  let chordNotes = buildChordNotesInRange(chordData.notes);
+
+  if (filterToShape) {
+    chordNotes = filterChordNotesToShape(chordNotes, scaleMidiSet);
+  }
+
+  return { chordNotes, rootNote, quality: chordInfo.quality };
+}
+
+function getChordNotesForSongSymbol(
+  chordSymbol,
+  scaleMidiSet,
+  filterToShape = false
+) {
+  const parsed = parseChordSymbol(chordSymbol);
+  const chordData = Tonal.Chord.get(chordSymbol);
+  const rootNote = chordData.tonic || parsed?.rootNote || '';
+  const quality = chordData.type || parsed?.quality || '';
+  const chordNotesSource =
+    chordData.notes && chordData.notes.length
+      ? chordData.notes
+      : Tonal.Chord.get(`${rootNote}${quality}`).notes;
+
+  let chordNotes = buildChordNotesInRange(chordNotesSource);
+
+  if (filterToShape) {
+    chordNotes = filterChordNotesToShape(chordNotes, scaleMidiSet);
+  }
+
+  return { chordNotes, rootNote, quality };
 }
 
 // Build all chord-tone positions within the current scale shape.
@@ -1101,46 +1367,61 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
   });
 }
 
-function generateExercise() {
-  const key = getSelectedKeyValue();
-  const progression = document.getElementById('progression').value;
-  const bars = parseInt(document.getElementById('bars').value);
+function generateExercise(options = {}) {
+  const mode = options.mode || EXERCISE_MODES.RANDOM;
   const shape = document.getElementById('shape').value;
+  const song = options.song || null;
+  const isSongMode = mode === EXERCISE_MODES.SONG;
+  let key = '';
+  let adjustedProgression = [];
 
-  // Validate selections
-  if (!key || !progression || !bars || !shape) {
-    alert('Please select a key, progression, number of bars, and chord shape.');
+  if (!shape) {
+    alert('Please select a chord shape.');
     return;
   }
 
-  const keyContext = getKeyContext(key);
+  if (isSongMode) {
+    if (!song) {
+      alert('Please select a song.');
+      return;
+    }
+    key = song.scaleType === 'minor' ? `${song.key}m` : song.key;
+    adjustedProgression = flattenSongProgression(song.progressionBars);
+  } else {
+    key = getSelectedKeyValue();
+    const progression = document.getElementById('progression').value;
+    const bars = parseInt(document.getElementById('bars').value);
 
-  // Get the CAGED shape to access scale notes for root chord constraint
-  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
-  if (!cagedShape) {
-    console.error('Could not get CAGED shape');
+    if (!key || !progression || !bars) {
+      alert('Please select a key, progression, and number of bars.');
+      return;
+    }
+
+    const chordsInProgression = progression.replace(/\s/g, '').split('-');
+    const totalChords = chordsInProgression.length;
+    const fullCycles = Math.floor(bars / totalChords);
+    const remainingBars = bars % totalChords;
+
+    for (let i = 0; i < fullCycles; i++) {
+      adjustedProgression = adjustedProgression.concat(chordsInProgression);
+    }
+    if (remainingBars > 0) {
+      adjustedProgression = adjustedProgression.concat(
+        chordsInProgression.slice(0, remainingBars)
+      );
+    }
+  }
+
+  if (!adjustedProgression.length) {
+    alert('No chords found for the selected exercise.');
     return;
   }
 
-  if (keyContext.isMinor) {
-    cagedShape.key = keyContext.tonic;
-    cagedShape.scaleType = keyContext.scaleType;
+  const exerciseContext = prepareExerciseContext(key, shape);
+  if (!exerciseContext) {
+    return;
   }
-  
-  // Convert the scale fret positions to actual note names
-  // These are the notes that the root chord (I chord) must use
-  const scaleNotesInShape = fretPositionsToNotes(cagedShape.scale_frets, tuning);
-  debugLog('Scale notes in CAGED shape:', scaleNotesInShape);
-  
-  // Get just the pitch classes for matching (e.g., ['C', 'D', 'E', 'F', 'G', 'A', 'B'])
-  const scalePitchClasses = [...new Set(scaleNotesInShape.map(n => Tonal.Note.pitchClass(n)))];
-  debugLog('Scale pitch classes:', scalePitchClasses);
-  
-  // Create a Set of scale chromas (0-11) for enharmonic-agnostic matching
-  // This ensures D# (chroma 3) matches Eb (chroma 3), F# (chroma 6) matches Gb (chroma 6), etc.
-  const scaleChromaSet = new Set(scaleNotesInShape.map(n => Tonal.Note.chroma(n)));
-  const scaleMidiSet = new Set(scaleNotesInShape.map(n => Tonal.Note.midi(n)));
-  debugLog('Scale chromas:', [...scaleChromaSet]);
+  const { keyContext, cagedShape, scaleMidiSet } = exerciseContext;
 
   // Clear previous notation
   document.getElementById('notation').innerHTML = '';
@@ -1158,96 +1439,30 @@ function generateExercise() {
   const maxStaveWidth = width - 20;
   const maxMeasuresPerLine = 4;
 
-  // Progression processing
-  let chordsInProgression = progression.replace(/\s/g, '').split('-');
-  let adjustedProgression = [];
-  const totalChords = chordsInProgression.length;
-  let fullCycles = Math.floor(bars / totalChords);
-  let remainingBars = bars % totalChords;
-
-  for (let i = 0; i < fullCycles; i++) {
-    adjustedProgression = adjustedProgression.concat(chordsInProgression);
-  }
-  if (remainingBars > 0) {
-    adjustedProgression = adjustedProgression.concat(
-      chordsInProgression.slice(0, remainingBars)
-    );
-  }
-
-  // Helper function to get chord notes for a given chord symbol
-  function getChordNotesForSymbol(chordSymbol, filterToShape = false) {
-    const chordQualitiesMajor = {
-      I: { degree: 1, quality: 'maj7' },
-      ii: { degree: 2, quality: 'm7' },
-      iii: { degree: 3, quality: 'm7' },
-      IV: { degree: 4, quality: 'maj7' },
-      V: { degree: 5, quality: '7' },
-      vi: { degree: 6, quality: 'm7' },
-      'viiA\u00F8': { degree: 7, quality: 'm7b5' },
-      'viiA\u0173': { degree: 7, quality: 'm7b5' },
-    };
-    const chordQualitiesMinor = {
-      I: { degree: 1, quality: 'm7' },
-      ii: { degree: 2, quality: 'm7b5' },
-      iii: { degree: 3, quality: 'maj7' },
-      IV: { degree: 4, quality: 'm7' },
-      V: { degree: 5, quality: 'm7' },
-      vi: { degree: 6, quality: 'maj7' },
-      'viiA\u00F8': { degree: 7, quality: '7' },
-      'viiA\u0173': { degree: 7, quality: '7' },
-    };
-
-    const chordInfo = (keyContext.isMinor ? chordQualitiesMinor : chordQualitiesMajor)[
-      chordSymbol
-    ];
-
-    const scale = Tonal.Scale.get(
-      `${keyContext.tonic} ${keyContext.scaleType}`
-    ).notes;
-    const rootNote = scale[chordInfo.degree - 1];
-    const chordData = Tonal.Chord.get(`${rootNote}${chordInfo.quality}`);
-
-    const { minPitch, maxPitch } = getGuitarPitchRange();
-    const octaves = [2, 3, 4, 5, 6];
-    let chordNotes = [];
-    
-    octaves.forEach((oct) => {
-      chordData.notes.forEach((n) => {
-        const tonalNote = `${n}${oct}`;
-        const midi = Tonal.Note.midi(tonalNote);
-        if (midi >= minPitch && midi <= maxPitch) {
-          chordNotes.push(tonalNote);
-        }
-      });
-    });
-
-    // Filter to only notes within the selected scale shape range.
-    if (filterToShape) {
-      const filteredNotes = chordNotes.filter(note => {
-        const noteMidi = Tonal.Note.midi(note);
-        return scaleMidiSet.has(noteMidi);
-      });
-      if (filteredNotes.length > 0) {
-        chordNotes = filteredNotes;
-      } else {
-        debugLog('No chord tones found in shape range; using full chord tones.');
-      }
-    }
-
-    // Sort notes in ascending order of pitch
-    chordNotes = chordNotes.sort((a, b) => Tonal.Note.freq(a) - Tonal.Note.freq(b));
-    
-    return { chordNotes, rootNote, quality: chordInfo.quality };
-  }
+  const chordResolver = isSongMode
+    ? (chordSymbol) =>
+        getChordNotesForSongSymbol(chordSymbol, scaleMidiSet, true)
+    : (chordSymbol) =>
+        getChordNotesForRomanSymbol(
+          chordSymbol,
+          keyContext,
+          scaleMidiSet,
+          true
+        );
 
   // Build measure data array with chord info
   const measureData = adjustedProgression.map((chordSymbol, idx) => {
-    const isRootChord = chordSymbol === 'I';
-    const { chordNotes, rootNote, quality } = getChordNotesForSymbol(chordSymbol, true);
+    const isRootChord = !isSongMode && chordSymbol === 'I';
+    const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
+    const chordName = isSongMode
+      ? formatChordSymbol(chordSymbol)
+      : rootNote
+        ? formatChordName(rootNote, quality)
+        : formatChordSymbol(chordSymbol);
     return {
       index: idx,
       chordSymbol,
-      chordName: formatChordName(rootNote, quality),
+      chordName,
       rootNote,
       quality,
       chordNotes,
@@ -1515,15 +1730,30 @@ function sanitizeFilePart(value) {
 }
 
 function buildExportFileName(extension) {
-  const key = getSelectedKeyValue() || 'key';
-  const progression = document.getElementById('progression')?.value || 'progression';
-  const bars = document.getElementById('bars')?.value || 'bars';
-  const parts = [
-    'arpeggio-flow',
-    sanitizeFilePart(key),
-    sanitizeFilePart(progression),
-    sanitizeFilePart(bars)
-  ].filter(Boolean);
+  const mode = getSelectedExerciseMode();
+  let parts = ['arpeggio-flow'];
+  if (mode === EXERCISE_MODES.SONG) {
+    const song = getSelectedSong();
+    parts = parts.concat([
+      sanitizeFilePart(song?.id || 'song'),
+      sanitizeFilePart(song?.title || ''),
+    ]);
+  } else {
+    const key = getSelectedKeyValue() || 'key';
+    const progression =
+      document.getElementById('progression')?.value || 'progression';
+    const bars = document.getElementById('bars')?.value || 'bars';
+    parts = parts.concat([
+      sanitizeFilePart(key),
+      sanitizeFilePart(progression),
+      sanitizeFilePart(bars),
+    ]);
+  }
+  const shape = document.getElementById('shape')?.value || '';
+  if (shape) {
+    parts.push(sanitizeFilePart(shape));
+  }
+  parts = parts.filter(Boolean);
   return `${parts.join('-')}.${extension}`;
 }
 
@@ -1659,6 +1889,7 @@ document.addEventListener('DOMContentLoaded', function () {
     updateKeyDebug(getSelectedKeyValue());
     updateExportTitle();
     updateBarsForProgression(document.getElementById('progression').value);
+    setExerciseMode(EXERCISE_MODES.RANDOM);
 
     playbackUi.banner = document.getElementById('playback-banner');
     playbackUi.playButton = document.getElementById('playbackPlayButton');
@@ -1684,6 +1915,63 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('shape').addEventListener('change', () => {
       updateExportTitle();
     });
+
+    const songSelect = document.getElementById('songSelect');
+    if (songSelect) {
+      songSelect.innerHTML = '';
+      SONGS.forEach((song) => {
+        const option = document.createElement('option');
+        option.value = song.id;
+        option.textContent = song.title;
+        songSelect.appendChild(option);
+      });
+      if (SONGS.length) {
+        songSelect.value = SONGS[0].id;
+        updateSongDetails(SONGS[0]);
+      }
+      songSelect.addEventListener('change', () => {
+        const selectedSong = getSelectedSong();
+        updateSongDetails(selectedSong);
+        if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) {
+          applySongDefaults(selectedSong);
+        }
+        updateExportTitle();
+      });
+    }
+
+    const songTempoInput = document.getElementById('songTempoDisplay');
+    if (songTempoInput) {
+      songTempoInput.addEventListener('change', () => {
+        const tempoValue = parseInt(songTempoInput.value || '0', 10);
+        if (!Number.isFinite(tempoValue) || tempoValue <= 0) {
+          return;
+        }
+        const tempoInput = document.getElementById('tempoBpm');
+        if (tempoInput) {
+          tempoInput.value = tempoValue;
+        }
+        if (getSelectedExerciseMode() !== EXERCISE_MODES.SONG) {
+          return;
+        }
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+      });
+    }
+
+    const modeRandomButton = document.getElementById('modeRandom');
+    const modeSongButton = document.getElementById('modeSong');
+    if (modeRandomButton) {
+      modeRandomButton.addEventListener('click', () => {
+        setExerciseMode(EXERCISE_MODES.RANDOM);
+      });
+    }
+    if (modeSongButton) {
+      modeSongButton.addEventListener('click', () => {
+        setExerciseMode(EXERCISE_MODES.SONG);
+      });
+    }
 
     const playbackEngineSelect = document.getElementById('playbackEngine');
     if (playbackEngineSelect) {
@@ -1738,31 +2026,33 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     document.getElementById('generateButton').addEventListener('click', () => {
-      const key = getSelectedKeyValue();
-      updateKeyDebug(key);
-      const progression = document.getElementById('progression').value;
-      const bars = document.getElementById('bars').value;
-      const shape = document.getElementById('shape').value;
+      const mode = getSelectedExerciseMode();
+      const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
+      const keyValue =
+        mode === EXERCISE_MODES.SONG && song
+          ? song.scaleType === 'minor'
+            ? `${song.key}m`
+            : song.key
+          : getSelectedKeyValue();
+      updateKeyDebug(keyValue);
 
-      // Validate selections
-      if (!key || !progression || !bars || !shape) {
-        alert(
-          'Please select a key, progression, number of bars, and chord shape.'
-        );
+      const shape = document.getElementById('shape').value;
+      if (!shape) {
+        alert('Please select a chord shape.');
         return;
       }
 
-      // Generate CAGED shape (ensure getCAGEDShape is working)
-      const keyContext = getKeyContext(key);
+      const keyContext = getKeyContext(keyValue);
       const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
-      if (cagedShape && keyContext.isMinor) {
+      if (!cagedShape) {
+        alert('Please select a chord shape.');
+        return;
+      }
+      if (keyContext.isMinor) {
         cagedShape.key = keyContext.tonic;
         cagedShape.scaleType = keyContext.scaleType;
       }
       console.log('cagedShape:', cagedShape);
-
-      // For testing, use a sample chord
-      // const cagedShape = aShapeChord;
 
       // Clear previous chords and diagrams
       document.getElementById('fretboard-container').innerHTML = '';
@@ -1771,7 +2061,7 @@ document.addEventListener('DOMContentLoaded', function () {
       renderScaleDiagram(cagedShape);
 
       // Generate the musical exercise
-      const exerciseData = generateExercise();
+      const exerciseData = generateExercise({ mode, song });
       updateExportTitle();
       updatePlaybackStateFromExercise(exerciseData);
     });

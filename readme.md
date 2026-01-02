@@ -7,10 +7,12 @@
 ## Using the Application
 
 1. **Fill out the form**:
+   - **Exercise mode**: Choose Chord Progression Exercise or Song-Based Exercise.
    - **Key**: Select a musical key.
    - **Scale**: Choose Major or Minor.
    - **Chord Progression**: Choose a chord progression.
    - **Number of Bars**: Enter the number of bars for your exercise (e.g., 4).
+   - **Song** (Song-Based mode): Pick a song to load its key, tempo, and chord progression.
    - **Chord Shape**: Select a chord shape based on the extended CAGED system (C, A, A-stretched G, E, E-stretched, D), or regular [CAGED shapes](https://appliedguitartheory.com/lessons/caged-guitar-theory-system/).
    - **Playback**: Off by default. Choose Strudel for audio playback. Tempo can be set via the BPM input.
 
@@ -21,6 +23,10 @@
 3. **View the Notation**:
 
    The generated exercise will appear in the notation area below the form.
+
+## Song-Based Exercises
+
+Song metadata lives in `songs/songs.js`. Each entry includes a key, tempo, and a progression expressed as bars of chord symbols. Add additional song objects to the `SONGS` array to expand the list in the UI.
 
 ## Demo
 

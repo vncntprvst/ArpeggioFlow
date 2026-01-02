@@ -66,99 +66,149 @@
       <!-- Left: exercise settings -->
       <section class="controls-panel" aria-label="Exercise settings">
         <form id="exerciseForm" class="controls-form" novalidate>
-          <!-- Step 1: Key & scale -->
           <div class="form-section">
-            <h2 class="section-title">1. Key &amp; Scale</h2>
+            <h2 class="section-title">Exercise Generator</h2>
 
-            <div class="form-row">
-              <div class="form-field">
-                <label for="key">Key</label>
-                <select id="key" name="key" required>
-                  <option value="A">A</option>
-                  <option value="Bb">Bb</option>
-                  <option value="B">B</option>
-                  <option value="C" selected>C</option>
-                  <option value="Db">Db</option>
-                  <option value="D">D</option>
-                  <option value="Eb">Eb</option>
-                  <option value="E">E</option>
-                  <option value="F">F</option>
-                  <option value="F#">F#</option>
-                  <option value="G">G</option>
-                  <option value="Ab">Ab</option>
-                </select>
+            <div class="mode-toggle" role="group" aria-label="Exercise mode">
+              <button
+                type="button"
+                id="modeRandom"
+                class="mode-toggle__button is-active"
+                aria-pressed="true"
+              >
+                Chord Progression
+              </button>
+              <button
+                type="button"
+                id="modeSong"
+                class="mode-toggle__button"
+                aria-pressed="false"
+              >
+                Songs
+              </button>
+            </div>
+
+            <div id="random-exercise-panel" class="mode-panel is-active">
+              <div class="mode-panel-section">
+                <h3 class="section-subtitle">1. Key &amp; Scale</h3>
+
+                <div class="form-row">
+                  <div class="form-field">
+                    <label for="key">Key</label>
+                    <select id="key" name="key" required>
+                      <option value="A">A</option>
+                      <option value="Bb">Bb</option>
+                      <option value="B">B</option>
+                      <option value="C" selected>C</option>
+                      <option value="Db">Db</option>
+                      <option value="D">D</option>
+                      <option value="Eb">Eb</option>
+                      <option value="E">E</option>
+                      <option value="F">F</option>
+                      <option value="F#">F#</option>
+                      <option value="G">G</option>
+                      <option value="Ab">Ab</option>
+                    </select>
+                  </div>
+
+                  <div class="form-field">
+                    <label for="scaleType">Scale</label>
+                    <select id="scaleType" name="scaleType" required>
+                      <option value="major" selected>Major</option>
+                      <option value="minor">Minor</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
-              <div class="form-field">
-                <label for="scaleType">Scale</label>
-                <select id="scaleType" name="scaleType" required>
-                  <option value="major" selected>Major</option>
-                  <option value="minor">Minor</option>
-                </select>
+              <div class="mode-panel-section">
+                <h3 class="section-subtitle">2. Progression &amp; Length</h3>
+
+                <div class="form-row">
+                  <div class="form-field">
+                    <label for="progression">Chord progression</label>
+                    <select id="progression" name="progression" required>
+                      <option value="ii-V-I" selected>ii - V - I</option>
+                      <option value="I-vi-ii-V">I - vi - ii - V</option>
+                      <option value="I-vi-IV-V">I - vi - IV - V</option>
+                      <option value="I-IV-vi-V">I - IV - vi - V</option>
+                      <option value="I-I-I-I-IV-IV-I-I-V-IV-I-V">12 bar blues</option>
+                    </select>
+                  </div>
+
+                  <div class="form-field">
+                    <label for="bars">Number of bars</label>
+                    <input
+                      type="number"
+                      id="bars"
+                      name="bars"
+                      value="3"
+                      min="1"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="song-exercise-panel" class="mode-panel">
+              <div class="mode-panel-section">
+                <h3 class="section-subtitle">Song</h3>
+
+                <div class="form-field">
+                  <select id="songSelect" name="songSelect" required></select>
+                </div>
+
+                <div class="form-row">
+                  <div class="form-field">
+                    <label for="songKeyDisplay">Key</label>
+                    <div id="songKeyDisplay" class="form-static" role="status"></div>
+                  </div>
+                  <div class="form-field">
+                    <label for="songTempoDisplay">Tempo (BPM)</label>
+                    <input
+                      type="number"
+                      id="songTempoDisplay"
+                      name="songTempoDisplay"
+                      min="40"
+                      max="240"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="mode-panel-section">
+              <h3 class="section-subtitle">Scale Shape</h3>
+
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="scaleSystem">Scale system</label>
+                  <select
+                    id="scaleSystem"
+                    name="scaleSystem"
+                    required
+                    onchange="updateShapeOptions()"
+                  >
+                    <option value="CAGED_SHAPES">CAGED Shapes</option>
+                    <option value="EXT_CAGED_SHAPES" selected>
+                      Extended CAGED Shapes
+                    </option>
+                  </select>
+                </div>
+
+                <div class="form-field">
+                  <label for="shape">Chord shape</label>
+                  <select id="shape" name="shape" required>
+                    <option value="" disabled selected>Select a Shape</option>
+                    <!-- Populated dynamically by updateShapeOptions() -->
+                  </select>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Step 2: Progression & length -->
           <div class="form-section">
-            <h2 class="section-title">2. Progression &amp; Length</h2>
-
-            <div class="form-row">
-              <div class="form-field">
-                <label for="progression">Chord progression</label>
-                <select id="progression" name="progression" required>
-                  <option value="ii-V-I" selected>ii – V – I</option>
-                  <option value="I-vi-ii-V">I – vi – ii – V</option>
-                  <option value="I-vi-IV-V">I – vi – IV – V</option>
-                  <option value="I-IV-vi-V">I – IV – vi – V</option>
-                  <option value="I-I-I-I-IV-IV-I-I-V-IV-I-V">12 bar blues</option>
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label for="bars">Number of bars</label>
-                <input
-                  type="number"
-                  id="bars"
-                  name="bars"
-                  value="3"
-                  min="1"
-                  required
-                />
-              </div>
-            </div>
-          </div>
-
-          <!-- Step 3: Scale shape -->
-          <div class="form-section">
-            <h2 class="section-title">3. Scale Shape</h2>
-
-            <div class="form-row">
-              <div class="form-field">
-                <label for="scaleSystem">Scale system</label>
-                <select
-                  id="scaleSystem"
-                  name="scaleSystem"
-                  required
-                  onchange="updateShapeOptions()"
-                >
-                  <option value="CAGED_SHAPES">CAGED Shapes</option>
-                  <option value="EXT_CAGED_SHAPES" selected>
-                    Extended CAGED Shapes
-                  </option>
-                </select>
-              </div>
-
-              <div class="form-field">
-                <label for="shape">Chord shape</label>
-                <select id="shape" name="shape" required>
-                  <option value="" disabled selected>Select a Shape</option>
-                  <!-- Populated dynamically by updateShapeOptions() -->
-                </select>
-              </div>
-            </div>
-
-            <!-- Primary action -->
             <div class="form-actions">
               <button type="button" id="generateButton">
                 Generate Exercise
