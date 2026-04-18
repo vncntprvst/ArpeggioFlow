@@ -319,7 +319,21 @@
               <div id="notation"></div>
 
               <!-- Arpeggio chord diagrams -->
+              <div id="arpeggio-diagrams-header" style="display:none">
+                <button type="button" id="scaleDegreeModalBtn" class="secondary-button">
+                  View all scale arpeggios ↗
+                </button>
+              </div>
               <div id="arpeggio-diagrams"></div>
+
+              <!-- Scale degrees modal -->
+              <dialog id="scaleDegreeModal" class="scale-degree-modal">
+                <div class="scale-degree-modal__header">
+                  <h2 class="scale-degree-modal__title" id="scaleDegreeModalTitle">Scale Arpeggios</h2>
+                  <button type="button" id="scaleDegreeModalClose" class="scale-degree-modal__close" aria-label="Close">✕</button>
+                </div>
+                <div class="scale-degree-modal__body" id="scaleDegreeModalBody"></div>
+              </dialog>
             </div>
           </div>
 
@@ -340,7 +354,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260418i"></script>
+  <script type="module" src="flow.js?v=20260418l"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>

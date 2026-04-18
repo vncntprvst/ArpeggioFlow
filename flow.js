@@ -166,6 +166,9 @@ const playbackState = {
   isPlaying: false,
 };
 
+// Stores the last generated exercise state for use in the scale-degrees modal
+let lastExerciseState = null; // { cagedShape, measureData, keyLabel }
+
 const playbackUi = {
   banner: null,
   playButton: null,
@@ -1244,6 +1247,174 @@ function getArpeggioDiagramContainer() {
   return document.getElementById('arpeggio-diagrams');
 }
 
+// ─── Scale-degree modal ───────────────────────────────────────────────────────
+
+const SCALE_DEGREE_INFO = [
+  { degree: 1, label: 'Root'  },
+  { degree: 2, label: '2nd'   },
+  { degree: 3, label: '3rd'   },
+  { degree: 4, label: '4th'   },
+  { degree: 5, label: '5th'   },
+  { degree: 6, label: '6th'   },
+  { degree: 7, label: '7th'   },
+];
+
+// Chord qualities for each scale degree (major and minor)
+const SCALE_DEGREE_QUALITIES_MAJOR = ['maj7', 'm7', 'm7', 'maj7', '7', 'm7', 'm7b5'];
+const SCALE_DEGREE_QUALITIES_MINOR = ['m7', 'm7b5', 'maj7', 'm7', 'm7', 'maj7', '7'];
+
+/** Dot ring radius scaled to the smaller dotSize used in modal rows. */
+const SDM_DOT_SIZE = 20;
+const SDM_DOT_RING_RADIUS = SDM_DOT_SIZE * 0.5 + 1.5;
+
+function addSmallRingToDot(dotEl, dotCircle) {
+  const ring = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
+  ring.setAttribute('cx', dotCircle.getAttribute('cx'));
+  ring.setAttribute('cy', dotCircle.getAttribute('cy'));
+  ring.setAttribute('r', SDM_DOT_RING_RADIUS);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#000000');
+  ring.setAttribute('stroke-width', '2');
+  ring.setAttribute('class', 'dot-ring');
+  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
+}
+
+function openScaleDegreeModal() {
+  if (!lastExerciseState) return;
+  const { cagedShape } = lastExerciseState;
+
+  const modal = document.getElementById('scaleDegreeModal');
+  const body  = document.getElementById('scaleDegreeModalBody');
+  const titleEl = document.getElementById('scaleDegreeModalTitle');
+  if (!modal || !body) return;
+
+  // Use cagedShape.shape (e.g. "G Shape") directly — no extra "shape" suffix
+  titleEl.textContent = `Scale Arpeggios — ${cagedShape.key} ${cagedShape.scaleType} (${cagedShape.shape || ''})`.replace(/\s*\(\s*\)\s*$/, '');
+  body.innerHTML = '';
+
+  // Build a lookup of which fret positions are inside the CAGED box
+  const boxPositionsKey = {};
+  for (let si = 0; si < cagedShape.scale_frets.length; si++) {
+    const stringNumber = 6 - si; // Fretboard.js: string 6 = low E
+    for (const fret of cagedShape.scale_frets[si]) {
+      if (typeof fret === 'number' && fret >= 0) {
+        boxPositionsKey[`${stringNumber}-${fret}`] = true;
+      }
+    }
+  }
+
+  const allBoxFrets = Object.keys(boxPositionsKey).map((k) =>
+    parseInt(k.split('-')[1], 10)
+  );
+  const startFret = Math.min(...allBoxFrets);
+  const endFret   = Math.max(...allBoxFrets);
+
+  // Scale notes for this key/scale type (e.g. ['Bb','C','D','Eb','F','G','A'])
+  const scaleData  = Tonal.Scale.get(`${cagedShape.key} ${cagedShape.scaleType}`);
+  const scaleNotes = scaleData.notes;
+  const qualities  = cagedShape.scaleType === 'minor'
+    ? SCALE_DEGREE_QUALITIES_MINOR
+    : SCALE_DEGREE_QUALITIES_MAJOR;
+
+  SCALE_DEGREE_INFO.forEach(({ degree, label }) => {
+    if (degree > scaleNotes.length) return;
+
+    const degreeNote = scaleNotes[degree - 1];
+    const quality    = qualities[degree - 1];
+
+    // Build chroma → interval number map for this degree's full arpeggio
+    // (mirrors updateFretboardForChord logic)
+    const chordData = Tonal.Chord.get(`${degreeNote}${quality}`);
+    const chromaToIntervalNum = {};
+    if (chordData && chordData.notes && chordData.intervals) {
+      chordData.notes.forEach((note, i) => {
+        const num = parseInt(chordData.intervals[i], 10);
+        chromaToIntervalNum[Tonal.Note.chroma(note)] = num;
+      });
+    }
+
+    // Row wrapper
+    const row = document.createElement('div');
+    row.className = 'sdm-row';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'sdm-label';
+    labelEl.innerHTML = `${label}<span class="sdm-label__degree">${degreeNote}${quality}</span>`;
+
+    const fbContainer = document.createElement('div');
+    fbContainer.className = 'sdm-fretboard';
+
+    row.appendChild(labelEl);
+    row.appendChild(fbContainer);
+    body.appendChild(row);
+
+    // Render a Fretboard instance into this row
+    const fb = new fretboard.Fretboard({
+      el: fbContainer,
+      height: 120,
+      stringsWidth: 1.5,
+      dotSize: SDM_DOT_SIZE,
+      fretCount: 16,
+      fretsWidth: 1.2,
+      font: 'Futura',
+      tuning: tuning,
+      showFretNumbers: degree === 1,
+      highlightFill: 'rgba(100, 160, 255, 0.15)',
+      highlightStroke: '#aaaaaa',
+      highlightBlendMode: 'normal',
+    });
+
+    fb.renderScale({ type: cagedShape.scaleType, root: cagedShape.key });
+
+    // Highlight the CAGED box region
+    fb.highlightAreas([
+      { string: 1, fret: startFret },
+      { string: 6, fret: endFret  },
+    ]);
+
+    // Apply text/fontSize via the library (must come before coloring)
+    fb.style({ text: (p) => p.note, fontSize: 12 });
+
+    // Color dots exactly like updateFretboardForChord:
+    //   chord root → green + ring, other chord tones → blue + ring, non-chord in-box → dimmed
+    fbContainer.querySelectorAll('.dot').forEach((dotEl) => {
+      const data = dotEl.__data__;
+      if (!data) return;
+      const dotCircle = dotEl.querySelector('.dot-circle');
+      if (!dotCircle) return;
+
+      dotEl.querySelectorAll('.dot-ring').forEach((r) => r.remove());
+
+      const posKey     = `${data.string}-${data.fret}`;
+      const noteChroma = Tonal.Note.chroma(data.note);
+
+      if (boxPositionsKey[posKey]) {
+        const intervalNum = chromaToIntervalNum[noteChroma];
+        if (intervalNum !== undefined) {
+          // This in-box note is a chord tone
+          dotEl.style.opacity = '1';
+          const fill = intervalNum === 1 ? FRETBOARD_COLOR_ROOT : FRETBOARD_COLOR_INBOX;
+          dotCircle.style.setProperty('fill', fill, 'important');
+          if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
+            addSmallRingToDot(dotEl, dotCircle);
+          }
+        } else {
+          // In-box but not a chord tone of this arpeggio: dimmed
+          dotEl.style.opacity = '0.18';
+          dotCircle.style.removeProperty('fill');
+        }
+      } else {
+        // Out-of-box: very faint
+        dotEl.style.opacity = '0.08';
+        dotCircle.style.removeProperty('fill');
+      }
+    });
+  });
+
+  modal.showModal();
+}
+
+
 function getDiagramBasePosition(cagedShape) {
   const frets = cagedShape.scale_frets
     .flat()
@@ -1559,6 +1730,10 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
       }
     );
   });
+
+  // Show the "View all scale arpeggios" button header
+  const arpeggioHeader = document.getElementById('arpeggio-diagrams-header');
+  if (arpeggioHeader) arpeggioHeader.style.display = '';
 }
 
 function generateExercise(options = {}) {
@@ -1912,6 +2087,9 @@ function generateExercise(options = {}) {
   });
 
   renderArpeggioDiagrams(measureData, cagedShape);
+
+  // Store for the scale-degrees modal
+  lastExerciseState = { cagedShape, measureData };
 
   return { generatedNotes, measuresData: measureData, stavePositions };
 }
@@ -2282,6 +2460,30 @@ document.addEventListener('DOMContentLoaded', function () {
     if (exportPdfButton) {
       exportPdfButton.addEventListener('click', () => {
         exportExerciseAsPdf();
+      });
+    }
+
+    // Scale-degree modal: open button
+    const scaleDegreeModalBtn = document.getElementById('scaleDegreeModalBtn');
+    if (scaleDegreeModalBtn) {
+      scaleDegreeModalBtn.addEventListener('click', () => {
+        openScaleDegreeModal();
+      });
+    }
+
+    // Scale-degree modal: close button
+    const scaleDegreeModalClose = document.getElementById('scaleDegreeModalClose');
+    if (scaleDegreeModalClose) {
+      scaleDegreeModalClose.addEventListener('click', () => {
+        document.getElementById('scaleDegreeModal')?.close();
+      });
+    }
+
+    // Scale-degree modal: click outside (backdrop) to close
+    const scaleDegreeModal = document.getElementById('scaleDegreeModal');
+    if (scaleDegreeModal) {
+      scaleDegreeModal.addEventListener('click', (e) => {
+        if (e.target === scaleDegreeModal) scaleDegreeModal.close();
       });
     }
   }
