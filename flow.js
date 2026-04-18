@@ -610,11 +610,7 @@ function startVisualPlayback() {
   updateVisualForMeasure(0);
 
   visualPlaybackIntervalId = setInterval(() => {
-    visualPlaybackIndex++;
-    if (visualPlaybackIndex >= total) {
-      stopVisualPlayback();
-      return;
-    }
+    visualPlaybackIndex = (visualPlaybackIndex + 1) % total;
     updateVisualForMeasure(visualPlaybackIndex);
   }, msPerMeasure);
 }
@@ -648,6 +644,10 @@ function updatePlaybackStateFromExercise(exerciseData) {
   playbackState.measuresData = exerciseData?.measuresData || [];
   playbackState.stavePositions = exerciseData?.stavePositions || [];
   updatePlaybackControls();
+  refreshPlaybackBanner();
+}
+
+function refreshPlaybackBanner() {
   if (playbackState.engine === 'strudel') {
     if (playbackState.notes.length) {
       const bpm = getSelectedTempoBpm();
@@ -2153,7 +2153,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (playbackState.engine !== 'strudel') {
           return;
         }
-        updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+        refreshPlaybackBanner();
       });
     }
     const soundSelect = document.getElementById('strudelSound');
@@ -2162,7 +2162,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (playbackState.engine !== 'strudel') {
           return;
         }
-        updatePlaybackStateFromExercise({ generatedNotes: playbackState.notes });
+        refreshPlaybackBanner();
       });
     }
 
