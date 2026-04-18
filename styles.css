@@ -411,17 +411,18 @@ input[type="number"]:focus {
 
 /* Notes in the box */
 .dots .dot-in-box .dot-circle {
-  fill: #ff7043 !important;
-  stroke: #ffffff !important;
+  fill: #fca386 !important;
+  stroke: none !important;
 }
 
 /* Notes in the scale (default) */
 .dots .dot-circle {
-  fill: #ff7043 !important;
-  stroke: #ffffff !important;
+  fill: #FF8A65 !important;
+  stroke: none !important;
 }
 
 /* Root notes */
 .dots .dot-degree-1 .dot-circle {
-  fill: #00bcd4 !important;
+  fill: #a8ecf5 !important;
+  stroke: none !important;
 }

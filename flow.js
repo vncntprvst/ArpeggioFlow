@@ -1024,25 +1024,50 @@ function renderScaleDiagram(cagedShape) {
   ]);
 
   // Style the dots
+  // Style the dots via the library API (sets text/fontSize)
   fretboardInstance.style({
-    text: (position) => (position.degree === 1 ? '1' : position.note),
-    fill: (position) => {
-      if (position.degree === 1) {
-        return '#00BCD4'; // Teal for root notes
-      } else if (position.inBox) {
-        return '#FF7043'; // Coral for notes in the box
-      } else {
-        return 'rgba(200, 200, 200, 0.4)'; // Grey for out-of-box notes
-      }
-    },
-    stroke: (position) => {
-      if (position.inBox || position.degree === 1) {
-        return '#FFFFFF'; // White stroke for notes in the box and root notes
-      } else {
-        return '#AAAAAA'; // Grey stroke for other notes
-      }
-    },
-    strokeWidth: 1,
+    text: (position) => position.note,
+    fontSize: 17,
+  });
+
+  // Directly set fill and stroke on each dot circle. This is overridden by CSS classes.
+  scaleDiagram.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+    if (data.degree === 1) {
+      dotCircle.setAttribute('fill', '#e0eff1');   // Pale teal for root
+    } else if (data.inBox) {
+      dotCircle.setAttribute('fill', '#f3e0da');   // Pale coral for in-box
+    } else {
+      dotCircle.setAttribute('fill', 'rgba(200,200,200,0.4)'); // Grey for out-of-box
+    }
+    dotCircle.setAttribute('stroke', 'none');
+    dotCircle.setAttribute('stroke-width', '0');
+  });
+
+  // Add circle outlines around 3rd, 5th and 7th degree notes in the box
+  const RING_COLORS = { 3: '#b8a018', 5: '#52b686', 7: '#9a6fa1' }; // gold, green, violet
+  const dotRadius = 25 * 0.5; // matches dotSize option (25) * 0.5
+  const ringRadius = dotRadius + 1.5;
+  const svgNs = 'http://www.w3.org/2000/svg';
+  scaleDiagram.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data || !RING_COLORS[data.degree] || !data.inBox) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+    const ring = document.createElementNS(svgNs, 'circle');
+    ring.setAttribute('cx', dotCircle.getAttribute('cx'));
+    ring.setAttribute('cy', dotCircle.getAttribute('cy'));
+    ring.setAttribute('r', ringRadius);
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', RING_COLORS[data.degree]);
+    ring.setAttribute('stroke-width', '2.5');
+    ring.setAttribute('class', 'dot-ring');
+    // Insert before text so the label renders on top
+    const dotText = dotEl.querySelector('.dot-text');
+    dotEl.insertBefore(ring, dotText);
   });
 }
 
