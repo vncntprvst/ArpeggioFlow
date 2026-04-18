@@ -960,6 +960,9 @@ function renderScaleDiagram(cagedShape) {
     font: 'Futura',
     tuning: tuning,
     showFretNumbers: true,
+    highlightFill: 'rgba(100, 160, 255, 0.15)',
+    highlightStroke: '#aaaaaa',
+    highlightBlendMode: 'normal',
   });
 
   // console.log('fretboardInstance:', fretboardInstance);
@@ -1047,8 +1050,8 @@ function renderScaleDiagram(cagedShape) {
     dotCircle.setAttribute('stroke-width', '0');
   });
 
-  // Add circle outlines around 3rd, 5th and 7th degree notes in the box
-  const RING_COLORS = { 3: '#b8a018', 5: '#52b686', 7: '#9a6fa1' }; // gold, green, violet
+  // Add circle outlines around root, 3rd, 5th and 7th degree notes in the box
+  const RING_COLORS = { 1: '#000000', 3: '#000000', 5: '#000000', 7: '#000000' }; // 
   const dotRadius = 25 * 0.5; // matches dotSize option (25) * 0.5
   const ringRadius = dotRadius + 1.5;
   const svgNs = 'http://www.w3.org/2000/svg';

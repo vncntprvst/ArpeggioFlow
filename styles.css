@@ -411,7 +411,7 @@ input[type="number"]:focus {
 
 /* Notes in the box */
 .dots .dot-in-box .dot-circle {
-  fill: #fca386 !important;
+  fill: #accedb !important;
   stroke: none !important;
 }
 
@@ -423,6 +423,6 @@ input[type="number"]:focus {
 
 /* Root notes */
 .dots .dot-degree-1 .dot-circle {
-  fill: #a8ecf5 !important;
+  fill: #99c28d !important;
   stroke: none !important;
 }
