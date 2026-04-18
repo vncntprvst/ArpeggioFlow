@@ -199,6 +199,7 @@ const GUITAR_VARIANT_SAMPLE_MAP = {
   guitar5: 'samples/guitar/guitar_4.wav',
 };
 const STRUDEL_SOUND_CONFIG = {
+  'metronome': { type: 'metronome', label: 'Metronome Click' },
   'gtr-pluck': { type: 'dirt', sample: 'gtr', label: 'Plucked (Koto-like)' },
   'guitar-1': { type: 'sample-map', sample: 'guitar1', label: 'Guitar (Sample 1)' },
   'guitar-2': { type: 'sample-map', sample: 'guitar2', label: 'Guitar (Sample 2)' },
@@ -759,7 +760,12 @@ async function playStrudelExercise(notes) {
   }
   const measures = getMeasures(notes.length); 
   let pattern = api.note(patternText).slow(measures);
-  if (soundConfig.type === 'dirt') {
+  if (soundConfig.type === 'metronome') {
+    // Fixed pitch (c5) so every click sounds identical regardless of exercise notes.
+    // 15ms decay on a square wave = inaudible pitch, pure percussive click.
+    const clickPattern = Array(notes.length).fill('c5').join(' ');
+    pattern = api.note(clickPattern).slow(measures).s('square').decay(0.015).sustain(0).gain(0.75);
+  } else if (soundConfig.type === 'dirt') {
     const loaded = await ensureGuitarSamplesLoaded(api);
     if (loaded && typeof pattern.s === 'function') {
       pattern = pattern.s(soundConfig.sample);
