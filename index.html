@@ -233,7 +233,15 @@
 
             <div class="form-row">
               <div class="form-field">
-                <div class="button-row">
+                <div class="button-row playback-controls-row">
+                  <label class="toggle-label">
+                    <input type="checkbox" id="playbackVisual" checked />
+                    Visual
+                  </label>
+                  <label class="toggle-label">
+                    <input type="checkbox" id="playbackAudio" checked />
+                    Audio
+                  </label>
                   <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
                     Play
                   </button>
@@ -334,7 +342,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260418a"></script>
+  <script type="module" src="flow.js?v=20260418b"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>

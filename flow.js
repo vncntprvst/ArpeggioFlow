@@ -161,6 +161,8 @@ async function ensureGuitarVariantSamplesLoaded(api) {
 const playbackState = {
   engine: 'off',
   notes: [],
+  measuresData: [],
+  stavePositions: [],
 };
 
 const playbackUi = {
@@ -508,18 +510,143 @@ function setPlaybackBanner(message, tone = 'info') {
   playbackUi.banner.classList.toggle('status-banner--warning', tone === 'warning');
 }
 
+// ─── Visual Playback ──────────────────────────────────────────────────────────
+
+let visualPlaybackIntervalId = null;
+let visualPlaybackIndex = 0;
+
+function isVisualPlaybackEnabled() {
+  return document.getElementById('playbackVisual')?.checked ?? true;
+}
+
+function isAudioPlaybackEnabled() {
+  return document.getElementById('playbackAudio')?.checked ?? true;
+}
+
+/** Inject (or re-use) the playback highlight rect into the VexFlow SVG. */
+function ensurePlaybackHighlightRect() {
+  const notationDiv = document.getElementById('notation');
+  if (!notationDiv) return null;
+  let rect = notationDiv.querySelector('#playback-highlight');
+  if (!rect) {
+    const svg = notationDiv.querySelector('svg');
+    if (!svg) return null;
+    const svgNs = 'http://www.w3.org/2000/svg';
+    rect = document.createElementNS(svgNs, 'rect');
+    rect.setAttribute('id', 'playback-highlight');
+    rect.setAttribute('fill', 'rgba(255, 220, 80, 0.18)');
+    rect.setAttribute('stroke', 'rgba(255, 190, 0, 0.55)');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('visibility', 'hidden');
+    // Insert as first child so it renders behind notes
+    svg.insertBefore(rect, svg.firstChild);
+  }
+  return rect;
+}
+
+function moveHighlightToMeasure(idx) {
+  const pos = playbackState.stavePositions[idx];
+  if (!pos) return;
+  const rect = ensurePlaybackHighlightRect();
+  if (!rect) return;
+  const padding = 4;
+  rect.setAttribute('x', pos.x - padding);
+  rect.setAttribute('y', pos.y - padding);
+  rect.setAttribute('width', pos.width + padding * 2);
+  rect.setAttribute('height', pos.height + padding * 2);
+  rect.setAttribute('visibility', 'visible');
+}
+
+function hideHighlightRect() {
+  const notationDiv = document.getElementById('notation');
+  if (!notationDiv) return;
+  const rect = notationDiv.querySelector('#playback-highlight');
+  if (rect) rect.setAttribute('visibility', 'hidden');
+}
+
+function highlightChordTonesOnFretboard(chordNotes) {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  if (!fretboardDiv) return;
+  const chordChromas = new Set(
+    (chordNotes || []).map((n) => Tonal.Note.chroma(n))
+  );
+  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+    if (!data.inBox) return; // leave out-of-box dots unchanged
+    const isChordTone = chordChromas.has(Tonal.Note.chroma(data.note));
+    dotEl.style.opacity = isChordTone ? '1' : '0.2';
+  });
+}
+
+function resetFretboardHighlight() {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  if (!fretboardDiv) return;
+  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
+    dotEl.style.opacity = '1';
+  });
+}
+
+function updateVisualForMeasure(idx) {
+  if (isVisualPlaybackEnabled()) {
+    moveHighlightToMeasure(idx);
+    const measure = playbackState.measuresData[idx];
+    if (measure) {
+      highlightChordTonesOnFretboard(measure.chordNotes);
+    }
+  }
+}
+
+function startVisualPlayback() {
+  const total = playbackState.measuresData.length;
+  if (!total) return;
+  const bpm = getSelectedTempoBpm();
+  const msPerMeasure = (4 * 60000) / bpm;
+
+  visualPlaybackIndex = 0;
+  updateVisualForMeasure(0);
+
+  visualPlaybackIntervalId = setInterval(() => {
+    visualPlaybackIndex++;
+    if (visualPlaybackIndex >= total) {
+      stopVisualPlayback();
+      return;
+    }
+    updateVisualForMeasure(visualPlaybackIndex);
+  }, msPerMeasure);
+}
+
+function stopVisualPlayback() {
+  if (visualPlaybackIntervalId !== null) {
+    clearInterval(visualPlaybackIntervalId);
+    visualPlaybackIntervalId = null;
+  }
+  resetFretboardHighlight();
+  hideHighlightRect();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function updatePlaybackControls() {
   if (!playbackUi.playButton || !playbackUi.stopButton) {
     return;
   }
+  const hasExercise = playbackState.measuresData.length > 0;
   const canPlay =
-    playbackState.engine === 'strudel' && playbackState.notes.length > 0;
+    hasExercise &&
+    (isVisualPlaybackEnabled() ||
+      (playbackState.engine === 'strudel' && playbackState.notes.length > 0));
   playbackUi.playButton.disabled = !canPlay;
-  playbackUi.stopButton.disabled = playbackState.engine !== 'strudel';
+  playbackUi.stopButton.disabled = !hasExercise;
 }
 
 function updatePlaybackStateFromExercise(exerciseData) {
   playbackState.notes = exerciseData?.generatedNotes || [];
+  playbackState.measuresData = exerciseData?.measuresData || [];
+  playbackState.stavePositions = exerciseData?.stavePositions || [];
   updatePlaybackControls();
   if (playbackState.engine === 'strudel') {
     if (playbackState.notes.length) {
@@ -1700,8 +1827,11 @@ function generateExercise(options = {}) {
   const renderer = new Renderer(div, Renderer.Backends.SVG);
   renderer.resize(width, height);
   const context = renderer.getContext();
+  // Pre-inject the highlight rect as first SVG child (renders behind notes)
+  ensurePlaybackHighlightRect();
 
   // Render each measure, centered by line
+  const stavePositions = [];
   lineLayouts.forEach((line, lineIndex) => {
     let xStart = Math.max(20, Math.floor((width - line.width) / 2));
     let yStart = topPadding + lineIndex * staveHeight;
@@ -1721,6 +1851,7 @@ function generateExercise(options = {}) {
           .addTimeSignature('4/4');
       }
       stave.setContext(context).draw();
+      stavePositions[index] = { x: xStart, y: yStart, width: staveWidth, height: 80 };
 
       const chordAnnotation = new Annotation(measure.chordName)
         .setFont('Arial', 12, 'normal')
@@ -1743,7 +1874,7 @@ function generateExercise(options = {}) {
 
   renderArpeggioDiagrams(measureData, cagedShape);
 
-  return { generatedNotes };
+  return { generatedNotes, measuresData: measureData, stavePositions };
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
@@ -2037,19 +2168,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (playbackUi.playButton) {
       playbackUi.playButton.addEventListener('click', async () => {
-        if (playbackState.engine !== 'strudel') {
-          return;
+        stopVisualPlayback(); // stop any running visual first
+        if (isVisualPlaybackEnabled()) {
+          startVisualPlayback();
         }
-        await playStrudelExercise(playbackState.notes);
+        if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+          await playStrudelExercise(playbackState.notes);
+        }
       });
     }
 
     if (playbackUi.stopButton) {
       playbackUi.stopButton.addEventListener('click', async () => {
-        if (playbackState.engine !== 'strudel') {
-          return;
+        stopVisualPlayback();
+        if (playbackState.engine === 'strudel') {
+          await stopStrudelExercise();
         }
-        await stopStrudelExercise();
       });
     }
 
