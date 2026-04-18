@@ -163,6 +163,7 @@ const playbackState = {
   notes: [],
   measuresData: [],
   stavePositions: [],
+  isPlaying: false,
 };
 
 const playbackUi = {
@@ -566,29 +567,96 @@ function hideHighlightRect() {
   if (rect) rect.setAttribute('visibility', 'hidden');
 }
 
-function highlightChordTonesOnFretboard(chordNotes) {
-  const fretboardDiv = document.getElementById('fretboard-container');
-  if (!fretboardDiv) return;
-  const chordChromas = new Set(
-    (chordNotes || []).map((n) => Tonal.Note.chroma(n))
-  );
+// ── Fretboard coloring constants ─────────────────────────────────────────────
+const FRETBOARD_SVG_NS = 'http://www.w3.org/2000/svg';
+const FRETBOARD_DOT_RING_RADIUS = 25 * 0.5 + 1.5; // dotSize/2 + gap
+// CSS colors (must match styles.css !important rules)
+const FRETBOARD_COLOR_ROOT  = '#99c28d'; // matches .dot-degree-1
+const FRETBOARD_COLOR_INBOX = '#accedb'; // matches .dot-in-box
+// Rings: all black (same in static and playback views)
+const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
+
+function addRingToDot(dotEl, dotCircle) {
+  const ring = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
+  ring.setAttribute('cx', dotCircle.getAttribute('cx'));
+  ring.setAttribute('cy', dotCircle.getAttribute('cy'));
+  ring.setAttribute('r', FRETBOARD_DOT_RING_RADIUS);
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#000000');
+  ring.setAttribute('stroke-width', '2.5');
+  ring.setAttribute('class', 'dot-ring');
+  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
+}
+
+/** Restore static scale-degree coloring (CSS controls fills; we only manage rings + opacity). */
+function applyScaleDegreeColoring(fretboardDiv) {
   fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
     const data = dotEl.__data__;
     if (!data) return;
     const dotCircle = dotEl.querySelector('.dot-circle');
     if (!dotCircle) return;
-    if (!data.inBox) return; // leave out-of-box dots unchanged
-    const isChordTone = chordChromas.has(Tonal.Note.chroma(data.note));
-    dotEl.style.opacity = isChordTone ? '1' : '0.2';
+    dotEl.style.opacity = '1';
+    // Remove any playback-time inline fill override so CSS !important takes over again
+    dotCircle.style.removeProperty('fill');
+    dotEl.querySelectorAll('.dot-ring').forEach((r) => r.remove());
+    if (data.inBox && SCALE_DEGREE_RING_DEGREES.has(data.degree)) {
+      addRingToDot(dotEl, dotCircle);
+    }
+  });
+}
+
+/**
+ * During playback: re-color in-box dots relative to the current chord.
+ * - Chord root        → FRETBOARD_COLOR_ROOT  + black ring
+ * - Chord 3rd/5th/7th → FRETBOARD_COLOR_INBOX + black ring
+ * - Non-chord in-box  → dimmed (opacity 0.2), no ring
+ */
+function updateFretboardForChord(measure) {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  if (!fretboardDiv || !measure) return;
+
+  const { rootNote, quality } = measure;
+  const chordData = Tonal.Chord.get(`${rootNote}${quality}`);
+  const chromaToIntervalNum = {};
+  if (chordData && chordData.notes && chordData.intervals) {
+    chordData.notes.forEach((note, i) => {
+      const num = parseInt(chordData.intervals[i], 10);
+      chromaToIntervalNum[Tonal.Note.chroma(note)] = num;
+    });
+  }
+
+  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data || !data.inBox) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+
+    dotEl.querySelectorAll('.dot-ring').forEach((r) => r.remove());
+
+    const intervalNum = chromaToIntervalNum[Tonal.Note.chroma(data.note)];
+
+    if (intervalNum === undefined) {
+      dotEl.style.opacity = '0.2';
+      dotCircle.style.removeProperty('fill');
+      return;
+    }
+
+    dotEl.style.opacity = '1';
+    // Use setProperty with 'important' to override CSS !important rules
+    const fill = intervalNum === 1 ? FRETBOARD_COLOR_ROOT : FRETBOARD_COLOR_INBOX;
+    dotCircle.style.setProperty('fill', fill, 'important');
+
+    // Black ring for root, 3rd, 5th, 7th (matching static view language)
+    if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
+      addRingToDot(dotEl, dotCircle);
+    }
   });
 }
 
 function resetFretboardHighlight() {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv) return;
-  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
-    dotEl.style.opacity = '1';
-  });
+  applyScaleDegreeColoring(fretboardDiv);
 }
 
 function updateVisualForMeasure(idx) {
@@ -596,7 +664,7 @@ function updateVisualForMeasure(idx) {
     moveHighlightToMeasure(idx);
     const measure = playbackState.measuresData[idx];
     if (measure) {
-      highlightChordTonesOnFretboard(measure.chordNotes);
+      updateFretboardForChord(measure);
     }
   }
 }
@@ -623,6 +691,8 @@ function stopVisualPlayback() {
   }
   resetFretboardHighlight();
   hideHighlightRect();
+  playbackState.isPlaying = false;
+  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1166,45 +1236,8 @@ function renderScaleDiagram(cagedShape) {
     fontSize: 17,
   });
 
-  // Directly set fill and stroke on each dot circle. This is overridden by CSS classes.
-  scaleDiagram.querySelectorAll('.dot').forEach((dotEl) => {
-    const data = dotEl.__data__;
-    if (!data) return;
-    const dotCircle = dotEl.querySelector('.dot-circle');
-    if (!dotCircle) return;
-    if (data.degree === 1) {
-      dotCircle.setAttribute('fill', '#e0eff1');   // Pale teal for root
-    } else if (data.inBox) {
-      dotCircle.setAttribute('fill', '#f3e0da');   // Pale coral for in-box
-    } else {
-      dotCircle.setAttribute('fill', 'rgba(200,200,200,0.4)'); // Grey for out-of-box
-    }
-    dotCircle.setAttribute('stroke', 'none');
-    dotCircle.setAttribute('stroke-width', '0');
-  });
-
-  // Add circle outlines around root, 3rd, 5th and 7th degree notes in the box
-  const RING_COLORS = { 1: '#000000', 3: '#000000', 5: '#000000', 7: '#000000' }; // 
-  const dotRadius = 25 * 0.5; // matches dotSize option (25) * 0.5
-  const ringRadius = dotRadius + 1.5;
-  const svgNs = 'http://www.w3.org/2000/svg';
-  scaleDiagram.querySelectorAll('.dot').forEach((dotEl) => {
-    const data = dotEl.__data__;
-    if (!data || !RING_COLORS[data.degree] || !data.inBox) return;
-    const dotCircle = dotEl.querySelector('.dot-circle');
-    if (!dotCircle) return;
-    const ring = document.createElementNS(svgNs, 'circle');
-    ring.setAttribute('cx', dotCircle.getAttribute('cx'));
-    ring.setAttribute('cy', dotCircle.getAttribute('cy'));
-    ring.setAttribute('r', ringRadius);
-    ring.setAttribute('fill', 'none');
-    ring.setAttribute('stroke', RING_COLORS[data.degree]);
-    ring.setAttribute('stroke-width', '2.5');
-    ring.setAttribute('class', 'dot-ring');
-    // Insert before text so the label renders on top
-    const dotText = dotEl.querySelector('.dot-text');
-    dotEl.insertBefore(ring, dotText);
-  });
+  // Apply scale-degree coloring (fills + rings) to all dots
+  applyScaleDegreeColoring(scaleDiagram);
 }
 
 function getArpeggioDiagramContainer() {
@@ -2058,7 +2091,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     playbackUi.banner = document.getElementById('playback-banner');
     playbackUi.playButton = document.getElementById('playbackPlayButton');
-    playbackUi.stopButton = document.getElementById('playbackStopButton');
+    playbackUi.stopButton = playbackUi.playButton; // same element
     playbackState.engine = getSelectedPlaybackEngine();
     updatePlaybackControls();
 
@@ -2174,21 +2207,25 @@ document.addEventListener('DOMContentLoaded', function () {
 
     if (playbackUi.playButton) {
       playbackUi.playButton.addEventListener('click', async () => {
-        stopVisualPlayback(); // stop any running visual first
-        if (isVisualPlaybackEnabled()) {
-          startVisualPlayback();
-        }
-        if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
-          await playStrudelExercise(playbackState.notes);
-        }
-      });
-    }
-
-    if (playbackUi.stopButton) {
-      playbackUi.stopButton.addEventListener('click', async () => {
-        stopVisualPlayback();
-        if (playbackState.engine === 'strudel') {
-          await stopStrudelExercise();
+        if (playbackState.isPlaying) {
+          // Stop
+          stopVisualPlayback();
+          if (playbackState.engine === 'strudel') {
+            await stopStrudelExercise();
+          }
+          playbackState.isPlaying = false;
+          playbackUi.playButton.textContent = 'Play';
+        } else {
+          // Play
+          stopVisualPlayback();
+          if (isVisualPlaybackEnabled()) {
+            startVisualPlayback();
+          }
+          if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+            await playStrudelExercise(playbackState.notes);
+          }
+          playbackState.isPlaying = true;
+          playbackUi.playButton.textContent = 'Stop';
         }
       });
     }
