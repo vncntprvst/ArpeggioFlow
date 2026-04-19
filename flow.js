@@ -613,6 +613,7 @@ function applyScaleDegreeColoring(fretboardDiv) {
  * - Chord root        → FRETBOARD_COLOR_ROOT  + black ring
  * - Chord 3rd/5th/7th → FRETBOARD_COLOR_INBOX + black ring
  * - Non-chord in-box  → dimmed (opacity 0.2), no ring
+ * Additionally, dots whose exact pitch is one of the 4 played notes get a red ring.
  */
 function updateFretboardForChord(measure) {
   const fretboardDiv = document.getElementById('fretboard-container');
@@ -627,6 +628,11 @@ function updateFretboardForChord(measure) {
       chromaToIntervalNum[Tonal.Note.chroma(note)] = num;
     });
   }
+
+  // Build a set of MIDI values for the exact notes being played this measure
+  const playedMidiSet = new Set(
+    (measure.generatedNotes || []).map((n) => Tonal.Note.midi(n)).filter(Number.isFinite)
+  );
 
   fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
     const data = dotEl.__data__;
@@ -653,7 +659,32 @@ function updateFretboardForChord(measure) {
     if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
       addRingToDot(dotEl, dotCircle);
     }
+
+    // Red ring for the exact notes played this measure
+    if (playedMidiSet.size > 0) {
+      // Compute the MIDI of this dot from its string and fret
+      const stringIndex = tuning.length - data.string; // data.string: 6=low E → index 0
+      const openMidi = Tonal.Note.midi(tuning[stringIndex]);
+      if (Number.isFinite(openMidi)) {
+        const dotMidi = openMidi + data.fret;
+        if (playedMidiSet.has(dotMidi)) {
+          addPlayedNotesRing(dotEl, dotCircle);
+        }
+      }
+    }
   });
+}
+
+function addPlayedNotesRing(dotEl, dotCircle) {
+  const ring = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
+  ring.setAttribute('cx', dotCircle.getAttribute('cx'));
+  ring.setAttribute('cy', dotCircle.getAttribute('cy'));
+  ring.setAttribute('r', FRETBOARD_DOT_RING_RADIUS + 4); // slightly outside the black ring
+  ring.setAttribute('fill', 'none');
+  ring.setAttribute('stroke', '#e03030');
+  ring.setAttribute('stroke-width', '2.5');
+  ring.setAttribute('class', 'dot-ring dot-played-ring');
+  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
 }
 
 function resetFretboardHighlight() {
@@ -662,12 +693,29 @@ function resetFretboardHighlight() {
   applyScaleDegreeColoring(fretboardDiv);
 }
 
+function updateArpeggioDiagramHighlight(chordName) {
+  const container = document.getElementById('arpeggio-diagrams');
+  if (!container) return;
+  container.querySelectorAll('.arpeggio-diagram').forEach((el) => {
+    el.classList.toggle('arpeggio-diagram--active', el.dataset.chord === chordName);
+  });
+}
+
+function clearArpeggioDiagramHighlight() {
+  const container = document.getElementById('arpeggio-diagrams');
+  if (!container) return;
+  container.querySelectorAll('.arpeggio-diagram--active').forEach((el) => {
+    el.classList.remove('arpeggio-diagram--active');
+  });
+}
+
 function updateVisualForMeasure(idx) {
   if (isVisualPlaybackEnabled()) {
     moveHighlightToMeasure(idx);
     const measure = playbackState.measuresData[idx];
     if (measure) {
       updateFretboardForChord(measure);
+      updateArpeggioDiagramHighlight(measure.chordName);
     }
   }
 }
@@ -693,6 +741,7 @@ function stopVisualPlayback() {
     visualPlaybackIntervalId = null;
   }
   resetFretboardHighlight();
+  clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
   if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
@@ -1701,6 +1750,7 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
 
     const diagram = document.createElement('div');
     diagram.className = 'arpeggio-diagram';
+    diagram.dataset.chord = measure.chordName;
     const label = document.createElement('div');
     label.className = 'arpeggio-diagram__label';
     label.textContent = measure.chordName;
