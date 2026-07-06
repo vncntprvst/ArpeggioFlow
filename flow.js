@@ -1622,13 +1622,27 @@ function prepareExerciseContext(keyValue, shape) {
   };
 }
 
-function flattenSongProgression(progressionBars) {
+function normalizeSongBars(progressionBars) {
   if (!Array.isArray(progressionBars)) {
     return [];
   }
-  return progressionBars.flatMap((bar) =>
-    Array.isArray(bar) ? bar.filter(Boolean) : []
-  );
+  return progressionBars
+    .map((bar) => (Array.isArray(bar) ? bar.filter(Boolean) : []))
+    .filter((bar) => bar.length > 0);
+}
+
+function isTrueChorusLengthEnabled() {
+  const checkbox = document.getElementById('trueChorusLength');
+  return !!(checkbox && checkbox.checked);
+}
+
+// Split a bar's 4 beats among its chords (bars with more than 4 chords are
+// truncated to the first 4).
+function distributeNotesPerBar(chordCount) {
+  if (chordCount <= 1) return [4];
+  if (chordCount === 2) return [2, 2];
+  if (chordCount === 3) return [2, 1, 1];
+  return [1, 1, 1, 1];
 }
 
 function getChordNotesForRomanSymbol(
@@ -1840,7 +1854,7 @@ function generateExercise(options = {}) {
   const song = options.song || null;
   const isSongMode = mode === EXERCISE_MODES.SONG;
   let key = '';
-  let adjustedProgression = [];
+  let chordBars = []; // one entry per rendered bar: 1+ chord symbols
 
   if (!shape) {
     alert('Please select a chord shape.');
@@ -1853,7 +1867,12 @@ function generateExercise(options = {}) {
       return;
     }
     key = song.scaleType === 'minor' ? `${song.key}m` : song.key;
-    adjustedProgression = flattenSongProgression(song.progressionBars);
+    const songBars = normalizeSongBars(song.progressionBars);
+    // True chorus length: chords keep the bar they share in the chart.
+    // Otherwise every chord is stretched to its own full bar.
+    chordBars = isTrueChorusLengthEnabled()
+      ? songBars
+      : songBars.flat().map((chord) => [chord]);
   } else {
     key = getSelectedKeyValue();
     const progression = document.getElementById('progression').value;
@@ -1869,6 +1888,7 @@ function generateExercise(options = {}) {
     const fullCycles = Math.floor(bars / totalChords);
     const remainingBars = bars % totalChords;
 
+    let adjustedProgression = [];
     for (let i = 0; i < fullCycles; i++) {
       adjustedProgression = adjustedProgression.concat(chordsInProgression);
     }
@@ -1877,9 +1897,10 @@ function generateExercise(options = {}) {
         chordsInProgression.slice(0, remainingBars)
       );
     }
+    chordBars = adjustedProgression.map((chord) => [chord]);
   }
 
-  if (!adjustedProgression.length) {
+  if (!chordBars.length) {
     alert('No chords found for the selected exercise.');
     return;
   }
@@ -1917,43 +1938,55 @@ function generateExercise(options = {}) {
           true
         );
 
-  // Build measure data array with chord info
-  const measureData = adjustedProgression.map((chordSymbol, idx) => {
-    const isRootChord = !isSongMode && chordSymbol === 'I';
-    const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
-    const chordName = isSongMode
-      ? formatChordSymbol(chordSymbol)
-      : rootNote
-        ? formatChordName(rootNote, quality)
-        : formatChordSymbol(chordSymbol);
-    return {
-      index: idx,
-      chordSymbol,
-      chordName,
-      rootNote,
-      quality,
-      chordNotes,
-      isRootChord,
-      generatedNotes: null, // Will be filled in
-      direction: null, // Will be filled in
-    };
+  // Build measure data: one entry per chord. Chords sharing a bar (true
+  // chorus length) split the bar's 4 notes between them.
+  const measureData = [];
+  chordBars.forEach((barChords, barIndex) => {
+    const noteCounts = distributeNotesPerBar(barChords.length);
+    if (barChords.length > noteCounts.length) {
+      debugLog(
+        `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${noteCounts.length}.`
+      );
+    }
+    noteCounts.forEach((notesPerMeasure, chordIdx) => {
+      const chordSymbol = barChords[chordIdx];
+      const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
+      const chordName = isSongMode
+        ? formatChordSymbol(chordSymbol)
+        : rootNote
+          ? formatChordName(rootNote, quality)
+          : formatChordSymbol(chordSymbol);
+      measureData.push({
+        index: measureData.length,
+        barIndex,
+        chordSymbol,
+        chordName,
+        rootNote,
+        quality,
+        chordNotes,
+        notesPerMeasure,
+        generatedNotes: null, // Will be filled in
+        direction: null, // Will be filled in
+      });
+    });
   });
 
   const startDegree = getSelectedStartDegree();
 
-  if (startDegree !== null) {
-    // Chord-tone start mode: generate forward from the first measure,
-    // starting each measure on the requested chord degree (voice leading
-    // picks the octave closest to the previous measure's last note).
-    let prevNote = null;
-    let prevDirection = true;
-    measureData.forEach((measure) => {
-      if (measure.chordNotes.length === 0) {
-        console.error(`No notes for chord: ${measure.chordName}`);
-        return;
-      }
+  // Generate all measures forward from the first. Each measure starts on the
+  // closest chord tone in the current direction (or on the requested chord
+  // degree in chord-tone start mode); direction reverses only at the range
+  // boundaries.
+  let prevNote = null;
+  let prevDirection = true;
+  measureData.forEach((measure) => {
+    if (measure.chordNotes.length === 0) {
+      console.error(`No notes for chord: ${measure.chordName}`);
+      return;
+    }
+    let startNote = null;
+    if (startDegree !== null) {
       const candidates = getChordToneStartCandidates(measure, startDegree);
-      let startNote = null;
       if (candidates.length) {
         startNote =
           prevNote === null
@@ -1970,196 +2003,48 @@ function generateExercise(options = {}) {
           `No degree-${startDegree} tone for ${measure.chordName}; free flow for this measure.`
         );
       }
-      const result = window.noteFlow.generateMeasureNotes(
-        measure.chordNotes,
-        4,
-        prevNote,
-        prevDirection,
-        Tonal.Note.freq,
-        Tonal.Note.midi,
-        startNote
-      );
-      measure.generatedNotes = result.notes;
-      measure.direction = result.newDirection;
-      prevNote = result.notes[result.notes.length - 1];
-      prevDirection = result.newDirection;
-      debugLog(
-        `Generated measure ${measure.index + 1} (start on ${startDegree}, ${measure.chordSymbol}):`,
-        result.notes
-      );
-    });
-  } else {
-  // Free-flow mode: anchor at the first I chord, then fill forward/backward.
-
-  // Find the first I chord (root chord) index
-  const firstRootChordIndex = measureData.findIndex(m => m.isRootChord);
-
-  debugLog('Measure generation strategy:', {
-    totalMeasures: measureData.length,
-    firstRootChordIndex,
-    progression: adjustedProgression
-  });
-
-  // If no I chord found, fall back to sequential generation starting from measure 0
-  const startIndex = firstRootChordIndex >= 0 ? firstRootChordIndex : 0;
-
-  // Generate the starting measure (I chord or first measure if no I chord)
-  let startMeasure = measureData[startIndex];
-  if (startMeasure.chordNotes.length === 0) {
-    console.error(`No notes found for starting chord: ${startMeasure.chordName}`);
-    return;
-  }
-
-  // Generate the first (anchor) measure - random start, ascending direction
-  const startResult = window.noteFlow.generateMeasureNotes(
-    startMeasure.chordNotes,
-    4,
-    null, // No previous note
-    true, // Start ascending
-    Tonal.Note.freq,
-    Tonal.Note.midi
-  );
-  startMeasure.generatedNotes = startResult.notes;
-  startMeasure.direction = startResult.newDirection;
-
-  debugLog(`Generated anchor measure ${startIndex + 1} (${startMeasure.chordSymbol}):`, startResult.notes);
-
-  // Generate measures AFTER the start index (forward direction)
-  for (let i = startIndex + 1; i < measureData.length; i++) {
-    const prevMeasure = measureData[i - 1];
-    const currentMeasure = measureData[i];
-
-    if (currentMeasure.chordNotes.length === 0) {
-      console.error(`No notes for chord: ${currentMeasure.chordName}`);
-      continue;
     }
-
-    const previousNote = prevMeasure.generatedNotes[prevMeasure.generatedNotes.length - 1];
     const result = window.noteFlow.generateMeasureNotes(
-      currentMeasure.chordNotes,
-      4,
-      previousNote,
-      prevMeasure.direction,
+      measure.chordNotes,
+      measure.notesPerMeasure || 4,
+      prevNote,
+      prevDirection,
       Tonal.Note.freq,
-      Tonal.Note.midi
+      Tonal.Note.midi,
+      startNote
     );
-    currentMeasure.generatedNotes = result.notes;
-    currentMeasure.direction = result.newDirection;
-
-    debugLog(`Generated measure ${i + 1} (forward, ${currentMeasure.chordSymbol}):`, result.notes);
-  }
-
-  // Generate measures BEFORE the start index (backward direction)
-  // We work backwards, using the FIRST note of the next measure as our target
-  for (let i = startIndex - 1; i >= 0; i--) {
-    const nextMeasure = measureData[i + 1];
-    const currentMeasure = measureData[i];
-    
-    if (currentMeasure.chordNotes.length === 0) {
-      console.error(`No notes for chord: ${currentMeasure.chordName}`);
-      continue;
-    }
-
-    // The target is the first note of the next measure
-    // We need to find notes that flow INTO that target
-    const targetNote = nextMeasure.generatedNotes[0];
-    const targetMidi = Tonal.Note.midi(targetNote);
-    
-    // Determine direction: if next measure's first note came from descending,
-    // this measure should end descending (so we were ascending within it)
-    // We need to figure out what direction we need to END with
-    // The next measure received our last note and continued in some direction
-    // For smooth flow, we work backwards
-    
-    // Find the closest chord tone to the target (the note we need to end on)
-    const closestToTarget = window.noteFlow.findClosestNote(
-      targetNote,
-      currentMeasure.chordNotes,
-      true, // direction hint (not critical since we prioritize proximity)
-      Tonal.Note.freq,
-      Tonal.Note.midi
+    measure.generatedNotes = result.notes;
+    measure.direction = result.newDirection;
+    prevNote = result.notes[result.notes.length - 1];
+    prevDirection = result.newDirection;
+    debugLog(
+      `Generated measure ${measure.index + 1} (${measure.chordSymbol}):`,
+      result.notes
     );
-    
-    const closestMidi = Tonal.Note.midi(closestToTarget);
-    
-    // Generate this measure ending on or near closestToTarget
-    // We'll generate normally then check if we can adjust
-    // For now, generate with the target as the "previous note" (working backwards)
-    // But we need to reverse the logic - we want to END near the target
-    
-    // Strategy: Generate measure ending at closestToTarget
-    // Work out what the last note should be, then generate 4 notes ending there
-    
-    // Simple approach: Use the closestToTarget as the last note,
-    // and work backwards to generate the preceding 3 notes
-    const closestIdx = currentMeasure.chordNotes.indexOf(closestToTarget);
-    
-    // Determine direction for this measure: 
-    // If closestToTarget < targetNote, we were ascending (ended lower, going up to target)
-    // If closestToTarget > targetNote, we were descending
-    // If equal, use the next measure's entry direction
-    let measureDirection;
-    if (closestMidi < targetMidi) {
-      measureDirection = true; // ascending - we end low and flow up to target
-    } else if (closestMidi > targetMidi) {
-      measureDirection = false; // descending - we end high and flow down to target
-    } else {
-      measureDirection = true; // same note, default ascending
-    }
-    
-    // Generate notes going backwards from the end point
-    // We'll generate 4 notes where the last one is at or near closestToTarget
-    const notes = [];
-    let currentIdx = closestIdx;
-    const len = currentMeasure.chordNotes.length;
-    
-    // Build notes array in reverse (from last to first)
-    for (let n = 0; n < 4; n++) {
-      notes.unshift(currentMeasure.chordNotes[currentIdx]);
-      
-      // Move in opposite direction (since we're building backwards)
-      if (measureDirection) {
-        // Measure ends ascending, so going backwards we descend
-        currentIdx = currentIdx - 1;
-        if (currentIdx < 0) {
-          currentIdx = 1; // Bounce back
-          measureDirection = false; // Reverse
-        }
-      } else {
-        // Measure ends descending, so going backwards we ascend
-        currentIdx = currentIdx + 1;
-        if (currentIdx >= len) {
-          currentIdx = len - 2;
-          measureDirection = true; // Reverse
-        }
-      }
-    }
-    
-    currentMeasure.generatedNotes = notes;
-    // Direction at the END of this measure (for consistency)
-    currentMeasure.direction = closestMidi <= targetMidi;
-
-    debugLog(`Generated measure ${i + 1} (backward, ${currentMeasure.chordSymbol}):`, notes);
-  }
-  } // end free-flow mode
-
-  // Now build the VexFlow notes for rendering
-  const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
-  const measures = measureData.map(m => {
-    const measureNotes = m.generatedNotes.map(note =>
-      new StaveNote({
-        clef: 'treble',
-        keys: [toVexFlowFormat(note)],
-        duration: 'q',
-      })
-    );
-    
-    return {
-      chordSymbol: m.chordSymbol,
-      chordName: m.chordName,
-      notes: measureNotes,
-    };
   });
+
+  // Now build the VexFlow notes for rendering, one stave per bar
+  const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
+  const barGroups = [];
+  measureData.forEach((segment) => {
+    if (!barGroups[segment.barIndex]) {
+      barGroups[segment.barIndex] = { segments: [] };
+    }
+    barGroups[segment.barIndex].segments.push(segment);
+  });
+  const measures = barGroups.map((bar) => ({
+    segments: bar.segments,
+    notes: bar.segments.flatMap((segment) =>
+      (segment.generatedNotes || []).map(
+        (note) =>
+          new StaveNote({
+            clef: 'treble',
+            keys: [toVexFlowFormat(note)],
+            duration: 'q',
+          })
+      )
+    ),
+  }));
 
   const measureWidths = measures.map((_, idx) =>
     calculateMeasureWidth(keyContext.vexflowKeySignature, idx === 0)
@@ -2218,11 +2103,18 @@ function generateExercise(options = {}) {
       stave.setContext(context).draw();
       stavePositions[index] = { x: xStart, y: yStart, width: staveWidth, height: 80 };
 
-      const chordAnnotation = new Annotation(measure.chordName)
-        .setFont('Arial', 12, 'normal')
-        .setVerticalJustification(Annotation.VerticalJustify.TOP)
-        .setYShift(10);
-      measure.notes[0].addModifier(chordAnnotation, 0);
+      // One chord annotation per segment, at the segment's first note
+      let annotationNoteIndex = 0;
+      measure.segments.forEach((segment) => {
+        const chordAnnotation = new Annotation(segment.chordName)
+          .setFont('Arial', 12, 'normal')
+          .setVerticalJustification(Annotation.VerticalJustify.TOP)
+          .setYShift(10);
+        if (measure.notes[annotationNoteIndex]) {
+          measure.notes[annotationNoteIndex].addModifier(chordAnnotation, 0);
+        }
+        annotationNoteIndex += (segment.generatedNotes || []).length;
+      });
 
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
@@ -2242,7 +2134,18 @@ function generateExercise(options = {}) {
   // Store for the scale-degrees modal
   lastExerciseState = { cagedShape, measureData };
 
-  return { generatedNotes, measuresData: measureData, stavePositions };
+  // Playback works bar by bar (one highlight step per 4 beats). For bars with
+  // several chords, the fretboard/diagram highlight follows the first chord.
+  const measuresForPlayback = measures.map((measure) => ({
+    chordName: measure.segments[0]?.chordName,
+    rootNote: measure.segments[0]?.rootNote,
+    quality: measure.segments[0]?.quality,
+    generatedNotes: measure.segments.flatMap(
+      (segment) => segment.generatedNotes || []
+    ),
+  }));
+
+  return { generatedNotes, measuresData: measuresForPlayback, stavePositions };
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
