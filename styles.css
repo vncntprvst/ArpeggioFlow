@@ -446,6 +446,18 @@ input[type="number"]:focus {
   stroke: none !important;
 }
 
+/* Small R/3/5/7 tag at the top-right of ringed dots */
+.dot-degree-label {
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  fill: #1f2937;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
 /* ===== Scale degrees modal ===== */
 
 .scale-degree-modal {

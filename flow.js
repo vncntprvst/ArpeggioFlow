@@ -591,6 +591,20 @@ function addRingToDot(dotEl, dotCircle) {
   dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
 }
 
+/** Small "R"/"3"/"5"/"7" tag at the top-right of a ringed dot. */
+function addDegreeLabelToDot(dotEl, dotCircle, degreeNum) {
+  const label = document.createElementNS(FRETBOARD_SVG_NS, 'text');
+  // cx/cy can be percentage strings (fretboard.js positions dots that way),
+  // so copy them verbatim and offset with dx/dy instead of computing pixels.
+  label.setAttribute('x', dotCircle.getAttribute('cx'));
+  label.setAttribute('y', dotCircle.getAttribute('cy'));
+  label.setAttribute('dx', FRETBOARD_DOT_RING_RADIUS - 3);
+  label.setAttribute('dy', -(FRETBOARD_DOT_RING_RADIUS - 3));
+  label.setAttribute('class', 'dot-degree-label');
+  label.textContent = degreeNum === 1 ? 'R' : String(degreeNum);
+  dotEl.appendChild(label);
+}
+
 /** Restore static scale-degree coloring (CSS controls fills; we only manage rings + opacity). */
 function applyScaleDegreeColoring(fretboardDiv) {
   fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
@@ -601,9 +615,10 @@ function applyScaleDegreeColoring(fretboardDiv) {
     dotEl.style.opacity = '1';
     // Remove any playback-time inline fill override so CSS !important takes over again
     dotCircle.style.removeProperty('fill');
-    dotEl.querySelectorAll('.dot-ring').forEach((r) => r.remove());
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
     if (data.inBox && SCALE_DEGREE_RING_DEGREES.has(data.degree)) {
       addRingToDot(dotEl, dotCircle);
+      addDegreeLabelToDot(dotEl, dotCircle, data.degree);
     }
   });
 }
@@ -640,7 +655,7 @@ function updateFretboardForChord(measure) {
     const dotCircle = dotEl.querySelector('.dot-circle');
     if (!dotCircle) return;
 
-    dotEl.querySelectorAll('.dot-ring').forEach((r) => r.remove());
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
 
     const intervalNum = chromaToIntervalNum[Tonal.Note.chroma(data.note)];
 
@@ -658,6 +673,7 @@ function updateFretboardForChord(measure) {
     // Black ring for root, 3rd, 5th, 7th (matching static view language)
     if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
       addRingToDot(dotEl, dotCircle);
+      addDegreeLabelToDot(dotEl, dotCircle, intervalNum);
     }
 
     // Red ring for the exact notes played this measure
