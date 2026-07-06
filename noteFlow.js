@@ -190,9 +190,11 @@ function shouldReverseDirection(note, chordNotes, isAscending) {
  * @param {boolean} isAscending - Initial direction
  * @param {function} noteFreq - Function to get frequency
  * @param {function} noteMidi - Function to get MIDI number
+ * @param {string|null} startNote - Optional forced first note (must be in chordNotes);
+ *   used by the "start each chord on a specific chord tone" exercise option
  * @returns {{ notes: string[], newDirection: boolean }} - Generated notes and ending direction
  */
-function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscending, noteFreq, noteMidi) {
+function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscending, noteFreq, noteMidi, startNote = null) {
   const notes = [];
   let currentDirection = isAscending;
 
@@ -200,14 +202,28 @@ function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscen
     chordNotes,
     notesPerMeasure,
     previousNote,
-    isAscending
+    isAscending,
+    startNote
   });
 
   for (let i = 0; i < notesPerMeasure; i++) {
     let note;
 
     if (i === 0) {
-      if (previousNote === null) {
+      if (startNote !== null && chordNotes.includes(startNote)) {
+        // Forced start on a specific chord tone
+        note = startNote;
+        debugLog('First note (forced start):', note);
+        if (previousNote !== null) {
+          const prevMidi = noteMidi(previousNote);
+          const currMidi = noteMidi(note);
+          if (currMidi > prevMidi) {
+            currentDirection = true;
+          } else if (currMidi < prevMidi) {
+            currentDirection = false;
+          }
+        }
+      } else if (previousNote === null) {
         // First note of first measure: random selection
         const randomIdx = Math.floor(Math.random() * chordNotes.length);
         note = chordNotes[randomIdx];

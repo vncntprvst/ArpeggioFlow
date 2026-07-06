@@ -255,6 +255,31 @@ describe('noteFlow module', () => {
       const idx1 = cmaj7Notes.indexOf(result.notes[1]);
       expect(idx1).toBeLessThan(idx0);
     });
+
+    test('forced startNote is used as first note', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'C3', true, mockNoteFreq, mockNoteMidi, 'G4');
+      expect(result.notes[0]).toBe('G4');
+    });
+
+    test('forced startNote sets direction relative to previous note', () => {
+      // Previous note above start note → measure begins descending
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'C5', true, mockNoteFreq, mockNoteMidi, 'G4');
+      expect(result.notes[0]).toBe('G4');
+      const idx0 = cmaj7Notes.indexOf(result.notes[0]);
+      const idx1 = cmaj7Notes.indexOf(result.notes[1]);
+      expect(idx1).toBeLessThan(idx0);
+    });
+
+    test('forced startNote works with no previous note', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, null, true, mockNoteFreq, mockNoteMidi, 'E3');
+      expect(result.notes[0]).toBe('E3');
+    });
+
+    test('startNote not in chordNotes falls back to normal behavior', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'E4', true, mockNoteFreq, mockNoteMidi, 'F#4');
+      // F#4 is not a Cmaj7 chord tone; falls back to closest-note logic
+      expect(result.notes[0]).toBe('E4');
+    });
   });
 
   describe('integration: multi-measure flow', () => {

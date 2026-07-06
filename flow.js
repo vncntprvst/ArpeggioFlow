@@ -1786,6 +1786,38 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
   if (arpeggioHeader) arpeggioHeader.style.display = '';
 }
 
+// Selected "start each chord on" option: null for free flow, or 1/3/5/7
+function getSelectedStartDegree() {
+  const select = document.getElementById('startDegree');
+  if (!select || select.value === 'flow') {
+    return null;
+  }
+  const degree = parseInt(select.value, 10);
+  return Number.isFinite(degree) ? degree : null;
+}
+
+// All notes in the measure's chord-note pool matching the requested chord
+// degree (1 = root, 3, 5, 7), across octaves. Empty if the chord has no such
+// tone (e.g. asking for the 7th of a 6 chord) or it fell outside the shape.
+function getChordToneStartCandidates(measure, degree) {
+  const chordData = Tonal.Chord.get(`${measure.rootNote}${measure.quality}`);
+  if (!chordData || !chordData.notes || !chordData.intervals) {
+    return [];
+  }
+  let targetChroma = null;
+  chordData.notes.forEach((note, i) => {
+    if (parseInt(chordData.intervals[i], 10) === degree) {
+      targetChroma = Tonal.Note.chroma(note);
+    }
+  });
+  if (targetChroma === null) {
+    return [];
+  }
+  return measure.chordNotes.filter(
+    (note) => Tonal.Note.chroma(note) === targetChroma
+  );
+}
+
 function generateExercise(options = {}) {
   const mode = options.mode || EXERCISE_MODES.RANDOM;
   const shape = document.getElementById('shape').value;
@@ -1891,9 +1923,61 @@ function generateExercise(options = {}) {
     };
   });
 
+  const startDegree = getSelectedStartDegree();
+
+  if (startDegree !== null) {
+    // Chord-tone start mode: generate forward from the first measure,
+    // starting each measure on the requested chord degree (voice leading
+    // picks the octave closest to the previous measure's last note).
+    let prevNote = null;
+    let prevDirection = true;
+    measureData.forEach((measure) => {
+      if (measure.chordNotes.length === 0) {
+        console.error(`No notes for chord: ${measure.chordName}`);
+        return;
+      }
+      const candidates = getChordToneStartCandidates(measure, startDegree);
+      let startNote = null;
+      if (candidates.length) {
+        startNote =
+          prevNote === null
+            ? candidates[Math.floor(candidates.length / 2)]
+            : window.noteFlow.findClosestNote(
+                prevNote,
+                candidates,
+                prevDirection,
+                Tonal.Note.freq,
+                Tonal.Note.midi
+              );
+      } else {
+        debugLog(
+          `No degree-${startDegree} tone for ${measure.chordName}; free flow for this measure.`
+        );
+      }
+      const result = window.noteFlow.generateMeasureNotes(
+        measure.chordNotes,
+        4,
+        prevNote,
+        prevDirection,
+        Tonal.Note.freq,
+        Tonal.Note.midi,
+        startNote
+      );
+      measure.generatedNotes = result.notes;
+      measure.direction = result.newDirection;
+      prevNote = result.notes[result.notes.length - 1];
+      prevDirection = result.newDirection;
+      debugLog(
+        `Generated measure ${measure.index + 1} (start on ${startDegree}, ${measure.chordSymbol}):`,
+        result.notes
+      );
+    });
+  } else {
+  // Free-flow mode: anchor at the first I chord, then fill forward/backward.
+
   // Find the first I chord (root chord) index
   const firstRootChordIndex = measureData.findIndex(m => m.isRootChord);
-  
+
   debugLog('Measure generation strategy:', {
     totalMeasures: measureData.length,
     firstRootChordIndex,
@@ -1928,7 +2012,7 @@ function generateExercise(options = {}) {
   for (let i = startIndex + 1; i < measureData.length; i++) {
     const prevMeasure = measureData[i - 1];
     const currentMeasure = measureData[i];
-    
+
     if (currentMeasure.chordNotes.length === 0) {
       console.error(`No notes for chord: ${currentMeasure.chordName}`);
       continue;
@@ -2041,6 +2125,7 @@ function generateExercise(options = {}) {
 
     debugLog(`Generated measure ${i + 1} (backward, ${currentMeasure.chordSymbol}):`, notes);
   }
+  } // end free-flow mode
 
   // Now build the VexFlow notes for rendering
   const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
