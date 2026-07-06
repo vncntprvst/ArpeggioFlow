@@ -104,6 +104,54 @@ function findClosestNote(previousNote, chordNotes, isAscending, noteFreq, noteMi
 }
 
 /**
+ * Find the first note of a new measure while preserving the current direction
+ * of travel. Candidates are chord tones at-or-beyond the previous note in the
+ * current direction (unison allowed); the closest one wins. Only when no such
+ * candidate exists (the previous note sits at the top/bottom of the pool)
+ * does the direction reverse.
+ * @param {string} previousNote - Last note of the previous measure
+ * @param {string[]} chordNotes - Available chord notes (sorted by pitch)
+ * @param {boolean} isAscending - Current direction
+ * @param {function} noteMidi - Function to get MIDI number from note name
+ * @returns {{ note: string, newDirection: boolean }}
+ */
+function findClosestNoteInDirection(previousNote, chordNotes, isAscending, noteMidi) {
+  const previousMidi = noteMidi(previousNote);
+  const withMidi = chordNotes.map((note) => ({ note, midi: noteMidi(note) }));
+
+  const inDirection = (direction) =>
+    withMidi.filter((item) =>
+      direction ? item.midi >= previousMidi : item.midi <= previousMidi
+    );
+
+  let newDirection = isAscending;
+  let candidates = inDirection(newDirection);
+  if (!candidates.length) {
+    // Nothing left in this direction: turn around at the boundary
+    newDirection = !newDirection;
+    candidates = inDirection(newDirection);
+  }
+  if (!candidates.length) {
+    candidates = withMidi;
+  }
+
+  const chosen = candidates.reduce((best, item) =>
+    Math.abs(item.midi - previousMidi) < Math.abs(best.midi - previousMidi)
+      ? item
+      : best
+  );
+
+  debugLog('findClosestNoteInDirection:', {
+    previousNote,
+    isAscending,
+    chosenNote: chosen.note,
+    newDirection
+  });
+
+  return { note: chosen.note, newDirection };
+}
+
+/**
  * Get the next note based on ascending/descending direction
  * @param {string[]} currentMeasureNotes - Notes already in the current measure
  * @param {string[]} chordNotes - Array of available chord notes (sorted by pitch)
@@ -229,24 +277,18 @@ function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscen
         note = chordNotes[randomIdx];
         debugLog('First note (random):', note);
       } else {
-        // First note of subsequent measure: find closest chord tone
-        // This prioritizes proximity for smooth voice leading
-        note = findClosestNote(previousNote, chordNotes, currentDirection, noteFreq, noteMidi);
-        debugLog('First note (closest):', note);
-        
-        // Update direction based on the movement from previous note to this note
-        const prevMidi = noteMidi(previousNote);
-        const currMidi = noteMidi(note);
-        if (currMidi > prevMidi) {
-          currentDirection = true; // we moved up, so continue ascending
-        } else if (currMidi < prevMidi) {
-          currentDirection = false; // we moved down, so continue descending
-        }
-        // If same pitch (unison), keep the current direction
-        
-        debugLog('Direction updated after closest note:', {
-          prevMidi,
-          currMidi,
+        // First note of subsequent measure: keep moving in the current
+        // direction; reverse only at the top/bottom of the available range.
+        const picked = findClosestNoteInDirection(
+          previousNote,
+          chordNotes,
+          currentDirection,
+          noteMidi
+        );
+        note = picked.note;
+        currentDirection = picked.newDirection;
+        debugLog('First note (closest in direction):', {
+          note,
           newDirection: currentDirection
         });
       }
@@ -273,6 +315,7 @@ if (typeof module !== 'undefined' && module.exports) {
     debugLog,
     findClosestIndex,
     findClosestNote,
+    findClosestNoteInDirection,
     getNextNoteInDirection,
     reachedBoundary,
     shouldReverseDirection,
@@ -287,6 +330,7 @@ if (typeof window !== 'undefined') {
     debugLog,
     findClosestIndex,
     findClosestNote,
+    findClosestNoteInDirection,
     getNextNoteInDirection,
     reachedBoundary,
     shouldReverseDirection,

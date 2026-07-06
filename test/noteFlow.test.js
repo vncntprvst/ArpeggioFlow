@@ -356,22 +356,42 @@ describe('noteFlow module', () => {
     });
 
     test('picks closest note for smooth voice leading (descending preference)', () => {
-      // If we're descending and at E4, we should pick the closest Dm7 chord tone
+      // If we're descending and at E4, we should pick the closest Dm7 chord
+      // tone BELOW (direction is preserved; F4 is closer but lies above)
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
       const previousNote = 'E4'; // Somewhere in the middle (E4 = 64)
       const isAscending = false;
-      
+
       const result = generateMeasureNotes(dm7Notes, 4, previousNote, isAscending, mockNoteFreq, mockNoteMidi);
-      
+
       const prevMidi = mockNoteMidi(previousNote); // E4 = 64
       const firstMidi = mockNoteMidi(result.notes[0]);
       const distance = Math.abs(firstMidi - prevMidi);
-      
-      // Closest Dm7 tones to E4 are D4=62 (2 semitones) and F4=65 (1 semitone)
-      // Should pick one of the closest for smooth voice leading
+
       expect(distance).toBeLessThanOrEqual(3);
-      // F4 is closest (1 semitone away)
+      // D4 (2 semitones below) keeps the descent going
+      expect(result.notes[0]).toBe('D4');
+    });
+
+    test('direction is preserved across measures until a boundary is hit', () => {
+      // Ascending mid-range: the next measure must not turn around even when
+      // the closest chord tone lies below the previous note
+      const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
+      // Previous note E4 (64): F4 (65, above) and D4 (62, below) — ascending
+      // must pick F4 even though both are close
+      const result = generateMeasureNotes(dm7Notes, 4, 'E4', true, mockNoteFreq, mockNoteMidi);
       expect(result.notes[0]).toBe('F4');
+      // And the measure keeps climbing from there
+      expect(mockNoteMidi(result.notes[1])).toBeGreaterThan(mockNoteMidi(result.notes[0]));
+    });
+
+    test('direction reverses at measure boundary only when range is exhausted', () => {
+      const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
+      // Previous note G5 (79) is above the whole pool while ascending:
+      // the only place to go is down
+      const result = generateMeasureNotes(dm7Notes, 4, 'G5', true, mockNoteFreq, mockNoteMidi);
+      expect(result.notes[0]).toBe('F5');
+      expect(mockNoteMidi(result.notes[1])).toBeLessThan(mockNoteMidi(result.notes[0]));
     });
 
     test('all generated notes come from chordNotes array (100 iterations)', () => {
