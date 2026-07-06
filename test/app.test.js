@@ -336,14 +336,22 @@ describe('Strudel playback adapters', () => {
     const cyclesMatch = flowJsContent.match(/function getCyclesPerMinute\([\s\S]*?\n\}/);
     const evalMatch = flowJsContent.match(/function buildStrudelEvaluateCode\([\s\S]*?\n\}/);
     const globalMatch = flowJsContent.match(/function getGlobalStrudelApi\([\s\S]*?\n\}/);
+    // Dependencies the functions above reference at call time
+    const beatsMatch = flowJsContent.match(/const BEATS_PER_CYCLE = (\d+)/);
+    const cpsMatch = flowJsContent.match(/function getCyclesPerSecond\([\s\S]*?\n\}/);
+    const measuresMatch = flowJsContent.match(/function getMeasures\([\s\S]*?\n\}/);
 
-    if (!toNoteMatch || !buildMatch || !cyclesMatch || !evalMatch || !globalMatch) {
+    if (!toNoteMatch || !buildMatch || !cyclesMatch || !evalMatch || !globalMatch ||
+        !beatsMatch || !cpsMatch || !measuresMatch) {
       throw new Error('Could not extract Strudel adapter functions from flow.js');
     }
 
+    global.BEATS_PER_CYCLE = Number(beatsMatch[1]);
     eval(`global.toStrudelNote = ${toNoteMatch[0]}`);
     eval(`global.buildStrudelNotePattern = ${buildMatch[0]}`);
     eval(`global.getCyclesPerMinute = ${cyclesMatch[0]}`);
+    eval(`global.getCyclesPerSecond = ${cpsMatch[0]}`);
+    eval(`global.getMeasures = ${measuresMatch[0]}`);
     eval(`global.buildStrudelEvaluateCode = ${evalMatch[0]}`);
     eval(`global.getGlobalStrudelApi = ${globalMatch[0]}`);
     toStrudelNote = global.toStrudelNote;
