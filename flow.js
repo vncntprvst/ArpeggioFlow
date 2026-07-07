@@ -517,7 +517,7 @@ function setPlaybackBanner(message, tone = 'info') {
 
 // ─── Visual Playback ──────────────────────────────────────────────────────────
 
-let visualPlaybackIntervalId = null;
+let visualPlaybackTimerId = null;
 let visualPlaybackIndex = 0;
 
 function isVisualPlaybackEnabled() {
@@ -727,34 +727,43 @@ function clearArpeggioDiagramHighlight() {
 
 function updateVisualForMeasure(idx) {
   if (isVisualPlaybackEnabled()) {
-    moveHighlightToMeasure(idx);
-    const measure = playbackState.measuresData[idx];
-    if (measure) {
-      updateFretboardForChord(measure);
-      updateArpeggioDiagramHighlight(measure.chordName);
+    const step = playbackState.measuresData[idx];
+    if (step) {
+      moveHighlightToMeasure(step.barIndex ?? idx);
+      updateFretboardForChord(step);
+      updateArpeggioDiagramHighlight(step.chordName);
     }
   }
 }
 
 function startVisualPlayback() {
-  const total = playbackState.measuresData.length;
-  if (!total) return;
+  const steps = playbackState.measuresData;
+  if (!steps.length) return;
   const bpm = getSelectedTempoBpm();
-  const msPerMeasure = (4 * 60000) / bpm;
+  const msPerBeat = 60000 / bpm;
 
   visualPlaybackIndex = 0;
   updateVisualForMeasure(0);
 
-  visualPlaybackIntervalId = setInterval(() => {
-    visualPlaybackIndex = (visualPlaybackIndex + 1) % total;
-    updateVisualForMeasure(visualPlaybackIndex);
-  }, msPerMeasure);
+  // Each step lasts its own beat count (2 beats for chords sharing a bar,
+  // 4 for full bars). Drift-corrected against a running absolute deadline.
+  let nextTime = performance.now();
+  const scheduleNext = () => {
+    const step = steps[visualPlaybackIndex];
+    nextTime += (step?.beats || 4) * msPerBeat;
+    visualPlaybackTimerId = setTimeout(() => {
+      visualPlaybackIndex = (visualPlaybackIndex + 1) % steps.length;
+      updateVisualForMeasure(visualPlaybackIndex);
+      scheduleNext();
+    }, Math.max(0, nextTime - performance.now()));
+  };
+  scheduleNext();
 }
 
 function stopVisualPlayback() {
-  if (visualPlaybackIntervalId !== null) {
-    clearInterval(visualPlaybackIntervalId);
-    visualPlaybackIntervalId = null;
+  if (visualPlaybackTimerId !== null) {
+    clearTimeout(visualPlaybackTimerId);
+    visualPlaybackTimerId = null;
   }
   resetFretboardHighlight();
   clearArpeggioDiagramHighlight();
@@ -2134,15 +2143,16 @@ function generateExercise(options = {}) {
   // Store for the scale-degrees modal
   lastExerciseState = { cagedShape, measureData };
 
-  // Playback works bar by bar (one highlight step per 4 beats). For bars with
-  // several chords, the fretboard/diagram highlight follows the first chord.
-  const measuresForPlayback = measures.map((measure) => ({
-    chordName: measure.segments[0]?.chordName,
-    rootNote: measure.segments[0]?.rootNote,
-    quality: measure.segments[0]?.quality,
-    generatedNotes: measure.segments.flatMap(
-      (segment) => segment.generatedNotes || []
-    ),
+  // Playback steps chord by chord: each segment carries its own beat length,
+  // so bars shared by two chords switch the fretboard/diagram highlight
+  // mid-bar. The notation highlight rect follows barIndex (one rect per stave).
+  const measuresForPlayback = measureData.map((segment) => ({
+    barIndex: segment.barIndex,
+    chordName: segment.chordName,
+    rootNote: segment.rootNote,
+    quality: segment.quality,
+    generatedNotes: segment.generatedNotes || [],
+    beats: (segment.generatedNotes || []).length || segment.notesPerMeasure || 4,
   }));
 
   return { generatedNotes, measuresData: measuresForPlayback, stavePositions };
