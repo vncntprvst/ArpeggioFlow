@@ -178,6 +178,13 @@
                     />
                   </div>
                 </div>
+
+                <div class="form-field">
+                  <label class="toggle-label" title="Chords written in the same bar share one measure (2 notes each) instead of getting a full measure each, so the exercise is exactly one chorus long.">
+                    <input type="checkbox" id="trueChorusLength" />
+                    True chorus length
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -207,6 +214,21 @@
                     <!-- Populated dynamically by updateShapeOptions() -->
                   </select>
                 </div>
+              </div>
+            </div>
+
+            <div class="mode-panel-section">
+              <h3 class="section-subtitle">Note Flow</h3>
+
+              <div class="form-field">
+                <label for="startDegree">Start each chord on</label>
+                <select id="startDegree" name="startDegree">
+                  <option value="flow" selected>Closest tone (flow)</option>
+                  <option value="1">Root</option>
+                  <option value="3">3rd</option>
+                  <option value="5">5th</option>
+                  <option value="7">7th</option>
+                </select>
               </div>
             </div>
           </div>

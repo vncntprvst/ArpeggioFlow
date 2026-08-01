@@ -255,6 +255,31 @@ describe('noteFlow module', () => {
       const idx1 = cmaj7Notes.indexOf(result.notes[1]);
       expect(idx1).toBeLessThan(idx0);
     });
+
+    test('forced startNote is used as first note', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'C3', true, mockNoteFreq, mockNoteMidi, 'G4');
+      expect(result.notes[0]).toBe('G4');
+    });
+
+    test('forced startNote sets direction relative to previous note', () => {
+      // Previous note above start note → measure begins descending
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'C5', true, mockNoteFreq, mockNoteMidi, 'G4');
+      expect(result.notes[0]).toBe('G4');
+      const idx0 = cmaj7Notes.indexOf(result.notes[0]);
+      const idx1 = cmaj7Notes.indexOf(result.notes[1]);
+      expect(idx1).toBeLessThan(idx0);
+    });
+
+    test('forced startNote works with no previous note', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, null, true, mockNoteFreq, mockNoteMidi, 'E3');
+      expect(result.notes[0]).toBe('E3');
+    });
+
+    test('startNote not in chordNotes falls back to normal behavior', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'E4', true, mockNoteFreq, mockNoteMidi, 'F#4');
+      // F#4 is not a Cmaj7 chord tone; falls back to closest-note logic
+      expect(result.notes[0]).toBe('E4');
+    });
   });
 
   describe('integration: multi-measure flow', () => {
@@ -331,22 +356,42 @@ describe('noteFlow module', () => {
     });
 
     test('picks closest note for smooth voice leading (descending preference)', () => {
-      // If we're descending and at E4, we should pick the closest Dm7 chord tone
+      // If we're descending and at E4, we should pick the closest Dm7 chord
+      // tone BELOW (direction is preserved; F4 is closer but lies above)
       const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
       const previousNote = 'E4'; // Somewhere in the middle (E4 = 64)
       const isAscending = false;
-      
+
       const result = generateMeasureNotes(dm7Notes, 4, previousNote, isAscending, mockNoteFreq, mockNoteMidi);
-      
+
       const prevMidi = mockNoteMidi(previousNote); // E4 = 64
       const firstMidi = mockNoteMidi(result.notes[0]);
       const distance = Math.abs(firstMidi - prevMidi);
-      
-      // Closest Dm7 tones to E4 are D4=62 (2 semitones) and F4=65 (1 semitone)
-      // Should pick one of the closest for smooth voice leading
+
       expect(distance).toBeLessThanOrEqual(3);
-      // F4 is closest (1 semitone away)
+      // D4 (2 semitones below) keeps the descent going
+      expect(result.notes[0]).toBe('D4');
+    });
+
+    test('direction is preserved across measures until a boundary is hit', () => {
+      // Ascending mid-range: the next measure must not turn around even when
+      // the closest chord tone lies below the previous note
+      const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
+      // Previous note E4 (64): F4 (65, above) and D4 (62, below) — ascending
+      // must pick F4 even though both are close
+      const result = generateMeasureNotes(dm7Notes, 4, 'E4', true, mockNoteFreq, mockNoteMidi);
       expect(result.notes[0]).toBe('F4');
+      // And the measure keeps climbing from there
+      expect(mockNoteMidi(result.notes[1])).toBeGreaterThan(mockNoteMidi(result.notes[0]));
+    });
+
+    test('direction reverses at measure boundary only when range is exhausted', () => {
+      const dm7Notes = ['D3', 'F3', 'A3', 'C4', 'D4', 'F4', 'A4', 'C5', 'D5', 'F5'];
+      // Previous note G5 (79) is above the whole pool while ascending:
+      // the only place to go is down
+      const result = generateMeasureNotes(dm7Notes, 4, 'G5', true, mockNoteFreq, mockNoteMidi);
+      expect(result.notes[0]).toBe('F5');
+      expect(mockNoteMidi(result.notes[1])).toBeLessThan(mockNoteMidi(result.notes[0]));
     });
 
     test('all generated notes come from chordNotes array (100 iterations)', () => {
