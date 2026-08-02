@@ -1034,16 +1034,11 @@ async function playStrudelExercise(notes) {
     pattern = pattern.s(sound);
   }
 
-  if (typeof pattern.cpm === 'function') {
-    const cpm = getCyclesPerMinute(bpm);
-    pattern = pattern.cpm(cpm);
-    debugLog('Strudel tempo applied via pattern.cpm:', { cpm });
-  } else if (typeof pattern.cps === 'function') {
-    const cps = getCyclesPerSecond(bpm);
-    pattern = pattern.cps(cps);
-    debugLog('Strudel tempo applied via pattern.cps:', { cps });
-  } else {
-    applyStrudelTempo(api, bpm);
+  // Set the scheduler tempo directly (setcpm → cps = cpm/60) instead of
+  // pattern.cpm: pattern.cpm scales relative to the scheduler's current cps
+  // (default 0.5), which made playback run at half the notated tempo.
+  if (!applyStrudelTempo(api, bpm)) {
+    debugLog('No Strudel tempo API available; using the default clock.');
   }
 
   // Stop the scheduler clock first so the pattern starts at cycle 0 — a
