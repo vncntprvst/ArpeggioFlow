@@ -1046,6 +1046,12 @@ async function playStrudelExercise(notes) {
     applyStrudelTempo(api, bpm);
   }
 
+  // Stop the scheduler clock first so the pattern starts at cycle 0 — a
+  // replay would otherwise join the still-running clock mid-cycle, out of
+  // phase with the visual highlight.
+  if (typeof api.hush === 'function') {
+    api.hush();
+  }
   pattern.play();
   const soundLabel = getStrudelSoundLabel(sound);
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
@@ -2636,11 +2642,14 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
           // Play
           stopVisualPlayback();
-          if (isVisualPlaybackEnabled()) {
-            startVisualPlayback();
-          }
+          // Start audio first (loading Strudel and soundfonts can take a
+          // while), then the visual clock right after the pattern starts,
+          // so the highlight and the sound share the same t0.
           if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
             await playStrudelExercise(playbackState.notes);
+          }
+          if (isVisualPlaybackEnabled()) {
+            startVisualPlayback();
           }
           playbackState.isPlaying = true;
           playbackUi.playButton.textContent = 'Stop';
