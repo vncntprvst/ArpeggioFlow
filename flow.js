@@ -163,6 +163,7 @@ const playbackState = {
   notes: [],
   measuresData: [],
   stavePositions: [],
+  beatSlots: [],
   isPlaying: false,
 };
 
@@ -791,6 +792,7 @@ function updatePlaybackStateFromExercise(exerciseData) {
   playbackState.notes = exerciseData?.generatedNotes || [];
   playbackState.measuresData = exerciseData?.measuresData || [];
   playbackState.stavePositions = exerciseData?.stavePositions || [];
+  playbackState.beatSlots = exerciseData?.beatSlots || [];
   updatePlaybackControls();
   refreshPlaybackBanner();
 }
@@ -827,6 +829,21 @@ function buildStrudelNotePattern(notes) {
     .map(toStrudelNote)
     .filter((token) => token && token.length > 0);
   return tokens.join(' ');
+}
+
+// Build a mini-notation pattern where each top-level token is one beat:
+// a quarter note is "c4", a pair of eighths "[c4 d4]".
+function buildStrudelBeatPattern(beatSlots) {
+  return beatSlots
+    .map((slotNotes) => {
+      const tokens = (slotNotes || [])
+        .map(toStrudelNote)
+        .filter((token) => token && token.length > 0);
+      if (!tokens.length) return null;
+      return tokens.length === 1 ? tokens[0] : `[${tokens.join(' ')}]`;
+    })
+    .filter(Boolean)
+    .join(' ');
 }
 
 /**
@@ -882,10 +899,11 @@ function applyStrudelTempo(api, bpm) {
   return false;
 }
 
-function getMeasures(notesLength) {
-  // Adjust for the beats per cycle
-  // Formula: notesLength / (2 * BEATS_PER_CYCLE) 
-  return Math.max(1, notesLength / (2 * BEATS_PER_CYCLE));
+function getMeasures(beatCount) {
+  // One cycle = one 4/4 measure, so the pattern spans beatCount / 4 cycles.
+  // Top-level pattern tokens are beats (eighth pairs are bracketed), which
+  // keeps audio at notated tempo and in sync with the visual playback.
+  return Math.max(1, beatCount / BEATS_PER_CYCLE);
 }
 
 async function playStrudelExercise(notes) {
@@ -900,17 +918,24 @@ async function playStrudelExercise(notes) {
   const bpm = getSelectedTempoBpm();
   const sound = getSelectedStrudelSound();
   const soundConfig = getStrudelSoundConfig(sound);
-  const patternText = buildStrudelNotePattern(notes);
+  // Beat-grouped pattern (eighth pairs bracketed); fall back to one note per
+  // beat if no slot data is around (e.g. stale pre-rhythm exercise state).
+  const beatSlots =
+    playbackState.beatSlots && playbackState.beatSlots.length
+      ? playbackState.beatSlots
+      : notes.map((note) => [note]);
+  const patternText = buildStrudelBeatPattern(beatSlots);
   if (!patternText) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
     return;
   }
-  const measures = getMeasures(notes.length); 
+  const measures = getMeasures(beatSlots.length);
   let pattern = api.note(patternText).slow(measures);
   if (soundConfig.type === 'metronome') {
     // Fixed pitch (c5) so every click sounds identical regardless of exercise notes.
     // 15ms decay on a square wave = inaudible pitch, pure percussive click.
-    const clickPattern = Array(notes.length).fill('c5').join(' ');
+    // One click per beat, independent of the rhythm pattern.
+    const clickPattern = Array(beatSlots.length).fill('c5').join(' ');
     pattern = api.note(clickPattern).slow(measures).s('square').decay(0.015).sustain(0).gain(0.75);
   } else if (soundConfig.type === 'dirt') {
     const loaded = await ensureGuitarSamplesLoaded(api);
@@ -1647,11 +1672,41 @@ function isTrueChorusLengthEnabled() {
 
 // Split a bar's 4 beats among its chords (bars with more than 4 chords are
 // truncated to the first 4).
-function distributeNotesPerBar(chordCount) {
+function distributeBeatsPerBar(chordCount) {
   if (chordCount <= 1) return [4];
   if (chordCount === 2) return [2, 2];
   if (chordCount === 3) return [2, 1, 1];
   return [1, 1, 1, 1];
+}
+
+// Selected notes-per-bar option: 4-8, or 'random' (rolled per bar)
+function getSelectedNotesPerBar() {
+  const select = document.getElementById('notesPerMeasure');
+  if (!select || !select.value) return 4;
+  if (select.value === 'random') return 'random';
+  const n = parseInt(select.value, 10);
+  return Number.isFinite(n) && n >= 4 && n <= 8 ? n : 4;
+}
+
+function isMidMeasureTurnaroundEnabled() {
+  return document.getElementById('turnaroundMode')?.value === 'mid';
+}
+
+// A bar is 4 beat slots; each slot holds one quarter note (1) or a beamed
+// pair of eighths (2). n notes per bar → (n - 4) slots become eighth pairs,
+// placed on random beats for variety.
+function buildBarSlots(notesPerBar) {
+  const n = Math.max(4, Math.min(8, notesPerBar));
+  const slots = [1, 1, 1, 1];
+  const beatOrder = [0, 1, 2, 3];
+  for (let i = beatOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [beatOrder[i], beatOrder[j]] = [beatOrder[j], beatOrder[i]];
+  }
+  for (let i = 0; i < n - 4; i++) {
+    slots[beatOrder[i]] = 2;
+  }
+  return slots;
 }
 
 function getChordNotesForRomanSymbol(
@@ -1929,7 +1984,7 @@ function generateExercise(options = {}) {
 
   // Initialize VexFlow Renderer
   const VF = Vex.Flow;
-  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation } = VF;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation, Beam } = VF;
   const div = document.getElementById('notation');
   const containerWidth = div.getBoundingClientRect().width;
   const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
@@ -1947,18 +2002,28 @@ function generateExercise(options = {}) {
           true
         );
 
-  // Build measure data: one entry per chord. Chords sharing a bar (true
-  // chorus length) split the bar's 4 notes between them.
+  // Build measure data: one entry per chord. A bar is 4 beat slots (quarter
+  // note or eighth pair each); chords sharing a bar (true chorus length)
+  // split the bar's slots between them.
+  const notesPerBarSetting = getSelectedNotesPerBar();
   const measureData = [];
   chordBars.forEach((barChords, barIndex) => {
-    const noteCounts = distributeNotesPerBar(barChords.length);
-    if (barChords.length > noteCounts.length) {
+    const segmentBeats = distributeBeatsPerBar(barChords.length);
+    if (barChords.length > segmentBeats.length) {
       debugLog(
-        `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${noteCounts.length}.`
+        `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${segmentBeats.length}.`
       );
     }
-    noteCounts.forEach((notesPerMeasure, chordIdx) => {
+    const notesPerBar =
+      notesPerBarSetting === 'random'
+        ? 4 + Math.floor(Math.random() * 5)
+        : notesPerBarSetting;
+    const barSlots = buildBarSlots(notesPerBar);
+    let slotCursor = 0;
+    segmentBeats.forEach((beats, chordIdx) => {
       const chordSymbol = barChords[chordIdx];
+      const slots = barSlots.slice(slotCursor, slotCursor + beats);
+      slotCursor += beats;
       const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
       const chordName = isSongMode
         ? formatChordSymbol(chordSymbol)
@@ -1973,7 +2038,9 @@ function generateExercise(options = {}) {
         rootNote,
         quality,
         chordNotes,
-        notesPerMeasure,
+        slots,
+        beats,
+        notesPerMeasure: slots.reduce((sum, slotSize) => sum + slotSize, 0),
         generatedNotes: null, // Will be filled in
         direction: null, // Will be filled in
       });
@@ -1981,11 +2048,12 @@ function generateExercise(options = {}) {
   });
 
   const startDegree = getSelectedStartDegree();
+  const midMeasureTurnaround = isMidMeasureTurnaroundEnabled();
 
   // Generate all measures forward from the first. Each measure starts on the
   // closest chord tone in the current direction (or on the requested chord
   // degree in chord-tone start mode); direction reverses only at the range
-  // boundaries.
+  // boundaries (plus mid-measure when that turnaround option is on).
   let prevNote = null;
   let prevDirection = true;
   measureData.forEach((measure) => {
@@ -2020,7 +2088,8 @@ function generateExercise(options = {}) {
       prevDirection,
       Tonal.Note.freq,
       Tonal.Note.midi,
-      startNote
+      startNote,
+      midMeasureTurnaround
     );
     measure.generatedNotes = result.notes;
     measure.direction = result.newDirection;
@@ -2043,20 +2112,32 @@ function generateExercise(options = {}) {
   });
   const measures = barGroups.map((bar) => ({
     segments: bar.segments,
-    notes: bar.segments.flatMap((segment) =>
-      (segment.generatedNotes || []).map(
-        (note) =>
-          new StaveNote({
-            clef: 'treble',
-            keys: [toVexFlowFormat(note)],
-            duration: 'q',
-          })
-      )
-    ),
+    notes: bar.segments.flatMap((segment) => {
+      const generated = segment.generatedNotes || [];
+      const slots = segment.slots || generated.map(() => 1);
+      const staveNotes = [];
+      let noteIdx = 0;
+      slots.forEach((slotSize) => {
+        for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
+          staveNotes.push(
+            new StaveNote({
+              clef: 'treble',
+              keys: [toVexFlowFormat(generated[noteIdx])],
+              duration: slotSize === 2 ? '8' : 'q',
+            })
+          );
+        }
+      });
+      return staveNotes;
+    }),
   }));
 
-  const measureWidths = measures.map((_, idx) =>
-    calculateMeasureWidth(keyContext.vexflowKeySignature, idx === 0)
+  const measureWidths = measures.map((measure, idx) =>
+    calculateMeasureWidth(
+      keyContext.vexflowKeySignature,
+      idx === 0,
+      measure.notes.length
+    )
   );
   const lineLayouts = [];
   let currentLine = { measures: [], width: 0 };
@@ -2125,6 +2206,8 @@ function generateExercise(options = {}) {
         annotationNoteIndex += (segment.generatedNotes || []).length;
       });
 
+      // Beam eighth-note pairs (grouped per beat) like a printed chart
+      const beams = Beam.generateBeams(measure.notes);
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
@@ -2133,6 +2216,7 @@ function generateExercise(options = {}) {
         .joinVoices([voice])
         .format([voice], Math.max(120, availableWidth));
       voice.draw(context, stave);
+      beams.forEach((beam) => beam.setContext(context).draw());
 
       xStart += stave.width;
     });
@@ -2152,10 +2236,27 @@ function generateExercise(options = {}) {
     rootNote: segment.rootNote,
     quality: segment.quality,
     generatedNotes: segment.generatedNotes || [],
-    beats: (segment.generatedNotes || []).length || segment.notesPerMeasure || 4,
+    beats: segment.beats || (segment.slots || []).length || 4,
   }));
 
-  return { generatedNotes, measuresData: measuresForPlayback, stavePositions };
+  // One entry per beat for audio: a quarter note is [note], eighths [n1, n2]
+  const beatSlots = [];
+  measureData.forEach((segment) => {
+    const generated = segment.generatedNotes || [];
+    const slots = segment.slots || generated.map(() => 1);
+    let noteIdx = 0;
+    slots.forEach((slotSize) => {
+      beatSlots.push(generated.slice(noteIdx, noteIdx + slotSize));
+      noteIdx += slotSize;
+    });
+  });
+
+  return {
+    generatedNotes,
+    measuresData: measuresForPlayback,
+    stavePositions,
+    beatSlots,
+  };
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
@@ -2259,9 +2360,11 @@ async function exportExerciseAsPdf() {
 }
 
 // Calculate the required width for a measure based on key signature complexity
-function calculateMeasureWidth(key, isFirstMeasure) {
+// and how many notes it holds (eighth-note bars need more room)
+function calculateMeasureWidth(key, isFirstMeasure, noteCount = 4) {
+  const extraNoteWidth = Math.max(0, noteCount - 4) * 24;
   if (!isFirstMeasure) {
-    return 250; // Default width for non-first measures
+    return 250 + extraNoteWidth; // Default width for non-first measures
   }
 
   // Get the key info to determine how many accidentals we have
@@ -2303,7 +2406,7 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
   
   // Ensure a minimum width and cap the maximum to avoid extreme values
-  return Math.max(260, Math.min(520, firstMeasureWidth));
+  return Math.max(260, Math.min(520, firstMeasureWidth)) + extraNoteWidth;
 }
 
 // Make function available globally for testing

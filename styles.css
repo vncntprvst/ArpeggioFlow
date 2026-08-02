@@ -446,6 +446,27 @@ input[type="number"]:focus {
   stroke: none !important;
 }
 
+/* Collapsible advanced options (Rhythm & turnaround) */
+.advanced-options {
+  margin-top: 0.75rem;
+}
+
+.advanced-options summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+  user-select: none;
+}
+
+.advanced-options summary:hover {
+  color: #111827;
+}
+
+.advanced-options[open] summary {
+  margin-bottom: 0.5rem;
+}
+
 /* Small R/3/5/7 tag at the top-right of ringed dots */
 .dot-degree-label {
   font-family: Arial, sans-serif;
