@@ -577,6 +577,7 @@ const FRETBOARD_DOT_RING_RADIUS = 25 * 0.5 + 1.5; // dotSize/2 + gap
 // CSS colors (must match styles.css !important rules)
 const FRETBOARD_COLOR_ROOT  = '#99c28d'; // matches .dot-degree-1
 const FRETBOARD_COLOR_INBOX = '#accedb'; // matches .dot-in-box
+const FRETBOARD_COLOR_PLAYING = '#ffb703'; // current note during per-note playback
 // Rings: all black (same in static and playback views)
 const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
 
@@ -704,6 +705,43 @@ function addPlayedNotesRing(dotEl, dotCircle) {
   dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
 }
 
+/**
+ * During per-note playback: light up the dots matching the sounding pitch
+ * (every position with that pitch) and fade the rest. Context dots kept
+ * faintly visible are the current chord's arpeggio tones ('note-arpeggio')
+ * or the whole scale shape ('note-scale').
+ */
+function updateFretboardForNote(segment, note, mode) {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  if (!fretboardDiv || !segment) return;
+  const targetMidi = Tonal.Note.midi(note);
+  const chordChromas = getChordToneChromas(segment.rootNote, segment.quality);
+
+  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data || !data.inBox) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
+
+    const stringIndex = tuning.length - data.string;
+    const openMidi = Tonal.Note.midi(tuning[stringIndex]);
+    const dotMidi = Number.isFinite(openMidi) ? openMidi + data.fret : null;
+
+    if (dotMidi !== null && dotMidi === targetMidi) {
+      dotEl.style.opacity = '1';
+      dotCircle.style.setProperty('fill', FRETBOARD_COLOR_PLAYING, 'important');
+      addPlayedNotesRing(dotEl, dotCircle);
+      return;
+    }
+
+    const isChordTone = chordChromas.has(Tonal.Note.chroma(data.note));
+    const keepFaint = mode === 'note-scale' || isChordTone;
+    dotEl.style.opacity = keepFaint ? '0.35' : '0.08';
+    dotCircle.style.removeProperty('fill');
+  });
+}
+
 function resetFretboardHighlight() {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv) return;
@@ -726,35 +764,69 @@ function clearArpeggioDiagramHighlight() {
   });
 }
 
-function updateVisualForMeasure(idx) {
-  if (isVisualPlaybackEnabled()) {
-    const step = playbackState.measuresData[idx];
-    if (step) {
-      moveHighlightToMeasure(step.barIndex ?? idx);
-      updateFretboardForChord(step);
-      updateArpeggioDiagramHighlight(step.chordName);
+function getSelectedHighlightMode() {
+  return document.getElementById('playbackHighlightMode')?.value || 'chord';
+}
+
+// Flatten segments into visual steps for the selected highlight mode:
+// 'chord' → one step per chord segment; note modes → one step per note
+// (half a beat for eighths).
+function buildVisualSteps(mode) {
+  const steps = [];
+  playbackState.measuresData.forEach((segment) => {
+    const generated = segment.generatedNotes || [];
+    if (mode === 'chord' || !generated.length) {
+      steps.push({ segment, beats: segment.beats || 4 });
+      return;
     }
+    const slots = segment.slots && segment.slots.length
+      ? segment.slots
+      : generated.map(() => 1);
+    let noteIdx = 0;
+    slots.forEach((slotSize) => {
+      for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
+        steps.push({
+          segment,
+          note: generated[noteIdx],
+          beats: slotSize === 2 ? 0.5 : 1,
+        });
+      }
+    });
+  });
+  return steps;
+}
+
+function applyVisualStep(step, mode) {
+  if (!isVisualPlaybackEnabled() || !step) return;
+  moveHighlightToMeasure(step.segment.barIndex ?? 0);
+  if (step.note !== undefined) {
+    updateFretboardForNote(step.segment, step.note, mode);
+  } else {
+    updateFretboardForChord(step.segment);
   }
+  updateArpeggioDiagramHighlight(step.segment.chordName);
 }
 
 function startVisualPlayback() {
-  const steps = playbackState.measuresData;
+  const mode = getSelectedHighlightMode();
+  const steps = buildVisualSteps(mode);
   if (!steps.length) return;
   const bpm = getSelectedTempoBpm();
   const msPerBeat = 60000 / bpm;
 
   visualPlaybackIndex = 0;
-  updateVisualForMeasure(0);
+  applyVisualStep(steps[0], mode);
 
-  // Each step lasts its own beat count (2 beats for chords sharing a bar,
-  // 4 for full bars). Drift-corrected against a running absolute deadline.
+  // Each step lasts its own beat count (a chord segment in chord mode, a
+  // single note in the note modes). Drift-corrected against a running
+  // absolute deadline.
   let nextTime = performance.now();
   const scheduleNext = () => {
     const step = steps[visualPlaybackIndex];
     nextTime += (step?.beats || 4) * msPerBeat;
     visualPlaybackTimerId = setTimeout(() => {
       visualPlaybackIndex = (visualPlaybackIndex + 1) % steps.length;
-      updateVisualForMeasure(visualPlaybackIndex);
+      applyVisualStep(steps[visualPlaybackIndex], mode);
       scheduleNext();
     }, Math.max(0, nextTime - performance.now()));
   };
@@ -2236,6 +2308,7 @@ function generateExercise(options = {}) {
     rootNote: segment.rootNote,
     quality: segment.quality,
     generatedNotes: segment.generatedNotes || [],
+    slots: segment.slots || [],
     beats: segment.beats || (segment.slots || []).length || 4,
   }));
 
