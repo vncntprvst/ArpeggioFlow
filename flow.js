@@ -178,6 +178,21 @@ const playbackUi = {
 
 let strudelApi = null;
 let strudelInitPromise = null;
+// Playback goes through one long-lived wrapper pattern that delegates its
+// queries to strudelPatternRef; continuous shift swaps the ref without ever
+// stopping the scheduler clock (a stop/start seam re-emits boundary notes).
+let strudelPatternRef = null;
+let strudelWrapperActive = false;
+
+function getStrudelPatternClass(api) {
+  if (api && typeof api.Pattern === 'function') {
+    return api.Pattern;
+  }
+  if (typeof window !== 'undefined' && typeof window.Pattern === 'function') {
+    return window.Pattern;
+  }
+  return null;
+}
 let strudelCdnPromise = null;
 let guitarSamplesPromise = null;
 let guitarSamplesLoaded = false;
@@ -943,26 +958,22 @@ async function performContinuousShift(mode) {
     scheduleContinuousShift();
     return;
   }
-  // Stop the scheduler right away, before the old pattern queues its
-  // next-loop first note.
-  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel' &&
-      typeof strudelApi?.hush === 'function') {
-    strudelApi.hush();
-  }
   regenerateExercise({ carryOver: getCarryOverFromLastExercise() });
+  // Swap the audio pattern NOW, before the scheduler queries the boundary
+  // chunk: the delegating wrapper keeps playing without any clock restart,
+  // and the swap only affects queries from here on — the old loop's tail is
+  // already scheduled, the new loop's first note comes from the new pattern.
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    await playStrudelExercise(playbackState.notes);
+  }
   clearVisualTimer();
-  // Hold the restart until the boundary so the new loop's first beat lands
-  // on the grid instead of arriving early by the guard duration.
+  // Restart the visual clock exactly at the boundary so it stays aligned
+  // with the audio grid.
   const waitMs = boundaryAt - performance.now();
   if (waitMs > 0) {
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   if (!playbackState.isPlaying) return;
-  // Restart playback on the new exercise: audio first, visual right after,
-  // so both share the same t0 (mirrors the Play button flow).
-  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
-    await playStrudelExercise(playbackState.notes);
-  }
   if (isVisualPlaybackEnabled()) {
     startVisualPlayback();
   }
@@ -1187,13 +1198,30 @@ async function playStrudelExercise(notes) {
     debugLog('No Strudel tempo API available; using the default clock.');
   }
 
-  // Stop the scheduler clock first so the pattern starts at cycle 0 — a
-  // replay would otherwise join the still-running clock mid-cycle, out of
-  // phase with the visual highlight.
-  if (typeof api.hush === 'function') {
-    api.hush();
+  strudelPatternRef = pattern;
+  const PatternClass = getStrudelPatternClass(api);
+  if (strudelWrapperActive) {
+    // Already playing through the delegating wrapper: swapping the ref is
+    // enough. The scheduler clock never stops, so there is no restart seam
+    // (no doubled or re-scheduled boundary notes); the new pattern has the
+    // same loop length, so it stays on the same cycle grid.
+    debugLog('Strudel pattern swapped in place.');
+  } else if (PatternClass) {
+    // Fresh start: stop the clock so the pattern begins at cycle 0, then
+    // play a wrapper that delegates every query to the current pattern ref.
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
+    wrapper.play();
+    strudelWrapperActive = true;
+  } else {
+    // No Pattern class exposed by this build: restart the scheduler directly
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    pattern.play();
   }
-  pattern.play();
   const soundLabel = getStrudelSoundLabel(sound);
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
 }
@@ -1208,6 +1236,8 @@ async function stopStrudelExercise() {
     return;
   }
   api.hush();
+  strudelWrapperActive = false;
+  strudelPatternRef = null;
   setPlaybackBanner('Playback stopped.', 'info');
 }
 
