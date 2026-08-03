@@ -2432,12 +2432,13 @@ function generateExercise(options = {}) {
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
-      // Dense (eighth-note) bars need extra right padding so the last note
-      // doesn't collide with the barline; the first measure also has to
-      // clear the clef, key and time signatures.
-      const rightPadding = Math.max(0, measure.notes.length - 4) * 8;
-      const availableWidth =
-        stave.width - (index === 0 ? 100 : 50) - rightPadding;
+      // Dense (eighth-note) bars: the first measure needs extra right padding
+      // so the last note clears the barline after clef/key/time take their
+      // share; later measures instead spread their notes into more of the bar.
+      const extraNotes = Math.max(0, measure.notes.length - 4);
+      const reserve =
+        index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
+      const availableWidth = stave.width - reserve;
       new Formatter()
         .joinVoices([voice])
         .format([voice], Math.max(120, availableWidth));
@@ -2635,9 +2636,10 @@ async function exportExerciseAsPdf() {
 }
 
 // Calculate the required width for a measure based on key signature complexity
-// and how many notes it holds (eighth-note bars need more room)
+// and how many notes it holds (eighth-note bars need more room; the first
+// measure needs extra because clef/key/time also take space)
 function calculateMeasureWidth(key, isFirstMeasure, noteCount = 4) {
-  const extraNoteWidth = Math.max(0, noteCount - 4) * 24;
+  const extraNoteWidth = Math.max(0, noteCount - 4) * (isFirstMeasure ? 24 : 16);
   if (!isFirstMeasure) {
     return 250 + extraNoteWidth; // Default width for non-first measures
   }
