@@ -833,16 +833,109 @@ function startVisualPlayback() {
   scheduleNext();
 }
 
-function stopVisualPlayback() {
+function clearVisualTimer() {
   if (visualPlaybackTimerId !== null) {
     clearTimeout(visualPlaybackTimerId);
     visualPlaybackTimerId = null;
   }
+}
+
+function stopVisualPlayback() {
+  clearVisualTimer();
   resetFretboardHighlight();
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
   if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+}
+
+// ─── Continuous shift ────────────────────────────────────────────────────────
+// When the exercise loop completes, move the progression to a new key (chromatic
+// steps or circle of 5ths/4ths) or an adjacent CAGED shape, regenerate, and
+// keep playing.
+
+let continuousShiftTimerId = null;
+
+const CONTINUOUS_SHIFT_KEY_DELTAS = {
+  'key-up': 1, // key select options are in chromatic order
+  'key-down': -1,
+  fifths: 7,
+  fourths: 5,
+};
+
+function getSelectedContinuousShift() {
+  return document.getElementById('continuousShift')?.value || 'off';
+}
+
+function clearContinuousShiftTimer() {
+  if (continuousShiftTimerId !== null) {
+    clearTimeout(continuousShiftTimerId);
+    continuousShiftTimerId = null;
+  }
+}
+
+function getLoopDurationMs() {
+  const totalBeats = playbackState.measuresData.reduce(
+    (sum, segment) => sum + (segment.beats || 4),
+    0
+  );
+  return totalBeats * (60000 / getSelectedTempoBpm());
+}
+
+// Advance a select to a nearby option (wrapping; skips empty placeholders)
+function advanceSelect(selectId, delta) {
+  const select = document.getElementById(selectId);
+  if (!select) return false;
+  const values = [...select.options].map((o) => o.value).filter((v) => v);
+  const idx = values.indexOf(select.value);
+  if (idx === -1) return false;
+  select.value = values[(idx + delta + values.length) % values.length];
+  select.dispatchEvent(new Event('change'));
+  return true;
+}
+
+function applyContinuousShift(mode) {
+  if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
+    if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) {
+      debugLog('Continuous key shift is not available in song mode.');
+      return false;
+    }
+    return advanceSelect('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
+  }
+  if (mode === 'shape-up') return advanceSelect('shape', 1);
+  if (mode === 'shape-down') return advanceSelect('shape', -1);
+  return false;
+}
+
+// Always keeps a loop timer while playing; the mode is read when it fires so
+// changing the option mid-playback takes effect at the next loop boundary.
+function scheduleContinuousShift() {
+  clearContinuousShiftTimer();
+  if (!playbackState.isPlaying) return;
+  const loopMs = getLoopDurationMs();
+  if (!Number.isFinite(loopMs) || loopMs <= 0) return;
+  continuousShiftTimerId = setTimeout(() => {
+    performContinuousShift(getSelectedContinuousShift());
+  }, loopMs);
+}
+
+async function performContinuousShift(mode) {
+  if (!playbackState.isPlaying) return;
+  if (mode === 'off' || !applyContinuousShift(mode)) {
+    scheduleContinuousShift();
+    return;
+  }
+  regenerateExercise();
+  // Restart playback on the new exercise: audio first, visual right after,
+  // so both share the same t0 (mirrors the Play button flow).
+  clearVisualTimer();
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    await playStrudelExercise(playbackState.notes);
+  }
+  if (isVisualPlaybackEnabled()) {
+    startVisualPlayback();
+  }
+  scheduleContinuousShift();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2360,6 +2453,49 @@ function generateExercise(options = {}) {
   };
 }
 
+// Full regeneration: scale diagram + notation + playback state, from the
+// current form values. Used by the Generate button and by continuous shift.
+function regenerateExercise() {
+  const mode = getSelectedExerciseMode();
+  const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
+  const keyValue =
+    mode === EXERCISE_MODES.SONG && song
+      ? song.scaleType === 'minor'
+        ? `${song.key}m`
+        : song.key
+      : getSelectedKeyValue();
+  updateKeyDebug(keyValue);
+
+  const shape = document.getElementById('shape').value;
+  if (!shape) {
+    alert('Please select a chord shape.');
+    return;
+  }
+
+  const keyContext = getKeyContext(keyValue);
+  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
+  if (!cagedShape) {
+    alert('Please select a chord shape.');
+    return;
+  }
+  if (keyContext.isMinor) {
+    cagedShape.key = keyContext.tonic;
+    cagedShape.scaleType = keyContext.scaleType;
+  }
+  debugLog('cagedShape:', cagedShape);
+
+  // Clear previous chords and diagrams
+  document.getElementById('fretboard-container').innerHTML = '';
+
+  // Render the scale diagram using Fretboard.js
+  renderScaleDiagram(cagedShape);
+
+  // Generate the musical exercise
+  const exerciseData = generateExercise({ mode, song });
+  updateExportTitle();
+  updatePlaybackStateFromExercise(exerciseData);
+}
+
 // Note: findClosestIndex has been moved to noteFlow.js module
 
 function sanitizeFilePart(value) {
@@ -2655,6 +2791,7 @@ document.addEventListener('DOMContentLoaded', function () {
       playbackUi.playButton.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
           // Stop
+          clearContinuousShiftTimer();
           stopVisualPlayback();
           if (playbackState.engine === 'strudel') {
             await stopStrudelExercise();
@@ -2675,49 +2812,13 @@ document.addEventListener('DOMContentLoaded', function () {
           }
           playbackState.isPlaying = true;
           playbackUi.playButton.textContent = 'Stop';
+          scheduleContinuousShift();
         }
       });
     }
 
     document.getElementById('generateButton').addEventListener('click', () => {
-      const mode = getSelectedExerciseMode();
-      const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
-      const keyValue =
-        mode === EXERCISE_MODES.SONG && song
-          ? song.scaleType === 'minor'
-            ? `${song.key}m`
-            : song.key
-          : getSelectedKeyValue();
-      updateKeyDebug(keyValue);
-
-      const shape = document.getElementById('shape').value;
-      if (!shape) {
-        alert('Please select a chord shape.');
-        return;
-      }
-
-      const keyContext = getKeyContext(keyValue);
-      const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
-      if (!cagedShape) {
-        alert('Please select a chord shape.');
-        return;
-      }
-      if (keyContext.isMinor) {
-        cagedShape.key = keyContext.tonic;
-        cagedShape.scaleType = keyContext.scaleType;
-      }
-      console.log('cagedShape:', cagedShape);
-
-      // Clear previous chords and diagrams
-      document.getElementById('fretboard-container').innerHTML = '';
-
-      // Render the scale diagram using Fretboard.js
-      renderScaleDiagram(cagedShape);
-
-      // Generate the musical exercise
-      const exerciseData = generateExercise({ mode, song });
-      updateExportTitle();
-      updatePlaybackStateFromExercise(exerciseData);
+      regenerateExercise();
     });
 
     const exportPngButton = document.getElementById('exportPngButton');
