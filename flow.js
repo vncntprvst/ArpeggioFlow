@@ -907,6 +907,12 @@ function applyContinuousShift(mode) {
   return false;
 }
 
+// Fire slightly before the loop boundary: the scheduler queues audio events
+// ~150ms ahead (latency 0.1s + tick interval), so hushing right at the
+// boundary is too late — the old pattern's next first note is already
+// scheduled and sounds together with the new pattern's first note.
+const CONTINUOUS_SHIFT_GUARD_MS = 200;
+
 // Always keeps a loop timer while playing; the mode is read when it fires so
 // changing the option mid-playback takes effect at the next loop boundary.
 function scheduleContinuousShift() {
@@ -916,19 +922,44 @@ function scheduleContinuousShift() {
   if (!Number.isFinite(loopMs) || loopMs <= 0) return;
   continuousShiftTimerId = setTimeout(() => {
     performContinuousShift(getSelectedContinuousShift());
-  }, loopMs);
+  }, Math.max(0, loopMs - CONTINUOUS_SHIFT_GUARD_MS));
+}
+
+// Last note + direction of the current exercise, used to voice-lead the next
+// one when continuous shift regenerates.
+function getCarryOverFromLastExercise() {
+  const measures = lastExerciseState?.measureData;
+  const last = measures?.[measures.length - 1];
+  const lastNote = last?.generatedNotes?.[last.generatedNotes.length - 1];
+  if (!lastNote) return null;
+  return { prevNote: lastNote, prevDirection: last.direction ?? true };
 }
 
 async function performContinuousShift(mode) {
   if (!playbackState.isPlaying) return;
+  // This fires CONTINUOUS_SHIFT_GUARD_MS before the musical loop boundary
+  const boundaryAt = performance.now() + CONTINUOUS_SHIFT_GUARD_MS;
   if (mode === 'off' || !applyContinuousShift(mode)) {
     scheduleContinuousShift();
     return;
   }
-  regenerateExercise();
+  // Stop the scheduler right away, before the old pattern queues its
+  // next-loop first note.
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel' &&
+      typeof strudelApi?.hush === 'function') {
+    strudelApi.hush();
+  }
+  regenerateExercise({ carryOver: getCarryOverFromLastExercise() });
+  clearVisualTimer();
+  // Hold the restart until the boundary so the new loop's first beat lands
+  // on the grid instead of arriving early by the guard duration.
+  const waitMs = boundaryAt - performance.now();
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  if (!playbackState.isPlaying) return;
   // Restart playback on the new exercise: audio first, visual right after,
   // so both share the same t0 (mirrors the Play button flow).
-  clearVisualTimer();
   if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
     await playStrudelExercise(playbackState.notes);
   }
@@ -2242,8 +2273,10 @@ function generateExercise(options = {}) {
   // closest chord tone in the current direction (or on the requested chord
   // degree in chord-tone start mode); direction reverses only at the range
   // boundaries (plus mid-measure when that turnaround option is on).
-  let prevNote = null;
-  let prevDirection = true;
+  // A carry-over (continuous shift) voice-leads from the previous exercise's
+  // last note instead of starting on a random one.
+  let prevNote = options.carryOver?.prevNote || null;
+  let prevDirection = options.carryOver?.prevDirection ?? true;
   measureData.forEach((measure) => {
     if (measure.chordNotes.length === 0) {
       console.error(`No notes for chord: ${measure.chordName}`);
@@ -2454,8 +2487,9 @@ function generateExercise(options = {}) {
 }
 
 // Full regeneration: scale diagram + notation + playback state, from the
-// current form values. Used by the Generate button and by continuous shift.
-function regenerateExercise() {
+// current form values. Used by the Generate button and by continuous shift
+// (which passes options.carryOver to voice-lead across the boundary).
+function regenerateExercise(options = {}) {
   const mode = getSelectedExerciseMode();
   const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
   const keyValue =
@@ -2491,7 +2525,11 @@ function regenerateExercise() {
   renderScaleDiagram(cagedShape);
 
   // Generate the musical exercise
-  const exerciseData = generateExercise({ mode, song });
+  const exerciseData = generateExercise({
+    mode,
+    song,
+    carryOver: options.carryOver || null,
+  });
   updateExportTitle();
   updatePlaybackStateFromExercise(exerciseData);
 }
