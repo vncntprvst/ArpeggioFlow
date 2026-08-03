@@ -950,32 +950,49 @@ function buildStrudelEvaluateCode(notes, bpm) {
   ].join('; ');
 }
 
+// The tempo setters are NOT exports of the @strudel/web ES module — they are
+// only installed as window globals once initStrudel() has run. Look in both
+// places (api for the CDN/global build, window for the ESM build).
+function resolveStrudelFn(api, names) {
+  for (const name of names) {
+    if (typeof api?.[name] === 'function') {
+      return { name, fn: api[name] };
+    }
+    if (typeof window !== 'undefined' && typeof window[name] === 'function') {
+      return { name, fn: window[name] };
+    }
+  }
+  return null;
+}
+
 function applyStrudelTempo(api, bpm) {
   const cyclesPerMinute = getCyclesPerMinute(bpm);
   const cyclesPerSecond = getCyclesPerSecond(bpm);
-  if (typeof api.setcpm === 'function') {
-    api.setcpm(cyclesPerMinute);
-    debugLog('Strudel tempo applied via setcpm:', { cyclesPerMinute });
+  const setCpmFn = resolveStrudelFn(api, ['setcpm', 'setCpm']);
+  if (setCpmFn) {
+    setCpmFn.fn(cyclesPerMinute);
+    debugLog(`Strudel tempo applied via ${setCpmFn.name}:`, { cyclesPerMinute });
     return true;
   }
-  if (typeof api.setCpm === 'function') {
-    api.setCpm(cyclesPerMinute);
-    debugLog('Strudel tempo applied via setCpm:', { cyclesPerMinute });
-    return true;
-  }
-  if (typeof api.setcps === 'function') {
-    api.setcps(cyclesPerSecond);
-    debugLog('Strudel tempo applied via setcps:', { cyclesPerSecond });
+  const setCpsFn = resolveStrudelFn(api, ['setcps', 'setCps']);
+  if (setCpsFn) {
+    setCpsFn.fn(cyclesPerSecond);
+    debugLog(`Strudel tempo applied via ${setCpsFn.name}:`, { cyclesPerSecond });
     return true;
   }
   return false;
 }
 
 function getMeasures(beatCount) {
-  // One cycle = one 4/4 measure, so the pattern spans beatCount / 4 cycles.
-  // Top-level pattern tokens are beats (eighth pairs are bracketed), which
-  // keeps audio at notated tempo and in sync with the visual playback.
-  return Math.max(1, beatCount / BEATS_PER_CYCLE);
+  // Empirical Strudel constants this formula is calibrated against (the web
+  // build exposes NO scheduler tempo setters, so both are fixed):
+  //   - scheduler runs at 0.5 cycles/sec, always
+  //   - pattern.cpm(x) means pattern.fast(x / 60)
+  // slow(beats / 8) puts 8 beat-tokens in one cycle; combined with
+  // pattern.cpm(bpm / 4) the note rate is 8 * (bpm/240) * 0.5 = bpm/60
+  // beats per second — exactly the notated tempo. Do not "simplify" this
+  // to beats / BEATS_PER_CYCLE: that plays at half speed.
+  return Math.max(1, beatCount / (2 * BEATS_PER_CYCLE));
 }
 
 async function playStrudelExercise(notes) {
@@ -1034,10 +1051,15 @@ async function playStrudelExercise(notes) {
     pattern = pattern.s(sound);
   }
 
-  // Set the scheduler tempo directly (setcpm → cps = cpm/60) instead of
-  // pattern.cpm: pattern.cpm scales relative to the scheduler's current cps
-  // (default 0.5), which made playback run at half the notated tempo.
-  if (!applyStrudelTempo(api, bpm)) {
+  // Tempo lives on the pattern: pattern.cpm(bpm/4) with the slow() factor
+  // from getMeasures() — see the calibration note there. The scheduler's
+  // clock cannot be changed in this Strudel build (no setcpm/setcps globals
+  // or exports), so applyStrudelTempo is only a fallback for other builds.
+  if (typeof pattern.cpm === 'function') {
+    const cpm = getCyclesPerMinute(bpm);
+    pattern = pattern.cpm(cpm);
+    debugLog('Strudel tempo applied via pattern.cpm:', { cpm });
+  } else if (!applyStrudelTempo(api, bpm)) {
     debugLog('No Strudel tempo API available; using the default clock.');
   }
 
