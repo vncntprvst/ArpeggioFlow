@@ -240,18 +240,24 @@ function shouldReverseDirection(note, chordNotes, isAscending) {
  * @param {function} noteMidi - Function to get MIDI number
  * @param {string|null} startNote - Optional forced first note (must be in chordNotes);
  *   used by the "start each chord on a specific chord tone" exercise option
+ * @param {boolean} midMeasureTurnaround - When true, force one direction
+ *   reversal at the middle of the measure (arpeggio crests and comes back)
+ *   in addition to the usual reversals at the range boundaries
  * @returns {{ notes: string[], newDirection: boolean }} - Generated notes and ending direction
  */
-function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscending, noteFreq, noteMidi, startNote = null) {
+function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscending, noteFreq, noteMidi, startNote = null, midMeasureTurnaround = false) {
   const notes = [];
   let currentDirection = isAscending;
+  // With the mid-measure turnaround, the run crests after the first half
+  const apexIndex = Math.ceil(notesPerMeasure / 2) - 1;
 
   debugLog('generateMeasureNotes START:', {
     chordNotes,
     notesPerMeasure,
     previousNote,
     isAscending,
-    startNote
+    startNote,
+    midMeasureTurnaround
   });
 
   for (let i = 0; i < notesPerMeasure; i++) {
@@ -299,7 +305,14 @@ function generateMeasureNotes(chordNotes, notesPerMeasure, previousNote, isAscen
 
     notes.push(note);
 
-    // Check if we need to reverse direction (hit a boundary)
+    // Optional forced turnaround at the middle of the measure
+    if (midMeasureTurnaround && i === apexIndex && notesPerMeasure > 1) {
+      currentDirection = !currentDirection;
+      debugLog('Mid-measure turnaround at note', i + 1, '→', currentDirection ? 'ascending' : 'descending');
+    }
+
+    // Check if we need to reverse direction (hit a boundary); this also
+    // corrects a mid-measure flip that would walk off the range edge
     currentDirection = shouldReverseDirection(note, chordNotes, currentDirection);
   }
 

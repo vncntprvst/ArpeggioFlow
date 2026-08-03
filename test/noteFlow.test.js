@@ -280,6 +280,34 @@ describe('noteFlow module', () => {
       // F#4 is not a Cmaj7 chord tone; falls back to closest-note logic
       expect(result.notes[0]).toBe('E4');
     });
+
+    test('mid-measure turnaround crests halfway (8 notes)', () => {
+      // Ascending from E4, no range boundary in reach: 4 up, then 4 down
+      const result = generateMeasureNotes(cmaj7Notes, 8, 'E4', true, mockNoteFreq, mockNoteMidi, null, true);
+      const midis = result.notes.map(mockNoteMidi);
+      for (let i = 1; i <= 3; i++) {
+        expect(midis[i]).toBeGreaterThan(midis[i - 1]);
+      }
+      for (let i = 4; i < 8; i++) {
+        expect(midis[i]).toBeLessThan(midis[i - 1]);
+      }
+    });
+
+    test('mid-measure turnaround works for 4-note measures', () => {
+      const result = generateMeasureNotes(cmaj7Notes, 4, 'E4', true, mockNoteFreq, mockNoteMidi, null, true);
+      const midis = result.notes.map(mockNoteMidi);
+      // up, apex after note 2, then down
+      expect(midis[1]).toBeGreaterThan(midis[0]);
+      expect(midis[2]).toBeLessThan(midis[1]);
+      expect(midis[3]).toBeLessThan(midis[2]);
+    });
+
+    test('mid-measure turnaround still respects range boundaries', () => {
+      // Descending into the bottom of the pool: the boundary reversal wins
+      const shortNotes = ['C3', 'E3', 'G3'];
+      const result = generateMeasureNotes(shortNotes, 6, 'E3', false, mockNoteFreq, mockNoteMidi, null, true);
+      result.notes.forEach((note) => expect(shortNotes).toContain(note));
+    });
   });
 
   describe('integration: multi-measure flow', () => {

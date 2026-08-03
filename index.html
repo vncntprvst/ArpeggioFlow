@@ -230,6 +230,32 @@
                   <option value="7">7th</option>
                 </select>
               </div>
+
+              <details class="advanced-options">
+                <summary>Rhythm &amp; turnaround</summary>
+
+                <div class="form-row">
+                  <div class="form-field">
+                    <label for="notesPerMeasure">Notes per bar</label>
+                    <select id="notesPerMeasure" name="notesPerMeasure">
+                      <option value="4" selected>4 — quarter notes</option>
+                      <option value="5">5 — one pair of 8ths</option>
+                      <option value="6">6 — two pairs of 8ths</option>
+                      <option value="7">7 — three pairs of 8ths</option>
+                      <option value="8">8 — eighth notes</option>
+                      <option value="random">Random (4–8 per bar)</option>
+                    </select>
+                  </div>
+
+                  <div class="form-field">
+                    <label for="turnaroundMode">Turn around</label>
+                    <select id="turnaroundMode" name="turnaroundMode">
+                      <option value="bounds" selected>At range bounds</option>
+                      <option value="mid">Mid-measure (up &amp; down)</option>
+                    </select>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -268,6 +294,17 @@
                     Play
                   </button>
                 </div>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
+                <label for="playbackHighlightMode">Visual highlight</label>
+                <select id="playbackHighlightMode" name="playbackHighlightMode">
+                  <option value="chord" selected>Chord arpeggio per measure</option>
+                  <option value="note-arpeggio">Each note + faint arpeggio</option>
+                  <option value="note-scale">Each note + faint scale</option>
+                </select>
               </div>
             </div>
 

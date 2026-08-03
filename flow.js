@@ -163,6 +163,7 @@ const playbackState = {
   notes: [],
   measuresData: [],
   stavePositions: [],
+  beatSlots: [],
   isPlaying: false,
 };
 
@@ -576,6 +577,7 @@ const FRETBOARD_DOT_RING_RADIUS = 25 * 0.5 + 1.5; // dotSize/2 + gap
 // CSS colors (must match styles.css !important rules)
 const FRETBOARD_COLOR_ROOT  = '#99c28d'; // matches .dot-degree-1
 const FRETBOARD_COLOR_INBOX = '#accedb'; // matches .dot-in-box
+const FRETBOARD_COLOR_PLAYING = '#ffb703'; // current note during per-note playback
 // Rings: all black (same in static and playback views)
 const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
 
@@ -703,6 +705,43 @@ function addPlayedNotesRing(dotEl, dotCircle) {
   dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
 }
 
+/**
+ * During per-note playback: light up the dots matching the sounding pitch
+ * (every position with that pitch) and fade the rest. Context dots kept
+ * faintly visible are the current chord's arpeggio tones ('note-arpeggio')
+ * or the whole scale shape ('note-scale').
+ */
+function updateFretboardForNote(segment, note, mode) {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  if (!fretboardDiv || !segment) return;
+  const targetMidi = Tonal.Note.midi(note);
+  const chordChromas = getChordToneChromas(segment.rootNote, segment.quality);
+
+  fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
+    const data = dotEl.__data__;
+    if (!data || !data.inBox) return;
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    if (!dotCircle) return;
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
+
+    const stringIndex = tuning.length - data.string;
+    const openMidi = Tonal.Note.midi(tuning[stringIndex]);
+    const dotMidi = Number.isFinite(openMidi) ? openMidi + data.fret : null;
+
+    if (dotMidi !== null && dotMidi === targetMidi) {
+      dotEl.style.opacity = '1';
+      dotCircle.style.setProperty('fill', FRETBOARD_COLOR_PLAYING, 'important');
+      addPlayedNotesRing(dotEl, dotCircle);
+      return;
+    }
+
+    const isChordTone = chordChromas.has(Tonal.Note.chroma(data.note));
+    const keepFaint = mode === 'note-scale' || isChordTone;
+    dotEl.style.opacity = keepFaint ? '0.35' : '0.08';
+    dotCircle.style.removeProperty('fill');
+  });
+}
+
 function resetFretboardHighlight() {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv) return;
@@ -725,35 +764,69 @@ function clearArpeggioDiagramHighlight() {
   });
 }
 
-function updateVisualForMeasure(idx) {
-  if (isVisualPlaybackEnabled()) {
-    const step = playbackState.measuresData[idx];
-    if (step) {
-      moveHighlightToMeasure(step.barIndex ?? idx);
-      updateFretboardForChord(step);
-      updateArpeggioDiagramHighlight(step.chordName);
+function getSelectedHighlightMode() {
+  return document.getElementById('playbackHighlightMode')?.value || 'chord';
+}
+
+// Flatten segments into visual steps for the selected highlight mode:
+// 'chord' → one step per chord segment; note modes → one step per note
+// (half a beat for eighths).
+function buildVisualSteps(mode) {
+  const steps = [];
+  playbackState.measuresData.forEach((segment) => {
+    const generated = segment.generatedNotes || [];
+    if (mode === 'chord' || !generated.length) {
+      steps.push({ segment, beats: segment.beats || 4 });
+      return;
     }
+    const slots = segment.slots && segment.slots.length
+      ? segment.slots
+      : generated.map(() => 1);
+    let noteIdx = 0;
+    slots.forEach((slotSize) => {
+      for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
+        steps.push({
+          segment,
+          note: generated[noteIdx],
+          beats: slotSize === 2 ? 0.5 : 1,
+        });
+      }
+    });
+  });
+  return steps;
+}
+
+function applyVisualStep(step, mode) {
+  if (!isVisualPlaybackEnabled() || !step) return;
+  moveHighlightToMeasure(step.segment.barIndex ?? 0);
+  if (step.note !== undefined) {
+    updateFretboardForNote(step.segment, step.note, mode);
+  } else {
+    updateFretboardForChord(step.segment);
   }
+  updateArpeggioDiagramHighlight(step.segment.chordName);
 }
 
 function startVisualPlayback() {
-  const steps = playbackState.measuresData;
+  const mode = getSelectedHighlightMode();
+  const steps = buildVisualSteps(mode);
   if (!steps.length) return;
   const bpm = getSelectedTempoBpm();
   const msPerBeat = 60000 / bpm;
 
   visualPlaybackIndex = 0;
-  updateVisualForMeasure(0);
+  applyVisualStep(steps[0], mode);
 
-  // Each step lasts its own beat count (2 beats for chords sharing a bar,
-  // 4 for full bars). Drift-corrected against a running absolute deadline.
+  // Each step lasts its own beat count (a chord segment in chord mode, a
+  // single note in the note modes). Drift-corrected against a running
+  // absolute deadline.
   let nextTime = performance.now();
   const scheduleNext = () => {
     const step = steps[visualPlaybackIndex];
     nextTime += (step?.beats || 4) * msPerBeat;
     visualPlaybackTimerId = setTimeout(() => {
       visualPlaybackIndex = (visualPlaybackIndex + 1) % steps.length;
-      updateVisualForMeasure(visualPlaybackIndex);
+      applyVisualStep(steps[visualPlaybackIndex], mode);
       scheduleNext();
     }, Math.max(0, nextTime - performance.now()));
   };
@@ -791,6 +864,7 @@ function updatePlaybackStateFromExercise(exerciseData) {
   playbackState.notes = exerciseData?.generatedNotes || [];
   playbackState.measuresData = exerciseData?.measuresData || [];
   playbackState.stavePositions = exerciseData?.stavePositions || [];
+  playbackState.beatSlots = exerciseData?.beatSlots || [];
   updatePlaybackControls();
   refreshPlaybackBanner();
 }
@@ -829,6 +903,21 @@ function buildStrudelNotePattern(notes) {
   return tokens.join(' ');
 }
 
+// Build a mini-notation pattern where each top-level token is one beat:
+// a quarter note is "c4", a pair of eighths "[c4 d4]".
+function buildStrudelBeatPattern(beatSlots) {
+  return beatSlots
+    .map((slotNotes) => {
+      const tokens = (slotNotes || [])
+        .map(toStrudelNote)
+        .filter((token) => token && token.length > 0);
+      if (!tokens.length) return null;
+      return tokens.length === 1 ? tokens[0] : `[${tokens.join(' ')}]`;
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+
 /**
  * Strudel uses cycles as its fundamental timing unit, not beats.
  * According to Strudel docs (https://strudel.cc/understand/cycles/):
@@ -861,31 +950,49 @@ function buildStrudelEvaluateCode(notes, bpm) {
   ].join('; ');
 }
 
+// The tempo setters are NOT exports of the @strudel/web ES module — they are
+// only installed as window globals once initStrudel() has run. Look in both
+// places (api for the CDN/global build, window for the ESM build).
+function resolveStrudelFn(api, names) {
+  for (const name of names) {
+    if (typeof api?.[name] === 'function') {
+      return { name, fn: api[name] };
+    }
+    if (typeof window !== 'undefined' && typeof window[name] === 'function') {
+      return { name, fn: window[name] };
+    }
+  }
+  return null;
+}
+
 function applyStrudelTempo(api, bpm) {
   const cyclesPerMinute = getCyclesPerMinute(bpm);
   const cyclesPerSecond = getCyclesPerSecond(bpm);
-  if (typeof api.setcpm === 'function') {
-    api.setcpm(cyclesPerMinute);
-    debugLog('Strudel tempo applied via setcpm:', { cyclesPerMinute });
+  const setCpmFn = resolveStrudelFn(api, ['setcpm', 'setCpm']);
+  if (setCpmFn) {
+    setCpmFn.fn(cyclesPerMinute);
+    debugLog(`Strudel tempo applied via ${setCpmFn.name}:`, { cyclesPerMinute });
     return true;
   }
-  if (typeof api.setCpm === 'function') {
-    api.setCpm(cyclesPerMinute);
-    debugLog('Strudel tempo applied via setCpm:', { cyclesPerMinute });
-    return true;
-  }
-  if (typeof api.setcps === 'function') {
-    api.setcps(cyclesPerSecond);
-    debugLog('Strudel tempo applied via setcps:', { cyclesPerSecond });
+  const setCpsFn = resolveStrudelFn(api, ['setcps', 'setCps']);
+  if (setCpsFn) {
+    setCpsFn.fn(cyclesPerSecond);
+    debugLog(`Strudel tempo applied via ${setCpsFn.name}:`, { cyclesPerSecond });
     return true;
   }
   return false;
 }
 
-function getMeasures(notesLength) {
-  // Adjust for the beats per cycle
-  // Formula: notesLength / (2 * BEATS_PER_CYCLE) 
-  return Math.max(1, notesLength / (2 * BEATS_PER_CYCLE));
+function getMeasures(beatCount) {
+  // Empirical Strudel constants this formula is calibrated against (the web
+  // build exposes NO scheduler tempo setters, so both are fixed):
+  //   - scheduler runs at 0.5 cycles/sec, always
+  //   - pattern.cpm(x) means pattern.fast(x / 60)
+  // slow(beats / 8) puts 8 beat-tokens in one cycle; combined with
+  // pattern.cpm(bpm / 4) the note rate is 8 * (bpm/240) * 0.5 = bpm/60
+  // beats per second — exactly the notated tempo. Do not "simplify" this
+  // to beats / BEATS_PER_CYCLE: that plays at half speed.
+  return Math.max(1, beatCount / (2 * BEATS_PER_CYCLE));
 }
 
 async function playStrudelExercise(notes) {
@@ -900,17 +1007,24 @@ async function playStrudelExercise(notes) {
   const bpm = getSelectedTempoBpm();
   const sound = getSelectedStrudelSound();
   const soundConfig = getStrudelSoundConfig(sound);
-  const patternText = buildStrudelNotePattern(notes);
+  // Beat-grouped pattern (eighth pairs bracketed); fall back to one note per
+  // beat if no slot data is around (e.g. stale pre-rhythm exercise state).
+  const beatSlots =
+    playbackState.beatSlots && playbackState.beatSlots.length
+      ? playbackState.beatSlots
+      : notes.map((note) => [note]);
+  const patternText = buildStrudelBeatPattern(beatSlots);
   if (!patternText) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
     return;
   }
-  const measures = getMeasures(notes.length); 
+  const measures = getMeasures(beatSlots.length);
   let pattern = api.note(patternText).slow(measures);
   if (soundConfig.type === 'metronome') {
     // Fixed pitch (c5) so every click sounds identical regardless of exercise notes.
     // 15ms decay on a square wave = inaudible pitch, pure percussive click.
-    const clickPattern = Array(notes.length).fill('c5').join(' ');
+    // One click per beat, independent of the rhythm pattern.
+    const clickPattern = Array(beatSlots.length).fill('c5').join(' ');
     pattern = api.note(clickPattern).slow(measures).s('square').decay(0.015).sustain(0).gain(0.75);
   } else if (soundConfig.type === 'dirt') {
     const loaded = await ensureGuitarSamplesLoaded(api);
@@ -937,18 +1051,24 @@ async function playStrudelExercise(notes) {
     pattern = pattern.s(sound);
   }
 
+  // Tempo lives on the pattern: pattern.cpm(bpm/4) with the slow() factor
+  // from getMeasures() — see the calibration note there. The scheduler's
+  // clock cannot be changed in this Strudel build (no setcpm/setcps globals
+  // or exports), so applyStrudelTempo is only a fallback for other builds.
   if (typeof pattern.cpm === 'function') {
     const cpm = getCyclesPerMinute(bpm);
     pattern = pattern.cpm(cpm);
     debugLog('Strudel tempo applied via pattern.cpm:', { cpm });
-  } else if (typeof pattern.cps === 'function') {
-    const cps = getCyclesPerSecond(bpm);
-    pattern = pattern.cps(cps);
-    debugLog('Strudel tempo applied via pattern.cps:', { cps });
-  } else {
-    applyStrudelTempo(api, bpm);
+  } else if (!applyStrudelTempo(api, bpm)) {
+    debugLog('No Strudel tempo API available; using the default clock.');
   }
 
+  // Stop the scheduler clock first so the pattern starts at cycle 0 — a
+  // replay would otherwise join the still-running clock mid-cycle, out of
+  // phase with the visual highlight.
+  if (typeof api.hush === 'function') {
+    api.hush();
+  }
   pattern.play();
   const soundLabel = getStrudelSoundLabel(sound);
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
@@ -1647,11 +1767,41 @@ function isTrueChorusLengthEnabled() {
 
 // Split a bar's 4 beats among its chords (bars with more than 4 chords are
 // truncated to the first 4).
-function distributeNotesPerBar(chordCount) {
+function distributeBeatsPerBar(chordCount) {
   if (chordCount <= 1) return [4];
   if (chordCount === 2) return [2, 2];
   if (chordCount === 3) return [2, 1, 1];
   return [1, 1, 1, 1];
+}
+
+// Selected notes-per-bar option: 4-8, or 'random' (rolled per bar)
+function getSelectedNotesPerBar() {
+  const select = document.getElementById('notesPerMeasure');
+  if (!select || !select.value) return 4;
+  if (select.value === 'random') return 'random';
+  const n = parseInt(select.value, 10);
+  return Number.isFinite(n) && n >= 4 && n <= 8 ? n : 4;
+}
+
+function isMidMeasureTurnaroundEnabled() {
+  return document.getElementById('turnaroundMode')?.value === 'mid';
+}
+
+// A bar is 4 beat slots; each slot holds one quarter note (1) or a beamed
+// pair of eighths (2). n notes per bar → (n - 4) slots become eighth pairs,
+// placed on random beats for variety.
+function buildBarSlots(notesPerBar) {
+  const n = Math.max(4, Math.min(8, notesPerBar));
+  const slots = [1, 1, 1, 1];
+  const beatOrder = [0, 1, 2, 3];
+  for (let i = beatOrder.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [beatOrder[i], beatOrder[j]] = [beatOrder[j], beatOrder[i]];
+  }
+  for (let i = 0; i < n - 4; i++) {
+    slots[beatOrder[i]] = 2;
+  }
+  return slots;
 }
 
 function getChordNotesForRomanSymbol(
@@ -1929,7 +2079,7 @@ function generateExercise(options = {}) {
 
   // Initialize VexFlow Renderer
   const VF = Vex.Flow;
-  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation } = VF;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation, Beam } = VF;
   const div = document.getElementById('notation');
   const containerWidth = div.getBoundingClientRect().width;
   const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
@@ -1947,18 +2097,28 @@ function generateExercise(options = {}) {
           true
         );
 
-  // Build measure data: one entry per chord. Chords sharing a bar (true
-  // chorus length) split the bar's 4 notes between them.
+  // Build measure data: one entry per chord. A bar is 4 beat slots (quarter
+  // note or eighth pair each); chords sharing a bar (true chorus length)
+  // split the bar's slots between them.
+  const notesPerBarSetting = getSelectedNotesPerBar();
   const measureData = [];
   chordBars.forEach((barChords, barIndex) => {
-    const noteCounts = distributeNotesPerBar(barChords.length);
-    if (barChords.length > noteCounts.length) {
+    const segmentBeats = distributeBeatsPerBar(barChords.length);
+    if (barChords.length > segmentBeats.length) {
       debugLog(
-        `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${noteCounts.length}.`
+        `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${segmentBeats.length}.`
       );
     }
-    noteCounts.forEach((notesPerMeasure, chordIdx) => {
+    const notesPerBar =
+      notesPerBarSetting === 'random'
+        ? 4 + Math.floor(Math.random() * 5)
+        : notesPerBarSetting;
+    const barSlots = buildBarSlots(notesPerBar);
+    let slotCursor = 0;
+    segmentBeats.forEach((beats, chordIdx) => {
       const chordSymbol = barChords[chordIdx];
+      const slots = barSlots.slice(slotCursor, slotCursor + beats);
+      slotCursor += beats;
       const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
       const chordName = isSongMode
         ? formatChordSymbol(chordSymbol)
@@ -1973,7 +2133,9 @@ function generateExercise(options = {}) {
         rootNote,
         quality,
         chordNotes,
-        notesPerMeasure,
+        slots,
+        beats,
+        notesPerMeasure: slots.reduce((sum, slotSize) => sum + slotSize, 0),
         generatedNotes: null, // Will be filled in
         direction: null, // Will be filled in
       });
@@ -1981,11 +2143,12 @@ function generateExercise(options = {}) {
   });
 
   const startDegree = getSelectedStartDegree();
+  const midMeasureTurnaround = isMidMeasureTurnaroundEnabled();
 
   // Generate all measures forward from the first. Each measure starts on the
   // closest chord tone in the current direction (or on the requested chord
   // degree in chord-tone start mode); direction reverses only at the range
-  // boundaries.
+  // boundaries (plus mid-measure when that turnaround option is on).
   let prevNote = null;
   let prevDirection = true;
   measureData.forEach((measure) => {
@@ -2020,7 +2183,8 @@ function generateExercise(options = {}) {
       prevDirection,
       Tonal.Note.freq,
       Tonal.Note.midi,
-      startNote
+      startNote,
+      midMeasureTurnaround
     );
     measure.generatedNotes = result.notes;
     measure.direction = result.newDirection;
@@ -2043,20 +2207,32 @@ function generateExercise(options = {}) {
   });
   const measures = barGroups.map((bar) => ({
     segments: bar.segments,
-    notes: bar.segments.flatMap((segment) =>
-      (segment.generatedNotes || []).map(
-        (note) =>
-          new StaveNote({
-            clef: 'treble',
-            keys: [toVexFlowFormat(note)],
-            duration: 'q',
-          })
-      )
-    ),
+    notes: bar.segments.flatMap((segment) => {
+      const generated = segment.generatedNotes || [];
+      const slots = segment.slots || generated.map(() => 1);
+      const staveNotes = [];
+      let noteIdx = 0;
+      slots.forEach((slotSize) => {
+        for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
+          staveNotes.push(
+            new StaveNote({
+              clef: 'treble',
+              keys: [toVexFlowFormat(generated[noteIdx])],
+              duration: slotSize === 2 ? '8' : 'q',
+            })
+          );
+        }
+      });
+      return staveNotes;
+    }),
   }));
 
-  const measureWidths = measures.map((_, idx) =>
-    calculateMeasureWidth(keyContext.vexflowKeySignature, idx === 0)
+  const measureWidths = measures.map((measure, idx) =>
+    calculateMeasureWidth(
+      keyContext.vexflowKeySignature,
+      idx === 0,
+      measure.notes.length
+    )
   );
   const lineLayouts = [];
   let currentLine = { measures: [], width: 0 };
@@ -2125,14 +2301,22 @@ function generateExercise(options = {}) {
         annotationNoteIndex += (segment.generatedNotes || []).length;
       });
 
+      // Beam eighth-note pairs (grouped per beat) like a printed chart
+      const beams = Beam.generateBeams(measure.notes);
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
-      const availableWidth = stave.width - (index === 0 ? 90 : 50);
+      // Dense (eighth-note) bars need extra right padding so the last note
+      // doesn't collide with the barline; the first measure also has to
+      // clear the clef, key and time signatures.
+      const rightPadding = Math.max(0, measure.notes.length - 4) * 8;
+      const availableWidth =
+        stave.width - (index === 0 ? 100 : 50) - rightPadding;
       new Formatter()
         .joinVoices([voice])
         .format([voice], Math.max(120, availableWidth));
       voice.draw(context, stave);
+      beams.forEach((beam) => beam.setContext(context).draw());
 
       xStart += stave.width;
     });
@@ -2152,10 +2336,28 @@ function generateExercise(options = {}) {
     rootNote: segment.rootNote,
     quality: segment.quality,
     generatedNotes: segment.generatedNotes || [],
-    beats: (segment.generatedNotes || []).length || segment.notesPerMeasure || 4,
+    slots: segment.slots || [],
+    beats: segment.beats || (segment.slots || []).length || 4,
   }));
 
-  return { generatedNotes, measuresData: measuresForPlayback, stavePositions };
+  // One entry per beat for audio: a quarter note is [note], eighths [n1, n2]
+  const beatSlots = [];
+  measureData.forEach((segment) => {
+    const generated = segment.generatedNotes || [];
+    const slots = segment.slots || generated.map(() => 1);
+    let noteIdx = 0;
+    slots.forEach((slotSize) => {
+      beatSlots.push(generated.slice(noteIdx, noteIdx + slotSize));
+      noteIdx += slotSize;
+    });
+  });
+
+  return {
+    generatedNotes,
+    measuresData: measuresForPlayback,
+    stavePositions,
+    beatSlots,
+  };
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
@@ -2259,9 +2461,11 @@ async function exportExerciseAsPdf() {
 }
 
 // Calculate the required width for a measure based on key signature complexity
-function calculateMeasureWidth(key, isFirstMeasure) {
+// and how many notes it holds (eighth-note bars need more room)
+function calculateMeasureWidth(key, isFirstMeasure, noteCount = 4) {
+  const extraNoteWidth = Math.max(0, noteCount - 4) * 24;
   if (!isFirstMeasure) {
-    return 250; // Default width for non-first measures
+    return 250 + extraNoteWidth; // Default width for non-first measures
   }
 
   // Get the key info to determine how many accidentals we have
@@ -2303,7 +2507,7 @@ function calculateMeasureWidth(key, isFirstMeasure) {
   const firstMeasureWidth = baseWidth + clefWidth + timeSignatureWidth + keySignatureWidth + safetyMargin;
   
   // Ensure a minimum width and cap the maximum to avoid extreme values
-  return Math.max(260, Math.min(520, firstMeasureWidth));
+  return Math.max(260, Math.min(520, firstMeasureWidth)) + extraNoteWidth;
 }
 
 // Make function available globally for testing
@@ -2460,11 +2664,14 @@ document.addEventListener('DOMContentLoaded', function () {
         } else {
           // Play
           stopVisualPlayback();
-          if (isVisualPlaybackEnabled()) {
-            startVisualPlayback();
-          }
+          // Start audio first (loading Strudel and soundfonts can take a
+          // while), then the visual clock right after the pattern starts,
+          // so the highlight and the sound share the same t0.
           if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
             await playStrudelExercise(playbackState.notes);
+          }
+          if (isVisualPlaybackEnabled()) {
+            startVisualPlayback();
           }
           playbackState.isPlaying = true;
           playbackUi.playButton.textContent = 'Stop';
