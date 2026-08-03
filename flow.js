@@ -2306,7 +2306,12 @@ function generateExercise(options = {}) {
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
-      const availableWidth = stave.width - (index === 0 ? 90 : 50);
+      // Dense (eighth-note) bars need extra right padding so the last note
+      // doesn't collide with the barline; the first measure also has to
+      // clear the clef, key and time signatures.
+      const rightPadding = Math.max(0, measure.notes.length - 4) * 8;
+      const availableWidth =
+        stave.width - (index === 0 ? 100 : 50) - rightPadding;
       new Formatter()
         .joinVoices([voice])
         .format([voice], Math.max(120, availableWidth));
