@@ -178,6 +178,21 @@ const playbackUi = {
 
 let strudelApi = null;
 let strudelInitPromise = null;
+// Playback goes through one long-lived wrapper pattern that delegates its
+// queries to strudelPatternRef; continuous shift swaps the ref without ever
+// stopping the scheduler clock (a stop/start seam re-emits boundary notes).
+let strudelPatternRef = null;
+let strudelWrapperActive = false;
+
+function getStrudelPatternClass(api) {
+  if (api && typeof api.Pattern === 'function') {
+    return api.Pattern;
+  }
+  if (typeof window !== 'undefined' && typeof window.Pattern === 'function') {
+    return window.Pattern;
+  }
+  return null;
+}
 let strudelCdnPromise = null;
 let guitarSamplesPromise = null;
 let guitarSamplesLoaded = false;
@@ -833,16 +848,136 @@ function startVisualPlayback() {
   scheduleNext();
 }
 
-function stopVisualPlayback() {
+function clearVisualTimer() {
   if (visualPlaybackTimerId !== null) {
     clearTimeout(visualPlaybackTimerId);
     visualPlaybackTimerId = null;
   }
+}
+
+function stopVisualPlayback() {
+  clearVisualTimer();
   resetFretboardHighlight();
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
   if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+}
+
+// ─── Continuous shift ────────────────────────────────────────────────────────
+// When the exercise loop completes, move the progression to a new key (chromatic
+// steps or circle of 5ths/4ths) or an adjacent CAGED shape, regenerate, and
+// keep playing.
+
+let continuousShiftTimerId = null;
+
+const CONTINUOUS_SHIFT_KEY_DELTAS = {
+  'key-up': 1, // key select options are in chromatic order
+  'key-down': -1,
+  fifths: 7,
+  fourths: 5,
+};
+
+function getSelectedContinuousShift() {
+  return document.getElementById('continuousShift')?.value || 'off';
+}
+
+function clearContinuousShiftTimer() {
+  if (continuousShiftTimerId !== null) {
+    clearTimeout(continuousShiftTimerId);
+    continuousShiftTimerId = null;
+  }
+}
+
+function getLoopDurationMs() {
+  const totalBeats = playbackState.measuresData.reduce(
+    (sum, segment) => sum + (segment.beats || 4),
+    0
+  );
+  return totalBeats * (60000 / getSelectedTempoBpm());
+}
+
+// Advance a select to a nearby option (wrapping; skips empty placeholders)
+function advanceSelect(selectId, delta) {
+  const select = document.getElementById(selectId);
+  if (!select) return false;
+  const values = [...select.options].map((o) => o.value).filter((v) => v);
+  const idx = values.indexOf(select.value);
+  if (idx === -1) return false;
+  select.value = values[(idx + delta + values.length) % values.length];
+  select.dispatchEvent(new Event('change'));
+  return true;
+}
+
+function applyContinuousShift(mode) {
+  if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
+    if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) {
+      debugLog('Continuous key shift is not available in song mode.');
+      return false;
+    }
+    return advanceSelect('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
+  }
+  if (mode === 'shape-up') return advanceSelect('shape', 1);
+  if (mode === 'shape-down') return advanceSelect('shape', -1);
+  return false;
+}
+
+// Fire slightly before the loop boundary: the scheduler queues audio events
+// ~150ms ahead (latency 0.1s + tick interval), so hushing right at the
+// boundary is too late — the old pattern's next first note is already
+// scheduled and sounds together with the new pattern's first note.
+const CONTINUOUS_SHIFT_GUARD_MS = 200;
+
+// Always keeps a loop timer while playing; the mode is read when it fires so
+// changing the option mid-playback takes effect at the next loop boundary.
+function scheduleContinuousShift() {
+  clearContinuousShiftTimer();
+  if (!playbackState.isPlaying) return;
+  const loopMs = getLoopDurationMs();
+  if (!Number.isFinite(loopMs) || loopMs <= 0) return;
+  continuousShiftTimerId = setTimeout(() => {
+    performContinuousShift(getSelectedContinuousShift());
+  }, Math.max(0, loopMs - CONTINUOUS_SHIFT_GUARD_MS));
+}
+
+// Last note + direction of the current exercise, used to voice-lead the next
+// one when continuous shift regenerates.
+function getCarryOverFromLastExercise() {
+  const measures = lastExerciseState?.measureData;
+  const last = measures?.[measures.length - 1];
+  const lastNote = last?.generatedNotes?.[last.generatedNotes.length - 1];
+  if (!lastNote) return null;
+  return { prevNote: lastNote, prevDirection: last.direction ?? true };
+}
+
+async function performContinuousShift(mode) {
+  if (!playbackState.isPlaying) return;
+  // This fires CONTINUOUS_SHIFT_GUARD_MS before the musical loop boundary
+  const boundaryAt = performance.now() + CONTINUOUS_SHIFT_GUARD_MS;
+  if (mode === 'off' || !applyContinuousShift(mode)) {
+    scheduleContinuousShift();
+    return;
+  }
+  regenerateExercise({ carryOver: getCarryOverFromLastExercise() });
+  // Swap the audio pattern NOW, before the scheduler queries the boundary
+  // chunk: the delegating wrapper keeps playing without any clock restart,
+  // and the swap only affects queries from here on — the old loop's tail is
+  // already scheduled, the new loop's first note comes from the new pattern.
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    await playStrudelExercise(playbackState.notes);
+  }
+  clearVisualTimer();
+  // Restart the visual clock exactly at the boundary so it stays aligned
+  // with the audio grid.
+  const waitMs = boundaryAt - performance.now();
+  if (waitMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  if (!playbackState.isPlaying) return;
+  if (isVisualPlaybackEnabled()) {
+    startVisualPlayback();
+  }
+  scheduleContinuousShift();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1063,13 +1198,30 @@ async function playStrudelExercise(notes) {
     debugLog('No Strudel tempo API available; using the default clock.');
   }
 
-  // Stop the scheduler clock first so the pattern starts at cycle 0 — a
-  // replay would otherwise join the still-running clock mid-cycle, out of
-  // phase with the visual highlight.
-  if (typeof api.hush === 'function') {
-    api.hush();
+  strudelPatternRef = pattern;
+  const PatternClass = getStrudelPatternClass(api);
+  if (strudelWrapperActive) {
+    // Already playing through the delegating wrapper: swapping the ref is
+    // enough. The scheduler clock never stops, so there is no restart seam
+    // (no doubled or re-scheduled boundary notes); the new pattern has the
+    // same loop length, so it stays on the same cycle grid.
+    debugLog('Strudel pattern swapped in place.');
+  } else if (PatternClass) {
+    // Fresh start: stop the clock so the pattern begins at cycle 0, then
+    // play a wrapper that delegates every query to the current pattern ref.
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
+    wrapper.play();
+    strudelWrapperActive = true;
+  } else {
+    // No Pattern class exposed by this build: restart the scheduler directly
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    pattern.play();
   }
-  pattern.play();
   const soundLabel = getStrudelSoundLabel(sound);
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
 }
@@ -1084,6 +1236,8 @@ async function stopStrudelExercise() {
     return;
   }
   api.hush();
+  strudelWrapperActive = false;
+  strudelPatternRef = null;
   setPlaybackBanner('Playback stopped.', 'info');
 }
 
@@ -2149,8 +2303,10 @@ function generateExercise(options = {}) {
   // closest chord tone in the current direction (or on the requested chord
   // degree in chord-tone start mode); direction reverses only at the range
   // boundaries (plus mid-measure when that turnaround option is on).
-  let prevNote = null;
-  let prevDirection = true;
+  // A carry-over (continuous shift) voice-leads from the previous exercise's
+  // last note instead of starting on a random one.
+  let prevNote = options.carryOver?.prevNote || null;
+  let prevDirection = options.carryOver?.prevDirection ?? true;
   measureData.forEach((measure) => {
     if (measure.chordNotes.length === 0) {
       console.error(`No notes for chord: ${measure.chordName}`);
@@ -2306,12 +2462,13 @@ function generateExercise(options = {}) {
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
-      // Dense (eighth-note) bars need extra right padding so the last note
-      // doesn't collide with the barline; the first measure also has to
-      // clear the clef, key and time signatures.
-      const rightPadding = Math.max(0, measure.notes.length - 4) * 8;
-      const availableWidth =
-        stave.width - (index === 0 ? 100 : 50) - rightPadding;
+      // Dense (eighth-note) bars: the first measure needs extra right padding
+      // so the last note clears the barline after clef/key/time take their
+      // share; later measures instead spread their notes into more of the bar.
+      const extraNotes = Math.max(0, measure.notes.length - 4);
+      const reserve =
+        index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
+      const availableWidth = stave.width - reserve;
       new Formatter()
         .joinVoices([voice])
         .format([voice], Math.max(120, availableWidth));
@@ -2358,6 +2515,54 @@ function generateExercise(options = {}) {
     stavePositions,
     beatSlots,
   };
+}
+
+// Full regeneration: scale diagram + notation + playback state, from the
+// current form values. Used by the Generate button and by continuous shift
+// (which passes options.carryOver to voice-lead across the boundary).
+function regenerateExercise(options = {}) {
+  const mode = getSelectedExerciseMode();
+  const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
+  const keyValue =
+    mode === EXERCISE_MODES.SONG && song
+      ? song.scaleType === 'minor'
+        ? `${song.key}m`
+        : song.key
+      : getSelectedKeyValue();
+  updateKeyDebug(keyValue);
+
+  const shape = document.getElementById('shape').value;
+  if (!shape) {
+    alert('Please select a chord shape.');
+    return;
+  }
+
+  const keyContext = getKeyContext(keyValue);
+  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
+  if (!cagedShape) {
+    alert('Please select a chord shape.');
+    return;
+  }
+  if (keyContext.isMinor) {
+    cagedShape.key = keyContext.tonic;
+    cagedShape.scaleType = keyContext.scaleType;
+  }
+  debugLog('cagedShape:', cagedShape);
+
+  // Clear previous chords and diagrams
+  document.getElementById('fretboard-container').innerHTML = '';
+
+  // Render the scale diagram using Fretboard.js
+  renderScaleDiagram(cagedShape);
+
+  // Generate the musical exercise
+  const exerciseData = generateExercise({
+    mode,
+    song,
+    carryOver: options.carryOver || null,
+  });
+  updateExportTitle();
+  updatePlaybackStateFromExercise(exerciseData);
 }
 
 // Note: findClosestIndex has been moved to noteFlow.js module
@@ -2461,9 +2666,10 @@ async function exportExerciseAsPdf() {
 }
 
 // Calculate the required width for a measure based on key signature complexity
-// and how many notes it holds (eighth-note bars need more room)
+// and how many notes it holds (eighth-note bars need more room; the first
+// measure needs extra because clef/key/time also take space)
 function calculateMeasureWidth(key, isFirstMeasure, noteCount = 4) {
-  const extraNoteWidth = Math.max(0, noteCount - 4) * 24;
+  const extraNoteWidth = Math.max(0, noteCount - 4) * (isFirstMeasure ? 24 : 16);
   if (!isFirstMeasure) {
     return 250 + extraNoteWidth; // Default width for non-first measures
   }
@@ -2655,6 +2861,7 @@ document.addEventListener('DOMContentLoaded', function () {
       playbackUi.playButton.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
           // Stop
+          clearContinuousShiftTimer();
           stopVisualPlayback();
           if (playbackState.engine === 'strudel') {
             await stopStrudelExercise();
@@ -2675,49 +2882,13 @@ document.addEventListener('DOMContentLoaded', function () {
           }
           playbackState.isPlaying = true;
           playbackUi.playButton.textContent = 'Stop';
+          scheduleContinuousShift();
         }
       });
     }
 
     document.getElementById('generateButton').addEventListener('click', () => {
-      const mode = getSelectedExerciseMode();
-      const song = mode === EXERCISE_MODES.SONG ? getSelectedSong() : null;
-      const keyValue =
-        mode === EXERCISE_MODES.SONG && song
-          ? song.scaleType === 'minor'
-            ? `${song.key}m`
-            : song.key
-          : getSelectedKeyValue();
-      updateKeyDebug(keyValue);
-
-      const shape = document.getElementById('shape').value;
-      if (!shape) {
-        alert('Please select a chord shape.');
-        return;
-      }
-
-      const keyContext = getKeyContext(keyValue);
-      const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
-      if (!cagedShape) {
-        alert('Please select a chord shape.');
-        return;
-      }
-      if (keyContext.isMinor) {
-        cagedShape.key = keyContext.tonic;
-        cagedShape.scaleType = keyContext.scaleType;
-      }
-      console.log('cagedShape:', cagedShape);
-
-      // Clear previous chords and diagrams
-      document.getElementById('fretboard-container').innerHTML = '';
-
-      // Render the scale diagram using Fretboard.js
-      renderScaleDiagram(cagedShape);
-
-      // Generate the musical exercise
-      const exerciseData = generateExercise({ mode, song });
-      updateExportTitle();
-      updatePlaybackStateFromExercise(exerciseData);
+      regenerateExercise();
     });
 
     const exportPngButton = document.getElementById('exportPngButton');
