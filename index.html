@@ -297,17 +297,6 @@
               </div>
             </div>
 
-            <div class="form-row">
-              <div class="form-field">
-                <label for="playbackHighlightMode">Visual highlight</label>
-                <select id="playbackHighlightMode" name="playbackHighlightMode">
-                  <option value="chord" selected>Chord arpeggio per measure</option>
-                  <option value="note-arpeggio">Each note + faint arpeggio</option>
-                  <option value="note-scale">Each note + faint scale</option>
-                </select>
-              </div>
-            </div>
-
             <details class="advanced-options">
               <summary>Continuous shift</summary>
 
@@ -327,6 +316,17 @@
 
             <div class="form-row">
               <div class="form-field">
+                <label for="playbackHighlightMode">Visual highlight</label>
+                <select id="playbackHighlightMode" name="playbackHighlightMode">
+                  <option value="chord" selected>Chord arpeggio per measure</option>
+                  <option value="note-arpeggio">Each note + faint arpeggio</option>
+                  <option value="note-scale">Each note + faint scale</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
                 <label for="tempoBpm">Tempo (BPM)</label>
                 <input type="number" id="tempoBpm" name="tempoBpm" value="80" min="40" max="240" />
               </div>
@@ -338,9 +338,8 @@
                   <option value="guitar-3">Guitar (Sample 3)</option>
                   <option value="guitar-4">Guitar (Sample 4)</option>
                   <option value="guitar-5">Guitar (Sample 5)</option> -->
-                  <option value="metronome" selected>Metronome Click</option>
                   <option value="gm_electric_guitar_clean">Electric Guitar (Clean)</option>
-                  <option value="gm_electric_guitar_jazz">Electric Guitar (Jazz)</option>
+                  <option value="gm_electric_guitar_jazz" selected>Electric Guitar (Jazz)</option>
                   <option value="gm_electric_guitar_muted">Electric Guitar (Muted)</option>
                   <option value="gm_acoustic_guitar_nylon">Acoustic Guitar (Nylon)</option>
                   <option value="gm_acoustic_guitar_steel">Acoustic Guitar (Steel)</option>
@@ -354,6 +353,25 @@
                   <option value="triangle">Triangle</option>
                   <option value="square">Square</option>
                   <option value="sawtooth">Sawtooth</option>
+                  <option value="none">None (rhythm only)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-field">
+                <label for="rhythmSound">Backing rhythm</label>
+                <select id="rhythmSound" name="rhythmSound">
+                  <option value="off" selected>Off</option>
+                  <option value="metronome">Metronome Click</option>
+                  <option value="metronome-accent">Metronome (accent on 1)</option>
+                  <option value="rim">Rimshot Click</option>
+                  <option value="hihat">Hi-Hat (quarters)</option>
+                  <option value="hihat-eighths">Hi-Hat (eighths)</option>
+                  <option value="backbeat">Kick &amp; Snare</option>
+                  <option value="rock">Rock Beat</option>
+                  <option value="jazz-swing">Jazz Ride (swing)</option>
+                  <option value="bossa">Bossa (rim &amp; kick)</option>
                 </select>
               </div>
             </div>

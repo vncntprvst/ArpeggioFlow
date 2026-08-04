@@ -104,6 +104,32 @@ function getStrudelSoundLabel(sound) {
   return getStrudelSoundConfig(sound).label;
 }
 
+function getSelectedRhythm() {
+  return document.getElementById('rhythmSound')?.value || 'off';
+}
+
+function getRhythmConfig(rhythm) {
+  return RHYTHM_CONFIG[rhythm] || RHYTHM_CONFIG.off;
+}
+
+function getRhythmLabel(rhythm) {
+  return getRhythmConfig(rhythm).label;
+}
+
+/** Human-readable "<sound> + <rhythm>" for the playback banner. */
+function describePlaybackVoices() {
+  const soundConfig = getStrudelSoundConfig(getSelectedStrudelSound());
+  const rhythm = getSelectedRhythm();
+  const parts = [];
+  if (soundConfig.type !== 'none') {
+    parts.push(soundConfig.label);
+  }
+  if (rhythm !== 'off') {
+    parts.push(getRhythmLabel(rhythm));
+  }
+  return parts.length ? parts.join(' + ') : 'no sound selected';
+}
+
 async function ensureGuitarSamplesLoaded(api) {
   if (guitarSamplesLoaded) {
     return true;
@@ -158,6 +184,35 @@ async function ensureGuitarVariantSamplesLoaded(api) {
   return guitarVariantSamplesPromise;
 }
 
+async function ensureDrumSamplesLoaded(api) {
+  if (drumSamplesLoaded) {
+    return true;
+  }
+  if (drumSamplesPromise) {
+    return drumSamplesPromise;
+  }
+  const samplesFn = api?.samples || window.samples;
+  if (typeof samplesFn !== 'function') {
+    return false;
+  }
+  drumSamplesPromise = (async () => {
+    try {
+      // A URL string makes samples() fetch the map and use its _base; the
+      // audio files themselves are only fetched when a sound first triggers.
+      const result = samplesFn(DRUM_SAMPLE_MAP_URL);
+      if (result && typeof result.then === 'function') {
+        await result;
+      }
+      drumSamplesLoaded = true;
+      return true;
+    } catch (error) {
+      console.warn('Failed to load drum samples:', error);
+      return false;
+    }
+  })();
+  return drumSamplesPromise;
+}
+
 const playbackState = {
   engine: 'off',
   notes: [],
@@ -198,6 +253,8 @@ let guitarSamplesPromise = null;
 let guitarSamplesLoaded = false;
 let guitarVariantSamplesPromise = null;
 let guitarVariantSamplesLoaded = false;
+let drumSamplesPromise = null;
+let drumSamplesLoaded = false;
 let soundfontsPromise = null;
 let soundfontsLoaded = false;
 
@@ -219,7 +276,7 @@ const GUITAR_VARIANT_SAMPLE_MAP = {
   guitar5: 'samples/guitar/guitar_4.wav',
 };
 const STRUDEL_SOUND_CONFIG = {
-  'metronome': { type: 'metronome', label: 'Metronome Click' },
+  none: { type: 'none', label: 'No melody sound' },
   'gtr-pluck': { type: 'dirt', sample: 'gtr', label: 'Plucked (Koto-like)' },
   'guitar-1': { type: 'sample-map', sample: 'guitar1', label: 'Guitar (Sample 1)' },
   'guitar-2': { type: 'sample-map', sample: 'guitar2', label: 'Guitar (Sample 2)' },
@@ -273,6 +330,55 @@ const STRUDEL_SOUND_CONFIG = {
   },
   default: { type: 'synth', label: 'Synth (Default)' },
 };
+// Drum kit for the backing rhythm. @strudel/web's prebake only registers the
+// synth sounds, so the sample registry has to be loaded by hand — this JSON
+// map (the same one the official Strudel REPL prebakes) names bd/sd/hh/oh/
+// rim/cp/rd/cr/perc and resolves them against the tidal-drum-machines repo.
+const DRUM_SAMPLE_MAP_URL =
+  'https://raw.githubusercontent.com/felixroos/dough-samples/main/EmuSP12.json';
+
+// Backing rhythm played underneath (or instead of) the exercise notes. It
+// follows the tempo, not the note rhythm: one token per beat of the loop.
+// A layer maps (beatInMeasure, beatsInMeasure) to a mini-notation token —
+// 'hh' is one hit on the beat, '[hh hh]' two eighths, '~' a rest.
+const RHYTHM_CONFIG = {
+  off: { type: 'off', label: 'Off' },
+  metronome: { type: 'click', label: 'Metronome Click' },
+  'metronome-accent': { type: 'click', label: 'Metronome (accent on 1)', accent: true },
+  rim: { type: 'drums', label: 'Rimshot Click', layers: [() => 'rim'] },
+  hihat: { type: 'drums', label: 'Hi-Hat (quarters)', layers: [() => 'hh'] },
+  'hihat-eighths': { type: 'drums', label: 'Hi-Hat (eighths)', layers: [() => '[hh hh]'] },
+  backbeat: {
+    type: 'drums',
+    label: 'Kick & Snare',
+    layers: [(beat) => (beat % 2 === 0 ? 'bd' : 'sd')],
+  },
+  rock: {
+    type: 'drums',
+    label: 'Rock Beat',
+    layers: [(beat) => (beat % 2 === 0 ? 'bd' : 'sd'), () => '[hh hh]'],
+  },
+  'jazz-swing': {
+    type: 'drums',
+    label: 'Jazz Ride (swing)',
+    // Ride on every beat, swung "ding-da" on 2 and 4; hi-hat foot on 2 and 4.
+    layers: [
+      (beat) => (beat % 2 === 0 ? 'rd' : '[rd@2 rd]'),
+      (beat) => (beat % 2 === 1 ? 'hh' : '~'),
+    ],
+  },
+  bossa: {
+    type: 'drums',
+    label: 'Bossa (rim & kick)',
+    layers: [
+      (beat) => (beat % 2 === 0 ? 'bd' : '[~ bd]'),
+      (beat) => ['rim', '[~ rim]', '~', 'rim'][beat % 4],
+      () => '[hh hh]',
+    ],
+  },
+};
+const DEFAULT_RHYTHM_GAIN = 0.7;
+
 const GM_SOUNDFONT_FONTS = {
   gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
@@ -295,6 +401,10 @@ function getGlobalStrudelApi() {
   return {
     initStrudel: window.initStrudel,
     note: (...args) => window.note?.(...args),
+    // s/stack are installed as globals by initStrudel's evalScope, so these
+    // stay lazy — they are looked up at call time, not at wrapper creation.
+    s: (...args) => window.s?.(...args),
+    stack: (...args) => window.stack?.(...args),
     hush: (...args) => window.hush?.(...args),
     evaluate: (...args) => window.evaluate?.(...args),
     setcpm: (...args) => window.setcpm?.(...args),
@@ -1008,9 +1118,10 @@ function refreshPlaybackBanner() {
   if (playbackState.engine === 'strudel') {
     if (playbackState.notes.length) {
       const bpm = getSelectedTempoBpm();
-      const sound = getSelectedStrudelSound();
-      const soundLabel = getStrudelSoundLabel(sound);
-      setPlaybackBanner(`Strudel ready at ${bpm} BPM (${soundLabel}). Click Play to hear the exercise.`, 'info');
+      setPlaybackBanner(
+        `Strudel ready at ${bpm} BPM (${describePlaybackVoices()}). Click Play to hear the exercise.`,
+        'info'
+      );
     } else {
       setPlaybackBanner('Generate an exercise to enable playback.', 'warning');
     }
@@ -1130,6 +1241,91 @@ function getMeasures(beatCount) {
   return Math.max(1, beatCount / (2 * BEATS_PER_CYCLE));
 }
 
+// ─── Backing rhythm ──────────────────────────────────────────────────────────
+
+/**
+ * One entry per beat of the loop: its 0-based position inside its measure and
+ * that measure's beat count, so rhythms can put the kick on 1 and 3 whatever
+ * the measure lengths are. Falls back to a 4/4 grid if the measure data does
+ * not add up to the beat count.
+ */
+function getBeatMeta(beatCount) {
+  const segments = playbackState.measuresData || [];
+  const total = segments.reduce((sum, segment) => sum + (segment.beats || 4), 0);
+  const meta = [];
+  if (segments.length && total === beatCount) {
+    segments.forEach((segment) => {
+      const beats = segment.beats || 4;
+      for (let beat = 0; beat < beats; beat += 1) {
+        meta.push({ beat, beats });
+      }
+    });
+    return meta;
+  }
+  for (let index = 0; index < beatCount; index += 1) {
+    meta.push({ beat: index % BEATS_PER_CYCLE, beats: BEATS_PER_CYCLE });
+  }
+  return meta;
+}
+
+// Fixed pitch (c5) so every click sounds identical regardless of exercise
+// notes. 15ms decay on a square wave = inaudible pitch, pure percussive click.
+// One click per beat, independent of the note rhythm.
+function buildClickPattern(api, beatMeta, measures, accent) {
+  const clickText = beatMeta.map(() => 'c5').join(' ');
+  const gain = accent
+    ? beatMeta.map(({ beat }) => (beat === 0 ? '1' : '0.55')).join(' ')
+    : 0.75;
+  // gain before slow(): the two token strings are the same length, so beat i
+  // of the click lines up with beat i of the gain pattern.
+  return api.note(clickText).gain(gain).slow(measures).s('square').decay(0.015).sustain(0);
+}
+
+/** Drum/click layer for the selected rhythm, or null when it is off. */
+async function buildRhythmPattern(api, beatMeta, measures) {
+  const rhythm = getSelectedRhythm();
+  const config = getRhythmConfig(rhythm);
+  if (config.type === 'off') {
+    return null;
+  }
+  if (config.type === 'click') {
+    return buildClickPattern(api, beatMeta, measures, config.accent);
+  }
+  const soundFn = resolveStrudelFn(api, ['s', 'sound']);
+  if (!soundFn) {
+    setPlaybackBanner('This Strudel build cannot play drums; rhythm is off.', 'warning');
+    return null;
+  }
+  if (!(await ensureDrumSamplesLoaded(api))) {
+    setPlaybackBanner('Drum samples failed to load; rhythm is off.', 'warning');
+    return null;
+  }
+  const layers = [];
+  for (const tokenFor of config.layers) {
+    const text = beatMeta.map(({ beat, beats }) => tokenFor(beat, beats) || '~').join(' ');
+    const layer = soundFn.fn(text);
+    if (!layer || typeof layer.slow !== 'function') {
+      setPlaybackBanner('This Strudel build cannot play drums; rhythm is off.', 'warning');
+      return null;
+    }
+    layers.push(layer.slow(measures));
+  }
+  const pattern = layers.reduce((combined, layer) => stackPatterns(api, combined, layer));
+  return typeof pattern.gain === 'function'
+    ? pattern.gain(config.gain ?? DEFAULT_RHYTHM_GAIN)
+    : pattern;
+}
+
+function stackPatterns(api, first, second) {
+  if (!first) return second;
+  if (!second) return first;
+  if (typeof first.stack === 'function') {
+    return first.stack(second);
+  }
+  const stackFn = resolveStrudelFn(api, ['stack']);
+  return stackFn ? stackFn.fn(first, second) : first;
+}
+
 async function playStrudelExercise(notes) {
   if (!notes.length) {
     setPlaybackBanner('Generate an exercise before playing.', 'warning');
@@ -1154,13 +1350,10 @@ async function playStrudelExercise(notes) {
     return;
   }
   const measures = getMeasures(beatSlots.length);
-  let pattern = api.note(patternText).slow(measures);
-  if (soundConfig.type === 'metronome') {
-    // Fixed pitch (c5) so every click sounds identical regardless of exercise notes.
-    // 15ms decay on a square wave = inaudible pitch, pure percussive click.
-    // One click per beat, independent of the rhythm pattern.
-    const clickPattern = Array(beatSlots.length).fill('c5').join(' ');
-    pattern = api.note(clickPattern).slow(measures).s('square').decay(0.015).sustain(0).gain(0.75);
+  const beatMeta = getBeatMeta(beatSlots.length);
+  let pattern = soundConfig.type === 'none' ? null : api.note(patternText).slow(measures);
+  if (soundConfig.type === 'none') {
+    // "None (rhythm only)": the backing rhythm below is the whole pattern.
   } else if (soundConfig.type === 'dirt') {
     const loaded = await ensureGuitarSamplesLoaded(api);
     if (loaded && typeof pattern.s === 'function') {
@@ -1184,6 +1377,15 @@ async function playStrudelExercise(notes) {
     }
   } else if (sound !== 'default' && typeof pattern.s === 'function') {
     pattern = pattern.s(sound);
+  }
+
+  // The backing rhythm rides on the same beat grid as the notes, so stacking
+  // it here keeps one pattern for the scheduler (and one loop length for the
+  // in-place swap that continuous shift relies on).
+  pattern = stackPatterns(api, pattern, await buildRhythmPattern(api, beatMeta, measures));
+  if (!pattern) {
+    setPlaybackBanner('Pick a sound or a backing rhythm to hear playback.', 'warning');
+    return;
   }
 
   // Tempo lives on the pattern: pattern.cpm(bpm/4) with the slow() factor
@@ -1222,8 +1424,7 @@ async function playStrudelExercise(notes) {
     }
     pattern.play();
   }
-  const soundLabel = getStrudelSoundLabel(sound);
-  setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${soundLabel}).`, 'info');
+  setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${describePlaybackVoices()}).`, 'info');
 }
 
 async function stopStrudelExercise() {
@@ -2850,6 +3051,15 @@ document.addEventListener('DOMContentLoaded', function () {
     const soundSelect = document.getElementById('strudelSound');
     if (soundSelect) {
       soundSelect.addEventListener('change', () => {
+        if (playbackState.engine !== 'strudel') {
+          return;
+        }
+        refreshPlaybackBanner();
+      });
+    }
+    const rhythmSelect = document.getElementById('rhythmSound');
+    if (rhythmSelect) {
+      rhythmSelect.addEventListener('change', () => {
         if (playbackState.engine !== 'strudel') {
           return;
         }
