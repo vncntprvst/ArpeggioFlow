@@ -2,8 +2,9 @@
 favicons/web/
 
 # Working documents
-working_doc.md
-working_doc_initial.md
+*.md
+!TODO.md
+!readme.md
 
 # VS Code
 .vs/
