@@ -293,15 +293,16 @@
                   <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
                     Play
                   </button>
+                  <button type="button" id="exerciseHistoryButton" class="secondary-button">
+                    History
+                  </button>
                 </div>
               </div>
             </div>
 
-            <details class="advanced-options">
-              <summary>Continuous shift</summary>
-
+            <div class="form-row">
               <div class="form-field">
-                <label for="continuousShift">On each loop</label>
+                <label for="continuousShift">Continuous shift</label>
                 <select id="continuousShift" name="continuousShift">
                   <option value="off" selected>Off — repeat as is</option>
                   <option value="key-up">Next key (ascending)</option>
@@ -312,7 +313,7 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                 </select>
               </div>
-            </details>
+            </div>
 
             <div class="form-row">
               <div class="form-field">
@@ -338,6 +339,7 @@
                   <option value="guitar-3">Guitar (Sample 3)</option>
                   <option value="guitar-4">Guitar (Sample 4)</option>
                   <option value="guitar-5">Guitar (Sample 5)</option> -->
+                  <option value="gm_blues_guitar">Blues Guitar (warm overdrive)</option>
                   <option value="gm_electric_guitar_clean">Electric Guitar (Clean)</option>
                   <option value="gm_electric_guitar_jazz" selected>Electric Guitar (Jazz)</option>
                   <option value="gm_electric_guitar_muted">Electric Guitar (Muted)</option>
@@ -374,6 +376,15 @@
                   <option value="bossa">Bossa (rim &amp; kick)</option>
                 </select>
               </div>
+              <div class="form-field">
+                <label for="soundAmbience">Ambience</label>
+                <select id="soundAmbience" name="soundAmbience">
+                  <option value="dry">Dry (no effects)</option>
+                  <option value="room" selected>Room — notes ring</option>
+                  <option value="hall">Hall — long tail</option>
+                  <option value="slapback">Slapback echo (blues)</option>
+                </select>
+              </div>
             </div>
 
             <div
@@ -408,6 +419,8 @@
 
               <!-- Fretboard diagram -->
               <div id="fretboard-container"></div>
+              <!-- Scale + current chord, aligned under the highlighted box -->
+              <div id="fretboard-labels"></div>
 
               <!-- Music notation -->
               <div id="notation"></div>
@@ -443,6 +456,24 @@
       </section>
     </main>
   </div>
+
+  <!-- Played exercises: this session's loops + pinned ones (kept outside the
+       form so its buttons never interact with the exercise form) -->
+  <dialog id="exerciseHistoryModal" class="scale-degree-modal">
+    <div class="scale-degree-modal__header">
+      <h2 class="scale-degree-modal__title">Exercise history</h2>
+      <button type="button" id="exerciseHistoryClose" class="scale-degree-modal__close" aria-label="Close">✕</button>
+    </div>
+    <div class="scale-degree-modal__body">
+      <div class="hist-toolbar">
+        <button type="button" id="pinCurrentExerciseButton" class="secondary-button">
+          ☆ Pin current exercise
+        </button>
+        <span class="hist-toolbar__hint">Every loop you play is recorded here for this session.</span>
+      </div>
+      <div id="exerciseHistoryBody"></div>
+    </div>
+  </dialog>
 
   <!-- Note flow pure functions (must load before flow.js) -->
   <script src="noteFlow.js"></script>

@@ -108,6 +108,14 @@ function getSelectedRhythm() {
   return document.getElementById('rhythmSound')?.value || 'off';
 }
 
+function getSelectedAmbience() {
+  return document.getElementById('soundAmbience')?.value || DEFAULT_AMBIENCE;
+}
+
+function getAmbienceConfig(ambience) {
+  return AMBIENCE_CONFIG[ambience] || AMBIENCE_CONFIG[DEFAULT_AMBIENCE];
+}
+
 function getRhythmConfig(rhythm) {
   return RHYTHM_CONFIG[rhythm] || RHYTHM_CONFIG.off;
 }
@@ -308,6 +316,11 @@ const STRUDEL_SOUND_CONFIG = {
     label: 'Electric Guitar (Jazz)',
     sample: 'gm_electric_guitar_jazz',
   },
+  gm_blues_guitar: {
+    type: 'soundfont',
+    label: 'Blues Guitar (warm overdrive)',
+    sample: 'gm_blues_guitar',
+  },
   gm_electric_guitar_muted: {
     type: 'soundfont',
     label: 'Electric Guitar (Muted)',
@@ -340,7 +353,8 @@ const DRUM_SAMPLE_MAP_URL =
 // Backing rhythm played underneath (or instead of) the exercise notes. It
 // follows the tempo, not the note rhythm: one token per beat of the loop.
 // A layer maps (beatInMeasure, beatsInMeasure) to a mini-notation token —
-// 'hh' is one hit on the beat, '[hh hh]' two eighths, '~' a rest.
+// 'hh' is one hit on the beat, '[hh hh]' two eighths, '~' a rest. A layer is
+// either that function or { token, gain } when it needs its own level.
 const RHYTHM_CONFIG = {
   off: { type: 'off', label: 'Off' },
   metronome: { type: 'click', label: 'Metronome Click' },
@@ -362,9 +376,12 @@ const RHYTHM_CONFIG = {
     type: 'drums',
     label: 'Jazz Ride (swing)',
     // Ride on every beat, swung "ding-da" on 2 and 4; hi-hat foot on 2 and 4.
+    // The ride sample is far hotter than the kit's other sounds, so it sits
+    // well below the default rhythm gain — it should brush along under the
+    // exercise, not lead it.
     layers: [
-      (beat) => (beat % 2 === 0 ? 'rd' : '[rd@2 rd]'),
-      (beat) => (beat % 2 === 1 ? 'hh' : '~'),
+      { token: (beat) => (beat % 2 === 0 ? 'rd' : '[rd@2 rd]'), gain: 0.22 },
+      { token: (beat) => (beat % 2 === 1 ? 'hh' : '~'), gain: 0.35 },
     ],
   },
   bossa: {
@@ -379,7 +396,36 @@ const RHYTHM_CONFIG = {
 };
 const DEFAULT_RHYTHM_GAIN = 0.7;
 
+// Effects applied to the exercise notes (never to the drums). Soundfonts
+// default to a 10ms release, which is what makes the arpeggios sound clipped
+// and staccato; `release` lets each note ring past its slot and `room` puts it
+// in a space. `clip` stretches the note itself so neighbours overlap slightly.
+// Every key here is a Strudel control name and is applied only if this build
+// exposes it.
+const AMBIENCE_CONFIG = {
+  dry: { label: 'Dry' },
+  room: { label: 'Room', release: 0.35, clip: 1.25, room: 0.3, roomsize: 2 },
+  hall: { label: 'Hall', release: 0.7, clip: 1.4, room: 0.6, roomsize: 5 },
+  slapback: {
+    label: 'Slapback echo',
+    release: 0.4,
+    clip: 1.3,
+    room: 0.2,
+    roomsize: 1.5,
+    delay: 0.3,
+    delaytime: 0.14,
+    delayfeedback: 0.25,
+  },
+};
+const DEFAULT_AMBIENCE = 'room';
+
 const GM_SOUNDFONT_FONTS = {
+  // Not a GM program of its own: the blues voice is the overdriven-guitar
+  // program (29) from the JCLive bank, which is warmer and sustains longer
+  // than the FluidR3 one — the singing, barely-broken-up tone of the
+  // "Robben Ford - Playing the Blues" examples. Pair it with the Room or
+  // Slapback ambience below for the note tails.
+  gm_blues_guitar: ['0290_JCLive_sf2_file'],
   gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
   gm_distortion_guitar: ['0300_FluidR3_GM_sf2_file'],
@@ -703,6 +749,16 @@ const FRETBOARD_DOT_RING_RADIUS = 25 * 0.5 + 1.5; // dotSize/2 + gap
 const FRETBOARD_COLOR_ROOT  = '#99c28d'; // matches .dot-degree-1
 const FRETBOARD_COLOR_INBOX = '#accedb'; // matches .dot-in-box
 const FRETBOARD_COLOR_PLAYING = '#ffb703'; // current note during per-note playback
+// Upcoming notes: same amber as the current note while we stay inside the
+// current chord, violet once the preview crosses into the next measure.
+const FRETBOARD_COLOR_UPCOMING = '#ffb703';
+const FRETBOARD_COLOR_UPCOMING_NEXT_CHORD = '#9d7bff';
+// Notes from the next loop of a continuous shift: another key/shape entirely,
+// so they get their own colour and sit wherever that box is on the neck.
+const FRETBOARD_COLOR_UPCOMING_NEXT_LOOP = '#0d9488';
+// Opacity per step of lookahead — index 0 is the note right after the current
+// one. The length of this list is how far ahead the preview reaches.
+const FRETBOARD_LOOKAHEAD_OPACITIES = [0.7, 0.45, 0.28];
 // Rings: all black (same in static and playback views)
 const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
 
@@ -831,16 +887,125 @@ function addPlayedNotesRing(dotEl, dotCircle) {
 }
 
 /**
+ * What comes after the current step, in two parts:
+ *  - byMidi: pitches still inside this exercise, keyed by MIDI, each with the
+ *    closest rank it appears at (1 = next note) and whether it already belongs
+ *    to a later measure. A repeated pitch keeps its earliest rank, and the note
+ *    sounding right now is never a preview.
+ *  - positions: notes from the *next* loop of a continuous shift, as neck
+ *    positions in that loop's box — a different part of the neck, so they
+ *    cannot be matched by pitch against the box currently on screen.
+ * With no shift pending, the preview wraps around the loop, which is exactly
+ * what will be heard again.
+ */
+function buildLookahead(steps, index) {
+  const byMidi = new Map();
+  const positions = [];
+  if (!steps || steps.length < 2) return { byMidi, positions };
+  const currentSegment = steps[index]?.segment;
+  const currentMidi = Tonal.Note.midi(steps[index]?.note);
+  const nextLoop = nextExercisePreview;
+  for (let ahead = 1; ahead <= FRETBOARD_LOOKAHEAD_OPACITIES.length; ahead += 1) {
+    const target = index + ahead;
+    if (target >= steps.length && nextLoop) {
+      const nextStep = nextLoop.steps[target - steps.length];
+      if (nextStep?.position) {
+        positions.push({ ...nextStep.position, rank: ahead, note: nextStep.note });
+      }
+      continue;
+    }
+    const step = steps[target % steps.length];
+    if (!step || step.note === undefined) break;
+    const midi = Tonal.Note.midi(step.note);
+    if (!Number.isFinite(midi) || midi === currentMidi || byMidi.has(midi)) continue;
+    byMidi.set(midi, { rank: ahead, nextChord: step.segment !== currentSegment });
+  }
+  return { byMidi, positions };
+}
+
+/** Dot element at a neck position, or null when that note is off the scale. */
+function findDotElement(fretboardDiv, string, fret) {
+  return (
+    [...fretboardDiv.querySelectorAll('.dot')].find((dotEl) => {
+      const data = dotEl.__data__;
+      return data && data.string === string && data.fret === fret;
+    }) || null
+  );
+}
+
+/** A dot-sized marker for a next-loop note that has no dot on this diagram. */
+function drawNextLoopMarker(fretboardDiv, position, opacity) {
+  const svg = fretboardDiv.querySelector('svg');
+  const coords = currentFretboardPositions?.[position.string - 1]?.[position.fret];
+  if (!svg || !coords) return;
+  let group = svg.querySelector('.next-loop-markers');
+  if (!group) {
+    group = document.createElementNS(FRETBOARD_SVG_NS, 'g');
+    group.setAttribute('class', 'next-loop-markers');
+    svg.appendChild(group);
+  }
+  const marker = document.createElementNS(FRETBOARD_SVG_NS, 'g');
+  marker.setAttribute('opacity', String(opacity));
+  const circle = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
+  circle.setAttribute('cx', `${coords.x}%`);
+  circle.setAttribute('cy', coords.y);
+  circle.setAttribute('r', String(FRETBOARD_DOT_RING_RADIUS - 1.5));
+  circle.setAttribute('fill', FRETBOARD_COLOR_UPCOMING_NEXT_LOOP);
+  const text = document.createElementNS(FRETBOARD_SVG_NS, 'text');
+  text.setAttribute('x', `${coords.x}%`);
+  text.setAttribute('y', coords.y);
+  text.setAttribute('dy', '0.34em');
+  text.setAttribute('text-anchor', 'middle');
+  text.setAttribute('font-size', '15');
+  text.setAttribute('fill', '#ffffff');
+  text.textContent = Tonal.Note.pitchClass(position.note) || '';
+  marker.append(circle, text);
+  group.appendChild(marker);
+}
+
+/** Clear the previous step's next-loop preview (markers + recoloured dots). */
+function clearNextLoopPreview(fretboardDiv) {
+  fretboardDiv.querySelector('.next-loop-markers')?.remove();
+  fretboardDiv.querySelectorAll('.dot-next-loop').forEach((dotEl) => {
+    dotEl.classList.remove('dot-next-loop');
+    dotEl.style.opacity = '1';
+    dotEl.querySelector('.dot-circle')?.style.removeProperty('fill');
+  });
+}
+
+function renderNextLoopPreview(fretboardDiv, positions) {
+  clearNextLoopPreview(fretboardDiv);
+  positions.forEach((position) => {
+    const opacity = FRETBOARD_LOOKAHEAD_OPACITIES[position.rank - 1];
+    const dotEl = findDotElement(fretboardDiv, position.string, position.fret);
+    if (!dotEl) {
+      drawNextLoopMarker(fretboardDiv, position, opacity);
+      return;
+    }
+    dotEl.classList.add('dot-next-loop');
+    dotEl.style.opacity = String(opacity);
+    dotEl
+      .querySelector('.dot-circle')
+      ?.style.setProperty('fill', FRETBOARD_COLOR_UPCOMING_NEXT_LOOP, 'important');
+  });
+}
+
+/**
  * During per-note playback: light up the dots matching the sounding pitch
  * (every position with that pitch) and fade the rest. Context dots kept
  * faintly visible are the current chord's arpeggio tones ('note-arpeggio')
- * or the whole scale shape ('note-scale').
+ * or the whole scale shape ('note-scale'). The next few notes are previewed,
+ * fading with distance in time and switching colour on the next chord.
  */
-function updateFretboardForNote(segment, note, mode) {
+function updateFretboardForNote(segment, note, mode, lookahead) {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv || !segment) return;
   const targetMidi = Tonal.Note.midi(note);
   const chordChromas = getChordToneChromas(segment.rootNote, segment.quality);
+  const previews = lookahead?.byMidi || new Map();
+  // Out-of-box previews are cleared first: the loop below only touches in-box
+  // dots, so it would leave the previous step's next-loop colours behind.
+  clearNextLoopPreview(fretboardDiv);
 
   fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
     const data = dotEl.__data__;
@@ -860,17 +1025,32 @@ function updateFretboardForNote(segment, note, mode) {
       return;
     }
 
+    const preview = dotMidi !== null ? previews.get(dotMidi) : null;
+    if (preview) {
+      dotEl.style.opacity = String(FRETBOARD_LOOKAHEAD_OPACITIES[preview.rank - 1]);
+      dotCircle.style.setProperty(
+        'fill',
+        preview.nextChord ? FRETBOARD_COLOR_UPCOMING_NEXT_CHORD : FRETBOARD_COLOR_UPCOMING,
+        'important'
+      );
+      return;
+    }
+
     const isChordTone = chordChromas.has(Tonal.Note.chroma(data.note));
     const keepFaint = mode === 'note-scale' || isChordTone;
     dotEl.style.opacity = keepFaint ? '0.35' : '0.08';
     dotCircle.style.removeProperty('fill');
   });
+
+  renderNextLoopPreview(fretboardDiv, lookahead?.positions || []);
 }
 
 function resetFretboardHighlight() {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv) return;
+  clearNextLoopPreview(fretboardDiv);
   applyScaleDegreeColoring(fretboardDiv);
+  renderFretboardBoxLabel(null, null);
 }
 
 function updateArpeggioDiagramHighlight(chordName) {
@@ -921,15 +1101,20 @@ function buildVisualSteps(mode) {
   return steps;
 }
 
-function applyVisualStep(step, mode) {
+function applyVisualStep(step, mode, steps, index) {
   if (!isVisualPlaybackEnabled() || !step) return;
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
+  let lookahead = null;
   if (step.note !== undefined) {
-    updateFretboardForNote(step.segment, step.note, mode);
+    lookahead = buildLookahead(steps, index);
+    updateFretboardForNote(step.segment, step.note, mode, lookahead);
   } else {
     updateFretboardForChord(step.segment);
   }
   updateArpeggioDiagramHighlight(step.segment.chordName);
+  // The incoming scale is named only while its notes are actually on screen.
+  const nextLabel = lookahead?.positions.length ? nextExercisePreview : null;
+  renderFretboardBoxLabel(step.segment.chordName, nextLabel);
 }
 
 function startVisualPlayback() {
@@ -940,7 +1125,7 @@ function startVisualPlayback() {
   const msPerBeat = 60000 / bpm;
 
   visualPlaybackIndex = 0;
-  applyVisualStep(steps[0], mode);
+  applyVisualStep(steps[0], mode, steps, 0);
 
   // Each step lasts its own beat count (a chord segment in chord mode, a
   // single note in the note modes). Drift-corrected against a running
@@ -951,7 +1136,7 @@ function startVisualPlayback() {
     nextTime += (step?.beats || 4) * msPerBeat;
     visualPlaybackTimerId = setTimeout(() => {
       visualPlaybackIndex = (visualPlaybackIndex + 1) % steps.length;
-      applyVisualStep(steps[visualPlaybackIndex], mode);
+      applyVisualStep(steps[visualPlaybackIndex], mode, steps, visualPlaybackIndex);
       scheduleNext();
     }, Math.max(0, nextTime - performance.now()));
   };
@@ -1007,16 +1192,43 @@ function getLoopDurationMs() {
   return totalBeats * (60000 / getSelectedTempoBpm());
 }
 
-// Advance a select to a nearby option (wrapping; skips empty placeholders)
-function advanceSelect(selectId, delta) {
+// The value a select would land on `delta` options away (wrapping; skips empty
+// placeholders), without changing it.
+function peekSelectValue(selectId, delta) {
   const select = document.getElementById(selectId);
-  if (!select) return false;
+  if (!select) return null;
   const values = [...select.options].map((o) => o.value).filter((v) => v);
   const idx = values.indexOf(select.value);
-  if (idx === -1) return false;
-  select.value = values[(idx + delta + values.length) % values.length];
+  if (idx === -1) return null;
+  return values[(idx + delta + values.length) % values.length];
+}
+
+// Advance a select to a nearby option (wrapping; skips empty placeholders)
+function advanceSelect(selectId, delta) {
+  const next = peekSelectValue(selectId, delta);
+  if (next === null) return false;
+  const select = document.getElementById(selectId);
+  select.value = next;
   select.dispatchEvent(new Event('change'));
   return true;
+}
+
+/** Where a shift would land, as { key } or { shape } — nothing is changed. */
+function peekContinuousShiftTarget(mode) {
+  if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
+    if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) return null;
+    const key = peekSelectValue('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
+    return key ? { key } : null;
+  }
+  if (mode === 'shape-up') {
+    const shape = peekSelectValue('shape', 1);
+    return shape ? { shape } : null;
+  }
+  if (mode === 'shape-down') {
+    const shape = peekSelectValue('shape', -1);
+    return shape ? { shape } : null;
+  }
+  return null;
 }
 
 function applyContinuousShift(mode) {
@@ -1032,6 +1244,115 @@ function applyContinuousShift(mode) {
   return false;
 }
 
+// ─── Next-loop preview ───────────────────────────────────────────────────────
+// A shift lands the player on a different box, so the last notes of a loop are
+// previewed where they will actually be played, not at the matching pitch
+// inside the box being left. That needs the next exercise before the boundary:
+// it is built headlessly when the loop starts, previewed during the loop, and
+// then handed to the boundary regeneration as a replay so what was shown is
+// exactly what plays.
+
+let nextExercisePreview = null;
+
+/** measureData → the compact { chordSymbol, slots, notes, direction } form. */
+function toReplayMeasures(measureData) {
+  return (measureData || [])
+    .filter((measure) => (measure.generatedNotes || []).length)
+    .map((measure) => ({
+      chordSymbol: measure.chordSymbol,
+      slots: [...(measure.slots || [])],
+      notes: [...(measure.generatedNotes || [])],
+      direction: measure.direction ?? true,
+    }));
+}
+
+/** First position inside the CAGED box that sounds `note`, or null. */
+function findBoxPositionForNote(cagedShape, note) {
+  const midi = Tonal.Note.midi(note);
+  if (!Number.isFinite(midi) || !cagedShape?.scale_frets) return null;
+  for (let si = 0; si < cagedShape.scale_frets.length; si += 1) {
+    // scale_frets[0] is the low E string, which is string 6 on the diagram.
+    const openMidi = Tonal.Note.midi(tuning[si]);
+    if (!Number.isFinite(openMidi)) continue;
+    for (const fret of cagedShape.scale_frets[si]) {
+      if (typeof fret === 'number' && fret >= 0 && openMidi + fret === midi) {
+        return { string: 6 - si, fret };
+      }
+    }
+  }
+  return null;
+}
+
+/** The opening notes of the next exercise, with where they sit on the neck. */
+function buildNextLoopSteps(measureData, cagedShape) {
+  const steps = [];
+  for (const measure of measureData || []) {
+    for (const note of measure.generatedNotes || []) {
+      steps.push({ note, position: findBoxPositionForNote(cagedShape, note) });
+      if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
+    }
+  }
+  return steps;
+}
+
+function clearNextExercisePreview() {
+  nextExercisePreview = null;
+}
+
+/** Name only what the shift changes: the key, the shape, or both. */
+function describeNextBox(nextShape) {
+  const current = lastExerciseState?.cagedShape;
+  const scale = `${nextShape.key} ${nextShape.scaleType}`;
+  const parts = [];
+  if (!current || current.key !== nextShape.key || current.scaleType !== nextShape.scaleType) {
+    parts.push(scale);
+  }
+  // getCAGEDShape() exposes the shape's name as `shape` ("E Shape").
+  if (nextShape.shape && (!current || current.shape !== nextShape.shape)) {
+    parts.push(nextShape.shape);
+  }
+  return parts.length ? parts.join(' · ') : scale;
+}
+
+/**
+ * Build the exercise the current shift setting will land on. Runs once per
+ * loop, off the render path (a few ms of Tonal work, no DOM).
+ */
+function precomputeNextExercise() {
+  clearNextExercisePreview();
+  const mode = getSelectedContinuousShift();
+  if (mode === 'off' || !playbackState.isPlaying) return;
+  const target = peekContinuousShiftTarget(mode);
+  if (!target) return;
+
+  const exerciseMode = getSelectedExerciseMode();
+  const scaleType = document.getElementById('scaleType')?.value || 'major';
+  const keyValue = target.key
+    ? scaleType === 'minor'
+      ? `${target.key}m`
+      : target.key
+    : null;
+  const built = buildExerciseMeasures({
+    mode: exerciseMode,
+    song: exerciseMode === EXERCISE_MODES.SONG ? getSelectedSong() : null,
+    key: keyValue,
+    shape: target.shape || null,
+    carryOver: getCarryOverFromLastExercise(),
+  });
+  if (!built || built.error !== undefined || !built.measureData?.length) {
+    debugLog('Next-loop preview unavailable:', built?.error);
+    return;
+  }
+  nextExercisePreview = {
+    mode,
+    cagedShape: built.cagedShape,
+    scaleLabel: describeNextBox(built.cagedShape),
+    measures: toReplayMeasures(built.measureData),
+    steps: buildNextLoopSteps(built.measureData, built.cagedShape),
+  };
+  debugLog('Next loop precomputed:', nextExercisePreview.scaleLabel);
+}
+
 // Fire slightly before the loop boundary: the scheduler queues audio events
 // ~150ms ahead (latency 0.1s + tick interval), so hushing right at the
 // boundary is too late — the old pattern's next first note is already
@@ -1042,7 +1363,11 @@ const CONTINUOUS_SHIFT_GUARD_MS = 200;
 // changing the option mid-playback takes effect at the next loop boundary.
 function scheduleContinuousShift() {
   clearContinuousShiftTimer();
-  if (!playbackState.isPlaying) return;
+  if (!playbackState.isPlaying) {
+    clearNextExercisePreview();
+    return;
+  }
+  precomputeNextExercise();
   const loopMs = getLoopDurationMs();
   if (!Number.isFinite(loopMs) || loopMs <= 0) return;
   continuousShiftTimerId = setTimeout(() => {
@@ -1064,11 +1389,17 @@ async function performContinuousShift(mode) {
   if (!playbackState.isPlaying) return;
   // This fires CONTINUOUS_SHIFT_GUARD_MS before the musical loop boundary
   const boundaryAt = performance.now() + CONTINUOUS_SHIFT_GUARD_MS;
+  // Only reuse the precomputed loop if the mode is still the one it was built
+  // for; otherwise it would land somewhere the preview never showed.
+  const pending = nextExercisePreview?.mode === mode ? nextExercisePreview : null;
   if (mode === 'off' || !applyContinuousShift(mode)) {
     scheduleContinuousShift();
     return;
   }
-  regenerateExercise({ carryOver: getCarryOverFromLastExercise() });
+  regenerateExercise({
+    carryOver: getCarryOverFromLastExercise(),
+    replay: pending?.measures || null,
+  });
   // Swap the audio pattern NOW, before the scheduler queries the boundary
   // chunk: the delegating wrapper keeps playing without any clock restart,
   // and the swap only affects queries from here on — the old loop's tail is
@@ -1087,7 +1418,371 @@ async function performContinuousShift(mode) {
   if (isVisualPlaybackEnabled()) {
     startVisualPlayback();
   }
+  recordExerciseInHistory();
   scheduleContinuousShift();
+}
+
+// Starting playback awaits Strudel (a cold start loads the library and a
+// soundfont, seconds on a slow link). A Stop — or a second Play — during that
+// wait bumps this token, and the stale start bails out instead of flipping the
+// transport back to "playing" after the fact.
+let playbackSessionToken = 0;
+
+async function startPlayback() {
+  stopVisualPlayback(); // clears any previous highlight, and the playing flag
+  // Claim the transport before awaiting Strudel, so a click during the load is
+  // read as "stop" instead of starting a second, overlapping playback.
+  const token = ++playbackSessionToken;
+  playbackState.isPlaying = true;
+  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Stop';
+  // Start audio first (loading Strudel and soundfonts can take a while), then
+  // the visual clock right after the pattern starts, so the highlight and the
+  // sound share the same t0.
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    await playStrudelExercise(playbackState.notes);
+  }
+  if (token !== playbackSessionToken) {
+    // Silence the pattern this call just started, unless a newer session is
+    // already playing through it.
+    if (!playbackState.isPlaying) {
+      await stopStrudelExercise();
+    }
+    return;
+  }
+  if (isVisualPlaybackEnabled()) {
+    startVisualPlayback();
+  }
+  recordExerciseInHistory();
+  scheduleContinuousShift();
+}
+
+async function stopPlayback() {
+  playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearContinuousShiftTimer();
+  clearNextExercisePreview();
+  stopVisualPlayback();
+  if (playbackState.engine === 'strudel') {
+    await stopStrudelExercise();
+  }
+  playbackState.isPlaying = false;
+  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+}
+
+// ─── Exercise history & pinned exercises ─────────────────────────────────────
+// Every loop that reaches the speakers is snapshotted: the form settings plus
+// the exact notes that were generated. That makes a continuous-shift run
+// replayable afterwards — you can go back to the key that caught you out
+// instead of waiting for it to come round again. The session list lives in
+// memory; pinning copies an entry to localStorage so it survives a reload.
+
+const HISTORY_LIMIT = 20;
+const PINNED_LIMIT = 50;
+const PINNED_STORAGE_KEY = 'arpeggioFlow.pinnedExercises';
+// Restored in this order, so progression lands before bars (a progression
+// change resets the bar count).
+const SNAPSHOT_CONTROL_IDS = [
+  'scaleSystem',
+  'key',
+  'scaleType',
+  'shape',
+  'progression',
+  'bars',
+  'notesPerMeasure',
+  'startDegree',
+  'turnaroundMode',
+  'songSelect',
+  'tempoBpm',
+  'strudelSound',
+  'rhythmSound',
+  'soundAmbience',
+  'playbackHighlightMode',
+];
+
+const exerciseHistory = []; // newest first, this session only
+let pinnedExercises = []; // newest first, persisted
+
+function readPinnedExercises() {
+  try {
+    const raw = window.localStorage?.getItem(PINNED_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn('Could not read pinned exercises:', error);
+    return [];
+  }
+}
+
+function writePinnedExercises() {
+  try {
+    window.localStorage?.setItem(PINNED_STORAGE_KEY, JSON.stringify(pinnedExercises));
+  } catch (error) {
+    console.warn('Could not save pinned exercises:', error);
+  }
+}
+
+function captureControlValues() {
+  const values = {};
+  SNAPSHOT_CONTROL_IDS.forEach((id) => {
+    const element = document.getElementById(id);
+    if (element) {
+      values[id] = element.value;
+    }
+  });
+  const trueChorus = document.getElementById('trueChorusLength');
+  if (trueChorus) {
+    values.trueChorusLength = trueChorus.checked;
+  }
+  values.exerciseMode = getSelectedExerciseMode();
+  return values;
+}
+
+function applyControlValues(values) {
+  if (!values) return;
+  // The shape list is rebuilt by updateShapeOptions() when the scale system
+  // changes, so that one needs its change event before 'shape' is set.
+  const scaleSystem = document.getElementById('scaleSystem');
+  if (scaleSystem && values.scaleSystem && scaleSystem.value !== values.scaleSystem) {
+    scaleSystem.value = values.scaleSystem;
+    scaleSystem.dispatchEvent(new Event('change'));
+  }
+  SNAPSHOT_CONTROL_IDS.forEach((id) => {
+    if (id === 'scaleSystem' || values[id] === undefined) return;
+    const element = document.getElementById(id);
+    // No change events here: they would re-derive bars from the progression
+    // and re-apply song defaults over the values being restored.
+    if (element) {
+      element.value = values[id];
+    }
+  });
+  const trueChorus = document.getElementById('trueChorusLength');
+  if (trueChorus && values.trueChorusLength !== undefined) {
+    trueChorus.checked = values.trueChorusLength;
+  }
+  if (values.exerciseMode) {
+    setExerciseMode(values.exerciseMode);
+  }
+  updateKeyDebug(getSelectedKeyValue());
+  updateExportTitle();
+}
+
+function describeSnapshotSettings(values) {
+  if (values.exerciseMode === EXERCISE_MODES.SONG) {
+    const song = getSongById(values.songSelect);
+    return song ? `${song.title} · Shape ${values.shape}` : `Song · Shape ${values.shape}`;
+  }
+  const quality = values.scaleType === 'minor' ? 'minor' : 'major';
+  return `${values.key} ${quality} · Shape ${values.shape} · ${values.progression}`;
+}
+
+function describeSnapshotVoices(values) {
+  const parts = [];
+  const soundConfig = getStrudelSoundConfig(values.strudelSound);
+  if (soundConfig.type !== 'none') {
+    parts.push(soundConfig.label);
+  }
+  if (values.rhythmSound && values.rhythmSound !== 'off') {
+    parts.push(getRhythmLabel(values.rhythmSound));
+  }
+  return parts.length ? parts.join(' + ') : 'no sound';
+}
+
+/** Settings + the exact notes on screen, or null if nothing is rendered. */
+function captureExerciseSnapshot() {
+  const measures = toReplayMeasures(lastExerciseState?.measureData);
+  if (!measures.length) {
+    return null;
+  }
+  const settings = captureControlValues();
+  return {
+    id: `ex-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+    savedAt: Date.now(),
+    label: describeSnapshotSettings(settings),
+    detail: `${settings.tempoBpm || '?'} BPM · ${describeSnapshotVoices(settings)}`,
+    settings,
+    measures,
+  };
+}
+
+/** Same chart and same notes → same exercise, whatever the timestamps say. */
+function snapshotSignature(snapshot) {
+  return [
+    snapshot.label,
+    snapshot.measures.map((measure) => measure.notes.join(',')).join('|'),
+  ].join('#');
+}
+
+function recordExerciseInHistory() {
+  const snapshot = captureExerciseSnapshot();
+  if (!snapshot) return;
+  const newest = exerciseHistory[0];
+  if (newest && snapshotSignature(newest) === snapshotSignature(snapshot)) {
+    return;
+  }
+  exerciseHistory.unshift(snapshot);
+  if (exerciseHistory.length > HISTORY_LIMIT) {
+    exerciseHistory.length = HISTORY_LIMIT;
+  }
+  updateHistoryButton();
+  renderExerciseHistory();
+}
+
+/** Replayed slots/notes only fit if the rebuilt chart has the same shape. */
+function matchReplayMeasures(replay, measureData) {
+  if (!Array.isArray(replay) || replay.length !== measureData.length) {
+    return null;
+  }
+  const fits = replay.every((entry, index) => {
+    const measure = measureData[index];
+    return (
+      entry &&
+      Array.isArray(entry.slots) &&
+      Array.isArray(entry.notes) &&
+      entry.notes.length > 0 &&
+      entry.slots.length === (measure.slots || []).length &&
+      entry.slots.reduce((sum, slot) => sum + slot, 0) === entry.notes.length
+    );
+  });
+  return fits ? replay : null;
+}
+
+async function loadExerciseSnapshot(snapshot) {
+  if (!snapshot) return;
+  if (playbackState.isPlaying) {
+    await stopPlayback();
+  }
+  applyControlValues(snapshot.settings);
+  regenerateExercise({ replay: snapshot.measures, warnOnReplayMismatch: true });
+  document.getElementById('exerciseHistoryModal')?.close();
+}
+
+function isPinned(id) {
+  return pinnedExercises.some((entry) => entry.id === id);
+}
+
+function togglePinned(snapshot) {
+  if (isPinned(snapshot.id)) {
+    pinnedExercises = pinnedExercises.filter((entry) => entry.id !== snapshot.id);
+  } else {
+    pinnedExercises.unshift({ ...snapshot });
+    if (pinnedExercises.length > PINNED_LIMIT) {
+      pinnedExercises.length = PINNED_LIMIT;
+    }
+  }
+  writePinnedExercises();
+  updateHistoryButton();
+  renderExerciseHistory();
+}
+
+function removePinned(id) {
+  pinnedExercises = pinnedExercises.filter((entry) => entry.id !== id);
+  writePinnedExercises();
+  updateHistoryButton();
+  renderExerciseHistory();
+}
+
+function formatRelativeTime(timestamp) {
+  const minutes = Math.floor((Date.now() - timestamp) / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
+function buildHistoryRow(snapshot, { pinnedList }) {
+  const row = document.createElement('div');
+  row.className = 'hist-row';
+
+  const main = document.createElement('div');
+  main.className = 'hist-row__main';
+  const label = document.createElement('div');
+  label.className = 'hist-row__label';
+  label.textContent = snapshot.label;
+  const detail = document.createElement('div');
+  detail.className = 'hist-row__detail';
+  detail.textContent = `${snapshot.detail} · ${formatRelativeTime(snapshot.savedAt)}`;
+  main.append(label, detail);
+
+  const actions = document.createElement('div');
+  actions.className = 'hist-row__actions';
+
+  const loadButton = document.createElement('button');
+  loadButton.type = 'button';
+  loadButton.className = 'secondary-button';
+  loadButton.textContent = 'Load';
+  loadButton.addEventListener('click', () => loadExerciseSnapshot(snapshot));
+  actions.append(loadButton);
+
+  const pinButton = document.createElement('button');
+  pinButton.type = 'button';
+  pinButton.className = 'hist-icon-button';
+  const pinned = isPinned(snapshot.id);
+  pinButton.classList.toggle('is-pinned', pinned);
+  pinButton.textContent = pinned ? '★' : '☆';
+  pinButton.title = pinned ? 'Unpin' : 'Pin (kept after reload)';
+  pinButton.setAttribute('aria-label', pinButton.title);
+  pinButton.addEventListener('click', () => togglePinned(snapshot));
+  actions.append(pinButton);
+
+  if (pinnedList) {
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'hist-icon-button';
+    deleteButton.textContent = '✕';
+    deleteButton.title = 'Remove';
+    deleteButton.setAttribute('aria-label', 'Remove');
+    deleteButton.addEventListener('click', () => removePinned(snapshot.id));
+    actions.append(deleteButton);
+  }
+
+  row.append(main, actions);
+  return row;
+}
+
+function buildHistorySection(title, snapshots, emptyText, options) {
+  const fragment = document.createDocumentFragment();
+  const heading = document.createElement('h3');
+  heading.className = 'hist-section-title';
+  heading.textContent = title;
+  fragment.append(heading);
+  if (!snapshots.length) {
+    const empty = document.createElement('p');
+    empty.className = 'hist-empty';
+    empty.textContent = emptyText;
+    fragment.append(empty);
+    return fragment;
+  }
+  snapshots.forEach((snapshot) => fragment.append(buildHistoryRow(snapshot, options)));
+  return fragment;
+}
+
+function renderExerciseHistory() {
+  const body = document.getElementById('exerciseHistoryBody');
+  if (!body) return;
+  body.innerHTML = '';
+  body.append(
+    buildHistorySection(
+      'Pinned',
+      pinnedExercises,
+      'Nothing pinned yet — use ☆ to keep an exercise after a reload.',
+      { pinnedList: true }
+    )
+  );
+  body.append(
+    buildHistorySection(
+      'This session',
+      exerciseHistory,
+      'Press Play and the exercises you hear will show up here.',
+      { pinnedList: false }
+    )
+  );
+}
+
+function updateHistoryButton() {
+  const button = document.getElementById('exerciseHistoryButton');
+  if (!button) return;
+  const count = exerciseHistory.length + pinnedExercises.length;
+  button.textContent = count ? `History (${count})` : 'History';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1301,19 +1996,40 @@ async function buildRhythmPattern(api, beatMeta, measures) {
     return null;
   }
   const layers = [];
-  for (const tokenFor of config.layers) {
+  for (const spec of config.layers) {
+    const tokenFor = typeof spec === 'function' ? spec : spec.token;
     const text = beatMeta.map(({ beat, beats }) => tokenFor(beat, beats) || '~').join(' ');
-    const layer = soundFn.fn(text);
+    let layer = soundFn.fn(text);
     if (!layer || typeof layer.slow !== 'function') {
       setPlaybackBanner('This Strudel build cannot play drums; rhythm is off.', 'warning');
       return null;
     }
-    layers.push(layer.slow(measures));
+    layer = layer.slow(measures);
+    if (typeof layer.gain === 'function') {
+      layer = layer.gain(spec.gain ?? config.gain ?? DEFAULT_RHYTHM_GAIN);
+    }
+    layers.push(layer);
   }
-  const pattern = layers.reduce((combined, layer) => stackPatterns(api, combined, layer));
-  return typeof pattern.gain === 'function'
-    ? pattern.gain(config.gain ?? DEFAULT_RHYTHM_GAIN)
-    : pattern;
+  return layers.reduce((combined, layer) => stackPatterns(api, combined, layer));
+}
+
+/** Apply the selected ambience controls to the melodic pattern. */
+function applyAmbience(pattern) {
+  if (!pattern) {
+    return pattern;
+  }
+  const config = getAmbienceConfig(getSelectedAmbience());
+  const applied = {};
+  let result = pattern;
+  Object.entries(config).forEach(([control, value]) => {
+    if (control === 'label' || typeof result[control] !== 'function') {
+      return;
+    }
+    result = result[control](value);
+    applied[control] = value;
+  });
+  debugLog('Ambience applied:', applied);
+  return result;
 }
 
 function stackPatterns(api, first, second) {
@@ -1378,6 +2094,10 @@ async function playStrudelExercise(notes) {
   } else if (sound !== 'default' && typeof pattern.s === 'function') {
     pattern = pattern.s(sound);
   }
+
+  // Effects go on the notes only — a reverbed metronome is unusable as a
+  // reference, and the drum samples already have their own room in them.
+  pattern = applyAmbience(pattern);
 
   // The backing rhythm rides on the same beat grid as the notes, so stacking
   // it here keeps one pattern for the scheduler (and one loop length for the
@@ -1790,6 +2510,108 @@ function renderScaleDiagram(cagedShape) {
 
   // Apply scale-degree coloring (fills + rings) to all dots
   applyScaleDegreeColoring(scaleDiagram);
+
+  // Kept for the next-loop preview: [string - 1][fret] → { x: %, y: px }, the
+  // only way to place a marker where this diagram has no dot.
+  currentFretboardPositions = fretboardInstance.positions;
+  currentScaleLabel = `${cagedShape.key} ${cagedShape.scaleType}`;
+  currentChordLabel = null;
+  currentNextLabel = null;
+  renderFretboardBoxLabel(null, null);
+}
+
+// ─── Scale / chord label under the box ───────────────────────────────────────
+// Centred under the highlighted part of the neck, so it reads as a caption for
+// the box rather than for the whole fretboard. The scale comes from the
+// rendered CAGED shape and the chord follows the playback highlight.
+
+let currentFretboardPositions = null;
+let currentScaleLabel = '';
+let currentChordLabel = null;
+let currentNextLabel = null;
+
+/** Centre of the highlighted box, in px from the fretboard's left edge. */
+function getBoxCenterOffset() {
+  const container = document.getElementById('fretboard-container');
+  const area = container?.querySelector('.highlight-areas rect.area');
+  if (!container || !area) return null;
+  const containerRect = container.getBoundingClientRect();
+  const areaRect = area.getBoundingClientRect();
+  if (!containerRect.width || !areaRect.width) return null;
+  return areaRect.left - containerRect.left + areaRect.width / 2;
+}
+
+/** Centre of an arbitrary shape's box, from the rendered fret geometry. */
+function getBoxCenterOffsetForShape(cagedShape) {
+  const container = document.getElementById('fretboard-container');
+  const frets = (cagedShape?.scale_frets || [])
+    .flat()
+    .filter((fret) => typeof fret === 'number' && fret >= 0);
+  const row = currentFretboardPositions?.[0];
+  if (!container || !frets.length || !row) return null;
+  const low = row[Math.min(...frets)];
+  const high = row[Math.max(...frets)];
+  const width = container.getBoundingClientRect().width;
+  if (!low || !high || !width) return null;
+  return (((low.x + high.x) / 2) * width) / 100;
+}
+
+function buildBoxLabel(className, scaleText, chordText) {
+  const label = document.createElement('div');
+  label.className = `fretboard-box-label ${className}`.trim();
+  const scale = document.createElement('span');
+  scale.className = 'fretboard-box-label__scale';
+  scale.textContent = scaleText;
+  label.append(scale);
+  if (chordText) {
+    const chord = document.createElement('span');
+    chord.className = 'fretboard-box-label__chord';
+    chord.textContent = chordText;
+    label.append(chord);
+  }
+  return label;
+}
+
+function placeBoxLabel(label, center) {
+  // No box drawn (or the fretboard is not laid out yet): centre on the neck.
+  label.style.left = center === null ? '50%' : `${center}px`;
+}
+
+/**
+ * Caption under the box: the scale being played plus the chord of the moment.
+ * `next` (the precomputed next loop) adds a second, muted caption under the
+ * box its preview notes are showing up in.
+ */
+function renderFretboardBoxLabel(chordName = null, next = null) {
+  const host = document.getElementById('fretboard-labels');
+  if (!host) return;
+  const nextLabelText = next?.scaleLabel || null;
+  if (chordName === currentChordLabel && nextLabelText === currentNextLabel && host.children.length) {
+    return;
+  }
+  currentChordLabel = chordName;
+  currentNextLabel = nextLabelText;
+  host.innerHTML = '';
+  if (!currentScaleLabel) return;
+
+  const label = buildBoxLabel('', currentScaleLabel, chordName);
+  host.append(label);
+  placeBoxLabel(label, getBoxCenterOffset());
+
+  if (nextLabelText) {
+    const nextLabel = buildBoxLabel('fretboard-box-label--next', `${nextLabelText} →`, null);
+    host.append(nextLabel);
+    placeBoxLabel(nextLabel, getBoxCenterOffsetForShape(next.cagedShape));
+  }
+}
+
+/** Re-place the labels after a resize; the fretboard positions dots in %. */
+function repositionFretboardBoxLabel() {
+  const host = document.getElementById('fretboard-labels');
+  if (!host) return;
+  const [label, nextLabel] = host.children;
+  if (label) placeBoxLabel(label, getBoxCenterOffset());
+  if (nextLabel) placeBoxLabel(nextLabel, getBoxCenterOffsetForShape(nextExercisePreview?.cagedShape));
 }
 
 function getArpeggioDiagramContainer() {
@@ -2362,25 +3184,30 @@ function getChordToneStartCandidates(measure, degree) {
   );
 }
 
-function generateExercise(options = {}) {
+/**
+ * The musical half of an exercise: chords, beat slots and generated notes, with
+ * no DOM rendering. Key and shape can be overridden so the next loop of a
+ * continuous shift can be built ahead of time (see precomputeNextExercise);
+ * everything else comes from the form. Returns { error } instead of alerting,
+ * so a background build can fail quietly.
+ */
+function buildExerciseMeasures(options = {}) {
   const mode = options.mode || EXERCISE_MODES.RANDOM;
-  const shape = document.getElementById('shape').value;
+  const shape = options.shape || document.getElementById('shape')?.value;
   const song = options.song || null;
   const isSongMode = mode === EXERCISE_MODES.SONG;
   let key = '';
   let chordBars = []; // one entry per rendered bar: 1+ chord symbols
 
   if (!shape) {
-    alert('Please select a chord shape.');
-    return;
+    return { error: 'Please select a chord shape.' };
   }
 
   if (isSongMode) {
     if (!song) {
-      alert('Please select a song.');
-      return;
+      return { error: 'Please select a song.' };
     }
-    key = song.scaleType === 'minor' ? `${song.key}m` : song.key;
+    key = options.key || (song.scaleType === 'minor' ? `${song.key}m` : song.key);
     const songBars = normalizeSongBars(song.progressionBars);
     // True chorus length: chords keep the bar they share in the chart.
     // Otherwise every chord is stretched to its own full bar.
@@ -2388,13 +3215,12 @@ function generateExercise(options = {}) {
       ? songBars
       : songBars.flat().map((chord) => [chord]);
   } else {
-    key = getSelectedKeyValue();
+    key = options.key || getSelectedKeyValue();
     const progression = document.getElementById('progression').value;
     const bars = parseInt(document.getElementById('bars').value);
 
     if (!key || !progression || !bars) {
-      alert('Please select a key, progression, and number of bars.');
-      return;
+      return { error: 'Please select a key, progression, and number of bars.' };
     }
 
     const chordsInProgression = progression.replace(/\s/g, '').split('-');
@@ -2415,42 +3241,18 @@ function generateExercise(options = {}) {
   }
 
   if (!chordBars.length) {
-    alert('No chords found for the selected exercise.');
-    return;
+    return { error: 'No chords found for the selected exercise.' };
   }
 
   const exerciseContext = prepareExerciseContext(key, shape);
   if (!exerciseContext) {
-    return;
+    return { error: null }; // prepareExerciseContext already logged the reason
   }
   const { keyContext, cagedShape, scaleMidiSet } = exerciseContext;
-
-  // Clear previous notation
-  document.getElementById('notation').innerHTML = '';
-  const arpeggioDiagramContainer = getArpeggioDiagramContainer();
-  if (arpeggioDiagramContainer) {
-    arpeggioDiagramContainer.innerHTML = '';
-  }
-
-  // Initialize VexFlow Renderer
-  const VF = Vex.Flow;
-  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation, Beam } = VF;
-  const div = document.getElementById('notation');
-  const containerWidth = div.getBoundingClientRect().width;
-  const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
-  const maxStaveWidth = width - 20;
-  const maxMeasuresPerLine = 4;
-
   const chordResolver = isSongMode
-    ? (chordSymbol) =>
-        getChordNotesForSongSymbol(chordSymbol, scaleMidiSet, true)
+    ? (chordSymbol) => getChordNotesForSongSymbol(chordSymbol, scaleMidiSet, true)
     : (chordSymbol) =>
-        getChordNotesForRomanSymbol(
-          chordSymbol,
-          keyContext,
-          scaleMidiSet,
-          true
-        );
+        getChordNotesForRomanSymbol(chordSymbol, keyContext, scaleMidiSet, true);
 
   // Build measure data: one entry per chord. A bar is 4 beat slots (quarter
   // note or eighth pair each); chords sharing a bar (true chorus length)
@@ -2500,6 +3302,12 @@ function generateExercise(options = {}) {
   const startDegree = getSelectedStartDegree();
   const midMeasureTurnaround = isMidMeasureTurnaroundEnabled();
 
+  // Replaying a recorded exercise: the chord skeleton above is rebuilt from
+  // the (restored) form values, and the stored slots + notes are dropped in
+  // instead of rolling new ones. Anything that does not line up falls back to
+  // a fresh generation rather than rendering a half-restored chart.
+  const replayMeasures = matchReplayMeasures(options.replay, measureData);
+
   // Generate all measures forward from the first. Each measure starts on the
   // closest chord tone in the current direction (or on the requested chord
   // degree in chord-tone start mode); direction reverses only at the range
@@ -2508,7 +3316,17 @@ function generateExercise(options = {}) {
   // last note instead of starting on a random one.
   let prevNote = options.carryOver?.prevNote || null;
   let prevDirection = options.carryOver?.prevDirection ?? true;
-  measureData.forEach((measure) => {
+  measureData.forEach((measure, measureIdx) => {
+    const replayed = replayMeasures?.[measureIdx];
+    if (replayed) {
+      measure.slots = [...replayed.slots];
+      measure.notesPerMeasure = replayed.slots.reduce((sum, slot) => sum + slot, 0);
+      measure.generatedNotes = [...replayed.notes];
+      measure.direction = replayed.direction ?? true;
+      prevNote = replayed.notes[replayed.notes.length - 1] || prevNote;
+      prevDirection = measure.direction;
+      return;
+    }
     if (measure.chordNotes.length === 0) {
       console.error(`No notes for chord: ${measure.chordName}`);
       return;
@@ -2552,6 +3370,48 @@ function generateExercise(options = {}) {
       result.notes
     );
   });
+
+  return {
+    key,
+    keyContext,
+    cagedShape,
+    measureData,
+    isSongMode,
+    replayApplied: Boolean(replayMeasures),
+  };
+}
+
+function generateExercise(options = {}) {
+  const built = buildExerciseMeasures(options);
+  if (built.error !== undefined) {
+    if (built.error) {
+      alert(built.error);
+    }
+    return;
+  }
+  const { keyContext, cagedShape, measureData, key } = built;
+  if (options.replay && !built.replayApplied && options.warnOnReplayMismatch) {
+    setPlaybackBanner(
+      'The saved exercise no longer matches these settings; generated a new one.',
+      'warning'
+    );
+  }
+
+  // Clear previous notation
+  document.getElementById('notation').innerHTML = '';
+  const arpeggioDiagramContainer = getArpeggioDiagramContainer();
+  if (arpeggioDiagramContainer) {
+    arpeggioDiagramContainer.innerHTML = '';
+  }
+
+  // Initialize VexFlow Renderer
+  const VF = Vex.Flow;
+  const { Renderer, Stave, StaveNote, Voice, Formatter, Annotation, Beam } = VF;
+  const div = document.getElementById('notation');
+  const containerWidth = div.getBoundingClientRect().width;
+  const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
+  const maxStaveWidth = width - 20;
+  const maxMeasuresPerLine = 4;
 
   // Now build the VexFlow notes for rendering, one stave per bar
   const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
@@ -2761,6 +3621,8 @@ function regenerateExercise(options = {}) {
     mode,
     song,
     carryOver: options.carryOver || null,
+    replay: options.replay || null,
+    warnOnReplayMismatch: options.warnOnReplayMismatch || false,
   });
   updateExportTitle();
   updatePlaybackStateFromExercise(exerciseData);
@@ -3057,48 +3919,68 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshPlaybackBanner();
       });
     }
-    const rhythmSelect = document.getElementById('rhythmSound');
-    if (rhythmSelect) {
-      rhythmSelect.addEventListener('change', () => {
+    // Changing the shift mid-loop must rebuild the precomputed next exercise,
+    // or the preview would still point at the old target.
+    document.getElementById('continuousShift')?.addEventListener('change', () => {
+      if (playbackState.isPlaying) {
+        precomputeNextExercise();
+      }
+    });
+
+    ['rhythmSound', 'soundAmbience'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', () => {
         if (playbackState.engine !== 'strudel') {
           return;
         }
         refreshPlaybackBanner();
       });
-    }
+    });
 
     if (playbackUi.playButton) {
       playbackUi.playButton.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
-          // Stop
-          clearContinuousShiftTimer();
-          stopVisualPlayback();
-          if (playbackState.engine === 'strudel') {
-            await stopStrudelExercise();
-          }
-          playbackState.isPlaying = false;
-          playbackUi.playButton.textContent = 'Play';
+          await stopPlayback();
         } else {
-          // Play
-          stopVisualPlayback();
-          // Start audio first (loading Strudel and soundfonts can take a
-          // while), then the visual clock right after the pattern starts,
-          // so the highlight and the sound share the same t0.
-          if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
-            await playStrudelExercise(playbackState.notes);
-          }
-          if (isVisualPlaybackEnabled()) {
-            startVisualPlayback();
-          }
-          playbackState.isPlaying = true;
-          playbackUi.playButton.textContent = 'Stop';
-          scheduleContinuousShift();
+          await startPlayback();
         }
       });
     }
 
     document.getElementById('generateButton').addEventListener('click', () => {
       regenerateExercise();
+    });
+
+    window.addEventListener('resize', repositionFretboardBoxLabel);
+
+    pinnedExercises = readPinnedExercises();
+    renderExerciseHistory();
+    updateHistoryButton();
+
+    const historyModal = document.getElementById('exerciseHistoryModal');
+    document.getElementById('exerciseHistoryButton')?.addEventListener('click', () => {
+      renderExerciseHistory(); // refresh the "x min ago" stamps
+      historyModal?.showModal();
+    });
+    document.getElementById('exerciseHistoryClose')?.addEventListener('click', () => {
+      historyModal?.close();
+    });
+    historyModal?.addEventListener('click', (event) => {
+      if (event.target === historyModal) historyModal.close();
+    });
+    document.getElementById('pinCurrentExerciseButton')?.addEventListener('click', () => {
+      const snapshot = captureExerciseSnapshot();
+      if (!snapshot) {
+        return;
+      }
+      // Pin what is on screen, re-using the history entry when it is the same
+      // exercise so the star does not end up on two copies of one loop.
+      const existing = exerciseHistory.find(
+        (entry) => snapshotSignature(entry) === snapshotSignature(snapshot)
+      );
+      const target = existing || snapshot;
+      if (!isPinned(target.id)) {
+        togglePinned(target);
+      }
     });
 
     const exportPngButton = document.getElementById('exportPngButton');
