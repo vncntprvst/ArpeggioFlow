@@ -574,3 +574,155 @@ input[type="number"]:focus {
 #arpeggio-diagrams-header {
   margin-bottom: 8px;
 }
+
+/* ── Exercise history modal ─────────────────────────────────────────────── */
+
+.hist-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.hist-toolbar__hint {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.hist-section-title {
+  margin: 0;
+  padding: 14px 20px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #9ca3af;
+}
+
+.hist-empty {
+  padding: 10px 20px 16px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+.hist-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.hist-row:last-child {
+  border-bottom: none;
+}
+
+.hist-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.hist-row__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.hist-row__detail {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.hist-row__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hist-icon-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+  color: #9ca3af;
+}
+
+.hist-icon-button:hover {
+  color: #111827;
+}
+
+.hist-icon-button.is-pinned {
+  color: #f59e0b;
+}
+
+/* ── Scale / chord label under the fretboard box ────────────────────────── */
+
+#fretboard-labels {
+  position: relative;
+  /* Two rows: the box being played, and the box the next loop moves to. The
+     height is fixed so the preview appearing mid-loop never shifts the page. */
+  height: 38px;
+  max-width: 900px;
+  min-width: 320px;
+  margin: 0 auto 6px;
+}
+
+.fretboard-box-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.fretboard-box-label__scale {
+  font-weight: 600;
+  color: #374151;
+}
+
+.fretboard-box-label__chord {
+  font-weight: 700;
+  color: #b26a00;
+}
+
+.fretboard-box-label--next {
+  top: 18px;
+}
+
+.fretboard-box-label--next .fretboard-box-label__scale {
+  font-weight: 600;
+  color: #0d9488;
+}
+
+.hist-row--current {
+  background: #fffbeb;
+}
+
+.hist-row__order {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.hist-row__now {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
