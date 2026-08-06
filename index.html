@@ -90,7 +90,7 @@
 
             <div id="random-exercise-panel" class="mode-panel is-active">
               <div class="mode-panel-section">
-                <h3 class="section-subtitle">1. Key &amp; Scale</h3>
+                <h3 class="section-subtitle">Key &amp; Progression</h3>
 
                 <div class="form-row">
                   <div class="form-field">
@@ -122,7 +122,7 @@
               </div>
 
               <div class="mode-panel-section">
-                <h3 class="section-subtitle">2. Progression &amp; Length</h3>
+                <!-- <h3 class="section-subtitle">2. Progression &amp; Length</h3> -->
 
                 <div class="form-row">
                   <div class="form-field">
@@ -223,7 +223,8 @@
               <div class="form-field">
                 <label for="startDegree">Start each chord on</label>
                 <select id="startDegree" name="startDegree">
-                  <option value="flow" selected>Closest tone (flow)</option>
+                  <option value="flow" selected>Closest tone</option>
+                  <option value="flow-different">Closest different tone</option>
                   <option value="1">Root</option>
                   <option value="3">3rd</option>
                   <option value="5">5th</option>
@@ -231,31 +232,32 @@
                 </select>
               </div>
 
-              <details class="advanced-options">
-                <summary>Rhythm &amp; turnaround</summary>
+              <!-- <details class="advanced-options">
+                <summary>Rhythm &amp; turnaround</summary> -->
+            <div class="mode-panel-section">
+              <h3 class="section-subtitle">Rhythm &amp; turnaround</h3>
 
-                <div class="form-row">
-                  <div class="form-field">
-                    <label for="notesPerMeasure">Notes per bar</label>
-                    <select id="notesPerMeasure" name="notesPerMeasure">
-                      <option value="4" selected>4 — quarter notes</option>
-                      <option value="5">5 — one pair of 8ths</option>
-                      <option value="6">6 — two pairs of 8ths</option>
-                      <option value="7">7 — three pairs of 8ths</option>
-                      <option value="8">8 — eighth notes</option>
-                      <option value="random">Random (4–8 per bar)</option>
-                    </select>
-                  </div>
-
-                  <div class="form-field">
-                    <label for="turnaroundMode">Turn around</label>
-                    <select id="turnaroundMode" name="turnaroundMode">
-                      <option value="bounds" selected>At range bounds</option>
-                      <option value="mid">Mid-measure (up &amp; down)</option>
-                    </select>
-                  </div>
+              <div class="form-row">
+                <div class="form-field">
+                  <label for="notesPerMeasure">Notes per bar</label>
+                  <select id="notesPerMeasure" name="notesPerMeasure">
+                    <option value="4" selected>4 — quarter notes</option>
+                    <option value="5">5 — one pair of 8ths</option>
+                    <option value="6">6 — two pairs of 8ths</option>
+                    <option value="7">7 — three pairs of 8ths</option>
+                    <option value="8">8 — eighth notes</option>
+                    <option value="random">Random (4–8 per bar)</option>
+                  </select>
                 </div>
-              </details>
+
+                <div class="form-field">
+                  <label for="turnaroundMode">Turn around</label>
+                  <select id="turnaroundMode" name="turnaroundMode">
+                    <option value="bounds" selected>At range bounds</option>
+                    <option value="mid">Mid-measure (up &amp; down)</option>
+                  </select>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -311,6 +313,7 @@
                   <option value="fourths">Circle of 4ths</option>
                   <option value="shape-up">Adjacent shape (up the neck)</option>
                   <option value="shape-down">Adjacent shape (down the neck)</option>
+                  <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
               </div>
             </div>

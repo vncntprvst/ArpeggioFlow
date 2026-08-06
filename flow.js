@@ -246,6 +246,10 @@ let strudelInitPromise = null;
 // stopping the scheduler clock (a stop/start seam re-emits boundary notes).
 let strudelPatternRef = null;
 let strudelWrapperActive = false;
+// Loop length + tempo of the pattern currently playing. An in-place swap only
+// stays on the grid while both hold; when they change (cycling to a pinned
+// exercise of another length or tempo) the clock has to restart instead.
+let strudelLoopSignature = null;
 
 function getStrudelPatternClass(api) {
   if (api && typeof api.Pattern === 'function') {
@@ -1299,6 +1303,91 @@ function clearNextExercisePreview() {
   nextExercisePreview = null;
 }
 
+// ─── Pinned rotation ─────────────────────────────────────────────────────────
+// 'cycle-pinned' turns the pinned list into a playlist: at each loop boundary
+// the next pinned exercise is loaded (settings + its exact notes) instead of
+// the progression being transposed. Tracked by id, not index, so pinning or
+// removing entries mid-rotation cannot make it jump.
+
+let currentPinnedId = null;
+
+function nextPinnedSnapshot() {
+  if (!pinnedExercises.length) return null;
+  // Starting the cycle on an exercise that happens to be pinned (pressing Play
+  // right after starring it) should carry on from that entry, not repeat it.
+  if (!currentPinnedId) {
+    const current = captureExerciseSnapshot();
+    const match =
+      current &&
+      pinnedExercises.find(
+        (entry) => snapshotSignature(entry) === snapshotSignature(current)
+      );
+    if (match) {
+      currentPinnedId = match.id;
+    }
+  }
+  const index = pinnedExercises.findIndex((entry) => entry.id === currentPinnedId);
+  return pinnedExercises[(index + 1) % pinnedExercises.length];
+}
+
+/** The CAGED box a snapshot will be played in, for its preview and label. */
+function getShapeForSettings(settings) {
+  if (!settings?.shape) return null;
+  const keyValue =
+    settings.exerciseMode === EXERCISE_MODES.SONG
+      ? (() => {
+          const song = getSongById(settings.songSelect);
+          if (!song) return null;
+          return song.scaleType === 'minor' ? `${song.key}m` : song.key;
+        })()
+      : settings.scaleType === 'minor'
+        ? `${settings.key}m`
+        : settings.key;
+  if (!keyValue) return null;
+  const keyContext = getKeyContext(keyValue);
+  const cagedShape = getCAGEDShape(settings.shape, keyContext.cagedKey);
+  if (!cagedShape) return null;
+  if (keyContext.isMinor) {
+    cagedShape.key = keyContext.tonic;
+    cagedShape.scaleType = keyContext.scaleType;
+  }
+  return cagedShape;
+}
+
+/** Opening notes of a stored snapshot, positioned in its own box. */
+function buildSnapshotSteps(snapshot, cagedShape) {
+  const steps = [];
+  for (const measure of snapshot.measures || []) {
+    for (const note of measure.notes || []) {
+      steps.push({ note, position: findBoxPositionForNote(cagedShape, note) });
+      if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
+    }
+  }
+  return steps;
+}
+
+function precomputePinnedCycle() {
+  const snapshot = nextPinnedSnapshot();
+  if (!snapshot) {
+    debugLog('Pinned cycle: nothing pinned.');
+    return;
+  }
+  const cagedShape = getShapeForSettings(snapshot.settings);
+  if (!cagedShape) {
+    debugLog('Pinned cycle: could not rebuild the shape for', snapshot.label);
+    return;
+  }
+  nextExercisePreview = {
+    mode: 'cycle-pinned',
+    snapshot,
+    cagedShape,
+    scaleLabel: describeNextBox(cagedShape),
+    measures: snapshot.measures,
+    steps: buildSnapshotSteps(snapshot, cagedShape),
+  };
+  debugLog('Next pinned exercise:', snapshot.label);
+}
+
 /** Name only what the shift changes: the key, the shape, or both. */
 function describeNextBox(nextShape) {
   const current = lastExerciseState?.cagedShape;
@@ -1322,6 +1411,10 @@ function precomputeNextExercise() {
   clearNextExercisePreview();
   const mode = getSelectedContinuousShift();
   if (mode === 'off' || !playbackState.isPlaying) return;
+  if (mode === 'cycle-pinned') {
+    precomputePinnedCycle();
+    return;
+  }
   const target = peekContinuousShiftTarget(mode);
   if (!target) return;
 
@@ -1392,19 +1485,42 @@ async function performContinuousShift(mode) {
   // Only reuse the precomputed loop if the mode is still the one it was built
   // for; otherwise it would land somewhere the preview never showed.
   const pending = nextExercisePreview?.mode === mode ? nextExercisePreview : null;
-  if (mode === 'off' || !applyContinuousShift(mode)) {
+  if (mode === 'off') {
     scheduleContinuousShift();
     return;
   }
-  regenerateExercise({
-    carryOver: getCarryOverFromLastExercise(),
-    replay: pending?.measures || null,
-  });
-  // Swap the audio pattern NOW, before the scheduler queries the boundary
-  // chunk: the delegating wrapper keeps playing without any clock restart,
-  // and the swap only affects queries from here on — the old loop's tail is
-  // already scheduled, the new loop's first note comes from the new pattern.
-  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+  if (mode === 'cycle-pinned') {
+    const snapshot = pending?.snapshot || nextPinnedSnapshot();
+    if (!snapshot) {
+      // Nothing pinned: keep looping the current exercise rather than stopping.
+      scheduleContinuousShift();
+      return;
+    }
+    applyControlValues(snapshot.settings);
+    currentPinnedId = snapshot.id;
+    // No carry-over: a pinned exercise starts on its own recorded first note.
+    regenerateExercise({ replay: snapshot.measures });
+  } else {
+    if (!applyContinuousShift(mode)) {
+      scheduleContinuousShift();
+      return;
+    }
+    regenerateExercise({
+      carryOver: getCarryOverFromLastExercise(),
+      replay: pending?.measures || null,
+    });
+  }
+  // A pinned exercise can be a different length or tempo, which moves the
+  // pattern onto a new cycle grid — that needs a clock restart, and a restart
+  // has to happen AT the boundary, not before it.
+  const audioOn = isAudioPlaybackEnabled() && playbackState.engine === 'strudel';
+  const restartsClock = audioOn && willRestartStrudelLoop();
+  // Otherwise swap the audio pattern NOW, before the scheduler queries the
+  // boundary chunk: the delegating wrapper keeps playing without any clock
+  // restart, and the swap only affects queries from here on — the old loop's
+  // tail is already scheduled, the new loop's first note comes from the new
+  // pattern.
+  if (audioOn && !restartsClock) {
     await playStrudelExercise(playbackState.notes);
   }
   clearVisualTimer();
@@ -1415,10 +1531,18 @@ async function performContinuousShift(mode) {
     await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
   if (!playbackState.isPlaying) return;
+  if (restartsClock) {
+    await playStrudelExercise(playbackState.notes);
+    if (!playbackState.isPlaying) return;
+  }
   if (isVisualPlaybackEnabled()) {
     startVisualPlayback();
   }
-  recordExerciseInHistory();
+  // Cycled exercises are already saved; re-recording them would bury the rest
+  // of the session under repeats of the rotation.
+  if (mode !== 'cycle-pinned') {
+    recordExerciseInHistory();
+  }
   scheduleContinuousShift();
 }
 
@@ -1651,7 +1775,10 @@ async function loadExerciseSnapshot(snapshot) {
     await stopPlayback();
   }
   applyControlValues(snapshot.settings);
+  // Loading a pinned entry also sets where the rotation carries on from.
+  currentPinnedId = isPinned(snapshot.id) ? snapshot.id : null;
   regenerateExercise({ replay: snapshot.measures, warnOnReplayMismatch: true });
+  renderExerciseHistory();
   document.getElementById('exerciseHistoryModal')?.close();
 }
 
@@ -1689,15 +1816,30 @@ function formatRelativeTime(timestamp) {
   return new Date(timestamp).toLocaleDateString();
 }
 
-function buildHistoryRow(snapshot, { pinnedList }) {
+function buildHistoryRow(snapshot, { pinnedList, order }) {
   const row = document.createElement('div');
   row.className = 'hist-row';
+  const isCurrent = pinnedList && snapshot.id === currentPinnedId;
+  row.classList.toggle('hist-row--current', isCurrent);
 
   const main = document.createElement('div');
   main.className = 'hist-row__main';
   const label = document.createElement('div');
   label.className = 'hist-row__label';
-  label.textContent = snapshot.label;
+  if (order) {
+    // Rotation position, so "Cycle pinned exercises" is readable at a glance.
+    const ordinal = document.createElement('span');
+    ordinal.className = 'hist-row__order';
+    ordinal.textContent = `${order}`;
+    label.append(ordinal);
+  }
+  label.append(document.createTextNode(snapshot.label));
+  if (isCurrent) {
+    const now = document.createElement('span');
+    now.className = 'hist-row__now';
+    now.textContent = 'now';
+    label.append(now);
+  }
   const detail = document.createElement('div');
   detail.className = 'hist-row__detail';
   detail.textContent = `${snapshot.detail} · ${formatRelativeTime(snapshot.savedAt)}`;
@@ -1752,7 +1894,11 @@ function buildHistorySection(title, snapshots, emptyText, options) {
     fragment.append(empty);
     return fragment;
   }
-  snapshots.forEach((snapshot) => fragment.append(buildHistoryRow(snapshot, options)));
+  snapshots.forEach((snapshot, index) =>
+    fragment.append(
+      buildHistoryRow(snapshot, { ...options, order: options.pinnedList ? index + 1 : 0 })
+    )
+  );
   return fragment;
 }
 
@@ -1762,9 +1908,9 @@ function renderExerciseHistory() {
   body.innerHTML = '';
   body.append(
     buildHistorySection(
-      'Pinned',
+      'Pinned — cycled top to bottom',
       pinnedExercises,
-      'Nothing pinned yet — use ☆ to keep an exercise after a reload.',
+      'Nothing pinned yet — use ☆ to keep an exercise after a reload, and to add it to the cycle.',
       { pinnedList: true }
     )
   );
@@ -2032,6 +2178,17 @@ function applyAmbience(pattern) {
   return result;
 }
 
+/** Loop length + tempo of the exercise currently loaded, as a comparable key. */
+function getStrudelLoopSignature() {
+  const beatCount = playbackState.beatSlots?.length || playbackState.notes.length;
+  return `${getMeasures(beatCount)}@${getCyclesPerMinute(getSelectedTempoBpm())}`;
+}
+
+/** True when the next play() cannot be an in-place swap (grid change). */
+function willRestartStrudelLoop() {
+  return strudelWrapperActive && strudelLoopSignature !== getStrudelLoopSignature();
+}
+
 function stackPatterns(api, first, second) {
   if (!first) return second;
   if (!second) return first;
@@ -2122,6 +2279,17 @@ async function playStrudelExercise(notes) {
 
   strudelPatternRef = pattern;
   const PatternClass = getStrudelPatternClass(api);
+  const signature = getStrudelLoopSignature();
+  // A different loop length or tempo means a different cycle grid: swapping in
+  // place would drop the new exercise in mid-pattern, so the clock restarts.
+  if (strudelWrapperActive && strudelLoopSignature !== signature) {
+    debugLog('Strudel loop grid changed; restarting the clock.', {
+      from: strudelLoopSignature,
+      to: signature,
+    });
+    strudelWrapperActive = false;
+  }
+  strudelLoopSignature = signature;
   if (strudelWrapperActive) {
     // Already playing through the delegating wrapper: swapping the ref is
     // enough. The scheduler clock never stops, so there is no restart seam
@@ -2159,6 +2327,7 @@ async function stopStrudelExercise() {
   api.hush();
   strudelWrapperActive = false;
   strudelPatternRef = null;
+  strudelLoopSignature = null;
   setPlaybackBanner('Playback stopped.', 'info');
 }
 
@@ -3155,11 +3324,36 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
 // Selected "start each chord on" option: null for free flow, or 1/3/5/7
 function getSelectedStartDegree() {
   const select = document.getElementById('startDegree');
-  if (!select || select.value === 'flow') {
+  if (!select || select.value === 'flow' || select.value === 'flow-different') {
     return null;
   }
   const degree = parseInt(select.value, 10);
   return Number.isFinite(degree) ? degree : null;
+}
+
+/** "Closest different tone": a chord change may not land on the note it left. */
+function isDifferentToneStartEnabled() {
+  return document.getElementById('startDegree')?.value === 'flow-different';
+}
+
+/**
+ * Closest chord tone in the current direction, excluding the note just played.
+ * Dropping the unison from the pool first keeps the usual direction and
+ * turnaround logic intact. Null when the chord offers nothing else.
+ */
+function findDifferentStartNote(chordNotes, previousNote, isAscending) {
+  const previousMidi = Tonal.Note.midi(previousNote);
+  if (!Number.isFinite(previousMidi)) return null;
+  const candidates = (chordNotes || []).filter(
+    (note) => Tonal.Note.midi(note) !== previousMidi
+  );
+  if (!candidates.length) return null;
+  return window.noteFlow.findClosestNoteInDirection(
+    previousNote,
+    candidates,
+    isAscending,
+    Tonal.Note.midi
+  ).note;
 }
 
 // All notes in the measure's chord-note pool matching the requested chord
@@ -3300,6 +3494,7 @@ function buildExerciseMeasures(options = {}) {
   });
 
   const startDegree = getSelectedStartDegree();
+  const requireDifferentStart = isDifferentToneStartEnabled();
   const midMeasureTurnaround = isMidMeasureTurnaroundEnabled();
 
   // Replaying a recorded exercise: the chord skeleton above is rebuilt from
@@ -3348,6 +3543,13 @@ function buildExerciseMeasures(options = {}) {
       } else {
         debugLog(
           `No degree-${startDegree} tone for ${measure.chordName}; free flow for this measure.`
+        );
+      }
+    } else if (requireDifferentStart && prevNote !== null) {
+      startNote = findDifferentStartNote(measure.chordNotes, prevNote, prevDirection);
+      if (startNote === null) {
+        debugLog(
+          `${measure.chordName} has no tone other than ${prevNote}; free flow for this measure.`
         );
       }
     }
@@ -3921,7 +4123,13 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     // Changing the shift mid-loop must rebuild the precomputed next exercise,
     // or the preview would still point at the old target.
-    document.getElementById('continuousShift')?.addEventListener('change', () => {
+    document.getElementById('continuousShift')?.addEventListener('change', (event) => {
+      if (event.target.value === 'cycle-pinned' && !pinnedExercises.length) {
+        setPlaybackBanner(
+          'Nothing pinned yet — open History and star the exercises you want in the cycle.',
+          'warning'
+        );
+      }
       if (playbackState.isPlaying) {
         precomputeNextExercise();
       }

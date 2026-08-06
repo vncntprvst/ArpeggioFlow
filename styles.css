@@ -701,3 +701,28 @@ input[type="number"]:focus {
   font-weight: 600;
   color: #0d9488;
 }
+
+.hist-row--current {
+  background: #fffbeb;
+}
+
+.hist-row__order {
+  display: inline-block;
+  min-width: 18px;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+}
+
+.hist-row__now {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
