@@ -573,10 +573,6 @@ input[type="number"]:focus {
   height: auto;
 }
 
-#arpeggio-diagrams-header {
-  margin-bottom: 8px;
-}
-
 /* ── Exercise history modal ─────────────────────────────────────────────── */
 
 .hist-toolbar {
@@ -756,4 +752,22 @@ input[type="number"]:focus {
 
 #customProgression {
   width: 100%;
+}
+
+/* ── Preview card: transport above the chord diagrams, footer actions ────── */
+
+#preview-transport {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 12px;
+}
+
+#preview-transport #playbackPlayButton {
+  min-width: 96px;
+}
+
+.card-footer__exports {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }

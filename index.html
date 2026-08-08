@@ -308,9 +308,6 @@
                     <input type="checkbox" id="playbackAudio" checked />
                     Audio
                   </label>
-                  <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
-                    Play
-                  </button>
                   <button type="button" id="exerciseHistoryButton" class="secondary-button">
                     History
                   </button>
@@ -475,12 +472,15 @@
               <!-- Music notation -->
               <div id="notation"></div>
 
-              <!-- Arpeggio chord diagrams -->
-              <div id="arpeggio-diagrams-header" style="display:none">
-                <button type="button" id="scaleDegreeModalBtn" class="secondary-button">
-                  View all scale arpeggios ↗
+              <!-- Transport for the exercise on screen. Kept out of the
+                   exported image (see data-export-ignore). -->
+              <div id="preview-transport" data-export-ignore="true">
+                <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
+                  Play
                 </button>
               </div>
+
+              <!-- Arpeggio chord diagrams -->
               <div id="arpeggio-diagrams"></div>
 
               <!-- Scale degrees modal -->
@@ -495,12 +495,22 @@
           </div>
 
           <footer class="card-footer card-footer-actions">
-            <button type="button" id="exportPngButton">
-              Export PNG
+            <button
+              type="button"
+              id="scaleDegreeModalBtn"
+              class="secondary-button"
+              style="display:none"
+            >
+              View all scale arpeggios ↗
             </button>
-            <button type="button" id="exportPdfButton">
-              Export PDF
-            </button>
+            <div class="card-footer__exports">
+              <button type="button" id="exportPngButton">
+                Export PNG
+              </button>
+              <button type="button" id="exportPdfButton">
+                Export PDF
+              </button>
+            </div>
           </footer>
         </article>
       </section>

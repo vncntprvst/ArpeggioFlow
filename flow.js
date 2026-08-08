@@ -3673,9 +3673,9 @@ function renderArpeggioDiagrams(measureData, cagedShape) {
     );
   });
 
-  // Show the "View all scale arpeggios" button header
-  const arpeggioHeader = document.getElementById('arpeggio-diagrams-header');
-  if (arpeggioHeader) arpeggioHeader.style.display = '';
+  // Reveal the "View all scale arpeggios" button (it lives in the card footer)
+  const scaleDegreeButton = document.getElementById('scaleDegreeModalBtn');
+  if (scaleDegreeButton) scaleDegreeButton.style.display = '';
 }
 
 // Selected "start each chord on" option: null for free flow, or 1/3/5/7
@@ -4240,6 +4240,11 @@ function buildExportFileName(extension) {
   return `${parts.join('-')}.${extension}`;
 }
 
+/** Controls that sit inside the exported block but must not be in the image. */
+function isExportIgnored(element) {
+  return element?.dataset?.exportIgnore === 'true';
+}
+
 function getExportTarget() {
   return document.getElementById('exercise-export');
 }
@@ -4259,6 +4264,7 @@ async function exportExerciseAsPng() {
     backgroundColor: '#ffffff',
     scale: 2,
     useCORS: true,
+    ignoreElements: isExportIgnored,
   });
   const dataUrl = canvas.toDataURL('image/png');
   const link = document.createElement('a');
@@ -4286,6 +4292,7 @@ async function exportExerciseAsPdf() {
     backgroundColor: '#ffffff',
     scale: 2,
     useCORS: true,
+    ignoreElements: isExportIgnored,
   });
   const imgData = canvas.toDataURL('image/png');
   const pdfWidth = canvas.width;
