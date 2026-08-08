@@ -136,6 +136,7 @@
                       <option value="vi-I-V-I">vi - I - V - I</option>
                       <option value="IV-I-V-I">IV - I - V - I</option>
                       <option value="I-IV-V-I">I - IV - V - I</option>
+                      <option value="custom">Custom…</option>
                     </select>
                   </div>
 
@@ -150,6 +151,21 @@
                       required
                     />
                   </div>
+                </div>
+
+                <div class="form-field" id="customProgressionField" hidden>
+                  <label for="customProgression">Your progression</label>
+                  <input
+                    type="text"
+                    id="customProgression"
+                    name="customProgression"
+                    placeholder="e.g. I - vi - ii - V"
+                    autocomplete="off"
+                  />
+                  <p class="field-hint">
+                    Roman numerals, one chord per bar: I ii iii IV V vi vii.
+                    Separate with spaces, dashes or “|”.
+                  </p>
                 </div>
               </div>
             </div>
@@ -377,6 +393,15 @@
                   <option value="rock">Rock Beat</option>
                   <option value="jazz-swing">Jazz Ride (swing)</option>
                   <option value="bossa">Bossa (rim &amp; kick)</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="backingChords">Backing chords</label>
+                <select id="backingChords" name="backingChords">
+                  <option value="off" selected>Off</option>
+                  <option value="piano-held">Piano — held</option>
+                  <option value="piano-comp">Piano — comp on 2 &amp; 4</option>
+                  <option value="piano-quarters">Piano — quarter notes</option>
                 </select>
               </div>
               <div class="form-field">

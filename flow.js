@@ -108,6 +108,14 @@ function getSelectedRhythm() {
   return document.getElementById('rhythmSound')?.value || 'off';
 }
 
+function getSelectedBackingChords() {
+  return document.getElementById('backingChords')?.value || 'off';
+}
+
+function getBackingChordConfig(value) {
+  return BACKING_CHORD_CONFIG[value] || BACKING_CHORD_CONFIG.off;
+}
+
 function getSelectedAmbience() {
   return document.getElementById('soundAmbience')?.value || DEFAULT_AMBIENCE;
 }
@@ -131,6 +139,10 @@ function describePlaybackVoices() {
   const parts = [];
   if (soundConfig.type !== 'none') {
     parts.push(soundConfig.label);
+  }
+  const backing = getSelectedBackingChords();
+  if (backing !== 'off') {
+    parts.push(getBackingChordConfig(backing).label);
   }
   if (rhythm !== 'off') {
     parts.push(getRhythmLabel(rhythm));
@@ -423,6 +435,36 @@ const AMBIENCE_CONFIG = {
 };
 const DEFAULT_AMBIENCE = 'room';
 
+// Chords comped under the exercise, built from the chart's own harmony. Each
+// preset says which beats of a chord's segment get a hit, and how long it
+// rings (clip multiplies the note's own beat-long duration).
+const BACKING_CHORD_CONFIG = {
+  off: { type: 'off', label: 'Off' },
+  'piano-held': {
+    label: 'Piano (held)',
+    sound: 'gm_acoustic_grand_piano',
+    gain: 0.32,
+    // One hit at the top of each chord, ringing across the whole segment.
+    hits: (beats) => [{ beat: 0, clip: beats }],
+  },
+  'piano-comp': {
+    label: 'Piano (comp on 2 & 4)',
+    sound: 'gm_acoustic_grand_piano',
+    gain: 0.38,
+    hits: (beats) =>
+      Array.from({ length: beats }, (unused, beat) => beat)
+        .filter((beat) => beat % 2 === 1)
+        .map((beat) => ({ beat, clip: 0.9 })),
+  },
+  'piano-quarters': {
+    label: 'Piano (quarters)',
+    sound: 'gm_acoustic_grand_piano',
+    gain: 0.3,
+    hits: (beats) =>
+      Array.from({ length: beats }, (unused, beat) => ({ beat, clip: 0.9 })),
+  },
+};
+
 const GM_SOUNDFONT_FONTS = {
   // Not a GM program of its own: the blues voice is the overdriven-guitar
   // program (29) from the JCLive bank, which is warmer and sustains longer
@@ -430,6 +472,8 @@ const GM_SOUNDFONT_FONTS = {
   // "Robben Ford - Playing the Blues" examples. Pair it with the Room or
   // Slapback ambience below for the note tails.
   gm_blues_guitar: ['0290_JCLive_sf2_file'],
+  // Comping voice for the backing-chords layer, not offered as a lead sound.
+  gm_acoustic_grand_piano: ['0000_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
   gm_distortion_guitar: ['0300_FluidR3_GM_sf2_file'],
@@ -761,8 +805,10 @@ const FRETBOARD_COLOR_UPCOMING_NEXT_CHORD = '#9d7bff';
 // so they get their own colour and sit wherever that box is on the neck.
 const FRETBOARD_COLOR_UPCOMING_NEXT_LOOP = '#0d9488';
 // Opacity per step of lookahead — index 0 is the note right after the current
-// one. The length of this list is how far ahead the preview reaches.
-const FRETBOARD_LOOKAHEAD_OPACITIES = [0.7, 0.45, 0.28];
+// one. The length of this list is how far ahead the preview reaches. The next
+// note stays clearly readable; the drop-off across the three does the work of
+// showing how far away each one is.
+const FRETBOARD_LOOKAHEAD_OPACITIES = [0.9, 0.62, 0.38];
 // Rings: all black (same in static and playback views)
 const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
 
@@ -1301,6 +1347,7 @@ function buildNextLoopSteps(measureData, cagedShape) {
 
 function clearNextExercisePreview() {
   nextExercisePreview = null;
+  updateLabelRowHeight();
 }
 
 // ─── Pinned rotation ─────────────────────────────────────────────────────────
@@ -1385,6 +1432,7 @@ function precomputePinnedCycle() {
     measures: snapshot.measures,
     steps: buildSnapshotSteps(snapshot, cagedShape),
   };
+  updateLabelRowHeight();
   debugLog('Next pinned exercise:', snapshot.label);
 }
 
@@ -1443,6 +1491,7 @@ function precomputeNextExercise() {
     measures: toReplayMeasures(built.measureData),
     steps: buildNextLoopSteps(built.measureData, built.cagedShape),
   };
+  updateLabelRowHeight();
   debugLog('Next loop precomputed:', nextExercisePreview.scaleLabel);
 }
 
@@ -1610,6 +1659,7 @@ const SNAPSHOT_CONTROL_IDS = [
   'scaleType',
   'shape',
   'progression',
+  'customProgression',
   'bars',
   'notesPerMeasure',
   'startDegree',
@@ -1618,6 +1668,7 @@ const SNAPSHOT_CONTROL_IDS = [
   'tempoBpm',
   'strudelSound',
   'rhythmSound',
+  'backingChords',
   'soundAmbience',
   'playbackHighlightMode',
 ];
@@ -1644,9 +1695,41 @@ function writePinnedExercises() {
   }
 }
 
-function captureControlValues() {
+// ─── Remembered settings ─────────────────────────────────────────────────────
+// The form as it was left, restored on the next visit. Same shape as a history
+// snapshot's settings plus the controls a snapshot deliberately leaves alone
+// (loading a saved exercise must not silently change how playback behaves).
+
+const SETTINGS_STORAGE_KEY = 'arpeggioFlow.lastSettings';
+// A history snapshot deliberately leaves the shift mode alone (loading a saved
+// exercise must not change how playback behaves), but "last used" remembers it.
+const EXTRA_PREF_CONTROL_IDS = ['continuousShift'];
+
+function saveUserDefaults() {
+  try {
+    const values = captureControlValues(EXTRA_PREF_CONTROL_IDS);
+    window.localStorage?.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(values));
+  } catch (error) {
+    console.warn('Could not save the current settings:', error);
+  }
+}
+
+function restoreUserDefaults() {
+  let values = null;
+  try {
+    const raw = window.localStorage?.getItem(SETTINGS_STORAGE_KEY);
+    values = raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.warn('Could not read the saved settings:', error);
+  }
+  if (!values || typeof values !== 'object') return false;
+  applyControlValues(values, EXTRA_PREF_CONTROL_IDS);
+  return true;
+}
+
+function captureControlValues(extraIds = []) {
   const values = {};
-  SNAPSHOT_CONTROL_IDS.forEach((id) => {
+  [...SNAPSHOT_CONTROL_IDS, ...extraIds].forEach((id) => {
     const element = document.getElementById(id);
     if (element) {
       values[id] = element.value;
@@ -1660,7 +1743,7 @@ function captureControlValues() {
   return values;
 }
 
-function applyControlValues(values) {
+function applyControlValues(values, extraIds = []) {
   if (!values) return;
   // The shape list is rebuilt by updateShapeOptions() when the scale system
   // changes, so that one needs its change event before 'shape' is set.
@@ -1669,7 +1752,7 @@ function applyControlValues(values) {
     scaleSystem.value = values.scaleSystem;
     scaleSystem.dispatchEvent(new Event('change'));
   }
-  SNAPSHOT_CONTROL_IDS.forEach((id) => {
+  [...SNAPSHOT_CONTROL_IDS, ...extraIds].forEach((id) => {
     if (id === 'scaleSystem' || values[id] === undefined) return;
     const element = document.getElementById(id);
     // No change events here: they would re-derive bars from the progression
@@ -1685,6 +1768,7 @@ function applyControlValues(values) {
   if (values.exerciseMode) {
     setExerciseMode(values.exerciseMode);
   }
+  updateCustomProgressionVisibility();
   updateKeyDebug(getSelectedKeyValue());
   updateExportTitle();
 }
@@ -2189,6 +2273,88 @@ function willRestartStrudelLoop() {
   return strudelWrapperActive && strudelLoopSignature !== getStrudelLoopSignature();
 }
 
+// ─── Backing chords ──────────────────────────────────────────────────────────
+
+// Comping register: root from C3 up, so the voicing sits under the exercise
+// (which lives in guitar range) without crowding it.
+const BACKING_CHORD_LOW_MIDI = Tonal.Note.midi('C3');
+const BACKING_CHORD_MAX_TONES = 4;
+
+/**
+ * A close-position voicing for one chord, as Strudel note tokens. Chord tones
+ * are stacked upwards from the root, so the shape never inverts mid-chart.
+ */
+function buildBackingChordVoicing(rootNote, quality) {
+  const chordData = Tonal.Chord.get(`${rootNote}${quality || ''}`);
+  const pitchClasses = (chordData?.notes || []).slice(0, BACKING_CHORD_MAX_TONES);
+  if (!pitchClasses.length) return null;
+  const tokens = [];
+  let previousMidi = BACKING_CHORD_LOW_MIDI - 1;
+  pitchClasses.forEach((pitchClass) => {
+    let octave = Math.floor(previousMidi / 12) - 1;
+    let midi = Tonal.Note.midi(`${pitchClass}${octave}`);
+    while (Number.isFinite(midi) && midi <= previousMidi) {
+      octave += 1;
+      midi = Tonal.Note.midi(`${pitchClass}${octave}`);
+    }
+    if (!Number.isFinite(midi)) return;
+    previousMidi = midi;
+    const token = toStrudelNote(`${pitchClass}${octave}`);
+    if (token) tokens.push(token);
+  });
+  return tokens.length ? tokens : null;
+}
+
+/**
+ * Chord layer for the whole loop: one mini-notation token per beat, a stacked
+ * "[c3,e3,g3,b3]" where the preset asks for a hit and "~" elsewhere. Clip is
+ * patterned alongside so a held chord can ring past its own beat.
+ */
+async function buildBackingChordsPattern(api, beatMeta, measures) {
+  const config = getBackingChordConfig(getSelectedBackingChords());
+  if (config.type === 'off') return null;
+  const segments = playbackState.measuresData || [];
+  const totalBeats = segments.reduce((sum, segment) => sum + (segment.beats || 4), 0);
+  if (!segments.length || totalBeats !== beatMeta.length) {
+    debugLog('Backing chords skipped: measure data does not line up with the beat grid.');
+    return null;
+  }
+  const noteTokens = [];
+  const clipTokens = [];
+  segments.forEach((segment) => {
+    const beats = segment.beats || 4;
+    const voicing = buildBackingChordVoicing(segment.rootNote, segment.quality);
+    const hits = new Map((config.hits(beats) || []).map((hit) => [hit.beat, hit]));
+    for (let beat = 0; beat < beats; beat += 1) {
+      const hit = voicing ? hits.get(beat) : null;
+      noteTokens.push(hit ? `[${voicing.join(',')}]` : '~');
+      clipTokens.push(hit ? `${hit.clip}` : '1');
+    }
+  });
+  if (!noteTokens.some((token) => token !== '~')) return null;
+
+  if (!(await ensureSoundfontsLoaded(api))) {
+    setPlaybackBanner('Piano soundfont failed to load; backing chords are off.', 'warning');
+    return null;
+  }
+  let pattern = api.note(noteTokens.join(' '));
+  if (typeof pattern.clip === 'function') {
+    pattern = pattern.clip(clipTokens.join(' '));
+  }
+  pattern = pattern.slow(measures);
+  if (typeof pattern.s === 'function') {
+    pattern = pattern.s(config.sound);
+  }
+  if (typeof pattern.gain === 'function') {
+    pattern = pattern.gain(config.gain);
+  }
+  // A touch of room so the comp sits behind the exercise rather than on top.
+  if (typeof pattern.room === 'function') {
+    pattern = pattern.room(0.25);
+  }
+  return pattern;
+}
+
 function stackPatterns(api, first, second) {
   if (!first) return second;
   if (!second) return first;
@@ -2259,6 +2425,7 @@ async function playStrudelExercise(notes) {
   // The backing rhythm rides on the same beat grid as the notes, so stacking
   // it here keeps one pattern for the scheduler (and one loop length for the
   // in-place swap that continuous shift relies on).
+  pattern = stackPatterns(api, pattern, await buildBackingChordsPattern(api, beatMeta, measures));
   pattern = stackPatterns(api, pattern, await buildRhythmPattern(api, beatMeta, measures));
   if (!pattern) {
     setPlaybackBanner('Pick a sound or a backing rhythm to hear playback.', 'warning');
@@ -2367,9 +2534,89 @@ function updateKeyDebug(keyValue) {
   debugEl.textContent = `Key signature: ${signatureLabel} | Scale: ${tonic} ${scaleType} | CAGED: ${cagedKey} ${scaleType}`;
 }
 
+// ─── Custom progressions ─────────────────────────────────────────────────────
+// "Custom…" swaps the preset menu for a free-text field. Input is forgiving —
+// any of "I-vi-ii-V", "i vi ii v", "| I | vi | ii | V |" work — and resolves to
+// the same roman symbols the presets use, so nothing downstream changes.
+
+const ROMAN_NUMERAL_TO_DEGREE = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7 };
+// The canonical symbol per degree, as getChordNotesForRomanSymbol keys them.
+const DEGREE_TO_ROMAN_SYMBOL = {
+  1: 'I',
+  2: 'ii',
+  3: 'iii',
+  4: 'IV',
+  5: 'V',
+  6: 'vi',
+  7: 'viiAø',
+};
+
+function isCustomProgressionSelected() {
+  return document.getElementById('progression')?.value === 'custom';
+}
+
+function updateCustomProgressionVisibility() {
+  const field = document.getElementById('customProgressionField');
+  if (field) {
+    field.hidden = !isCustomProgressionSelected();
+  }
+}
+
+/**
+ * Parse free-text roman numerals into chord symbols.
+ * @returns {{ chords: string[] } | { error: string }}
+ */
+function parseCustomProgression(text) {
+  const tokens = String(text || '')
+    .split(/[\s,|\-–—]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  if (!tokens.length) {
+    return { error: 'Type a progression first, for example "I - vi - ii - V".' };
+  }
+  const chords = [];
+  const unknown = [];
+  tokens.forEach((token) => {
+    // Tolerate decorations the generator derives itself (7, maj7, °, ø …).
+    const roman = token.replace(/[^ivx]/gi, '').toLowerCase();
+    const degree = ROMAN_NUMERAL_TO_DEGREE[roman];
+    if (!degree) {
+      unknown.push(token);
+      return;
+    }
+    chords.push(DEGREE_TO_ROMAN_SYMBOL[degree]);
+  });
+  if (unknown.length) {
+    return { error: `Not a roman numeral: ${unknown.join(', ')}. Use I ii iii IV V vi vii.` };
+  }
+  return { chords };
+}
+
+/** Chord symbols for the selected progression, or an error to show. */
+function getProgressionChords() {
+  const progression = document.getElementById('progression')?.value;
+  if (progression === 'custom') {
+    const parsed = parseCustomProgression(document.getElementById('customProgression')?.value);
+    if (parsed.error) return parsed;
+    return { chords: parsed.chords, custom: true };
+  }
+  if (!progression) {
+    return { error: 'Please select a key, progression, and number of bars.' };
+  }
+  return { chords: progression.replace(/\s/g, '').split('-') };
+}
+
 function updateBarsForProgression(progressionValue) {
   const barsInput = document.getElementById('bars');
   if (!barsInput) {
+    return;
+  }
+  if (progressionValue === 'custom') {
+    // One bar per chord typed; nothing to set until something parses.
+    const parsed = parseCustomProgression(document.getElementById('customProgression')?.value);
+    if (parsed.chords?.length) {
+      barsInput.value = parsed.chords.length;
+    }
     return;
   }
   let defaultBars = 4;
@@ -2477,10 +2724,12 @@ function updateExportTitle() {
   }
   const key = getSelectedKeyValue();
   const progressionSelect = document.getElementById('progression');
-  const progressionLabel =
-    progressionSelect?.selectedOptions?.[0]?.textContent ||
-    progressionSelect?.value ||
-    '';
+  const parsed = isCustomProgressionSelected() ? getProgressionChords() : null;
+  const progressionLabel = parsed
+    ? parsed.chords?.join(' - ') || 'custom'
+    : progressionSelect?.selectedOptions?.[0]?.textContent ||
+      progressionSelect?.value ||
+      '';
   titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | Shape: ${shapeLabel}`;
 }
 // Define the tuning
@@ -2584,12 +2833,11 @@ function renderScaleDiagram(cagedShape) {
   const scaleDiagram = document.getElementById('fretboard-container');
   scaleDiagram.innerHTML = ''; // Clear previous content
 
-  // Set a stable size before Fretboard rendering
+  // Width only: the SVG carries a viewBox, so its height follows the width on
+  // its own. Pinning the container to 200px left a growing band of dead space
+  // under the diagram as the viewport narrowed (112px on a phone).
   scaleDiagram.style.width = '100%';
   scaleDiagram.style.maxWidth = '900px';
-  scaleDiagram.style.minWidth = '320px';
-  scaleDiagram.style.height = '200px';
-  scaleDiagram.style.minHeight = '200px';
   scaleDiagram.style.margin = '0 auto';
   // console.log('Width before rendering fretboard:', scaleDiagram.style.width);
 
@@ -2725,18 +2973,38 @@ function getBoxCenterOffsetForShape(cagedShape) {
   return (((low.x + high.x) / 2) * width) / 100;
 }
 
-function buildBoxLabel(className, scaleText, chordText) {
+/**
+ * The second caption row is reserved for as long as a shift is pending, not
+ * just for the beats the incoming-box caption is visible, so the notation
+ * below never jumps mid-loop.
+ */
+function updateLabelRowHeight() {
+  document
+    .getElementById('fretboard-labels')
+    ?.classList.toggle('has-next-row', Boolean(nextExercisePreview));
+}
+
+function buildBoxLabel(className, scaleText, chordText, scaleTag = 'scale') {
   const label = document.createElement('div');
   label.className = `fretboard-box-label ${className}`.trim();
-  const scale = document.createElement('span');
-  scale.className = 'fretboard-box-label__scale';
-  scale.textContent = scaleText;
-  label.append(scale);
+  const addPart = (tag, text, valueClass) => {
+    const part = document.createElement('span');
+    part.className = 'fretboard-box-label__part';
+    if (tag) {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'fretboard-box-label__tag';
+      tagEl.textContent = tag;
+      part.append(tagEl);
+    }
+    const value = document.createElement('span');
+    value.className = valueClass;
+    value.textContent = text;
+    part.append(value);
+    label.append(part);
+  };
+  addPart(scaleTag, scaleText, 'fretboard-box-label__scale');
   if (chordText) {
-    const chord = document.createElement('span');
-    chord.className = 'fretboard-box-label__chord';
-    chord.textContent = chordText;
-    label.append(chord);
+    addPart('chord', chordText, 'fretboard-box-label__chord');
   }
   return label;
 }
@@ -2760,6 +3028,7 @@ function renderFretboardBoxLabel(chordName = null, next = null) {
   }
   currentChordLabel = chordName;
   currentNextLabel = nextLabelText;
+  updateLabelRowHeight();
   host.innerHTML = '';
   if (!currentScaleLabel) return;
 
@@ -2768,7 +3037,12 @@ function renderFretboardBoxLabel(chordName = null, next = null) {
   placeBoxLabel(label, getBoxCenterOffset());
 
   if (nextLabelText) {
-    const nextLabel = buildBoxLabel('fretboard-box-label--next', `${nextLabelText} →`, null);
+    const nextLabel = buildBoxLabel(
+      'fretboard-box-label--next',
+      `${nextLabelText} →`,
+      null,
+      'next'
+    );
     host.append(nextLabel);
     placeBoxLabel(nextLabel, getBoxCenterOffsetForShape(next.cagedShape));
   }
@@ -3410,14 +3684,17 @@ function buildExerciseMeasures(options = {}) {
       : songBars.flat().map((chord) => [chord]);
   } else {
     key = options.key || getSelectedKeyValue();
-    const progression = document.getElementById('progression').value;
     const bars = parseInt(document.getElementById('bars').value);
+    const parsed = getProgressionChords();
 
-    if (!key || !progression || !bars) {
+    if (!key || !bars) {
       return { error: 'Please select a key, progression, and number of bars.' };
     }
+    if (parsed.error) {
+      return { error: parsed.error };
+    }
 
-    const chordsInProgression = progression.replace(/\s/g, '').split('-');
+    const chordsInProgression = parsed.chords;
     const totalChords = chordsInProgression.length;
     const fullCycles = Math.floor(bars / totalChords);
     const remainingBars = bars % totalChords;
@@ -3672,14 +3949,24 @@ function generateExercise(options = {}) {
     lineLayouts.push(currentLine);
   }
 
-  const staveHeight = 170;
-  const topPadding = 60;
-  const bottomPadding = 30;
+  // Vertical budget per line: a stave is ~80px plus its chord annotations, so
+  // 170 left ~70px of empty air under every line and 60 above the first.
+  const staveHeight = 120;
+  const topPadding = 28;
+  const bottomPadding = 16;
   const height =
     topPadding + lineLayouts.length * staveHeight + bottomPadding;
 
   const renderer = new Renderer(div, Renderer.Backends.SVG);
   renderer.resize(width, height);
+  // resize() writes width/height inline, which beats the stylesheet: on a
+  // narrow screen the SVG kept its full height and letterboxed the staves in
+  // the middle of it. Let the viewBox drive the height instead.
+  const notationSvg = div.querySelector('svg');
+  if (notationSvg) {
+    notationSvg.style.width = '100%';
+    notationSvg.style.height = 'auto';
+  }
   const context = renderer.getContext();
   // Pre-inject the highlight rect as first SVG child (renders behind notes)
   ensurePlaybackHighlightRect();
@@ -3852,8 +4139,9 @@ function buildExportFileName(extension) {
     ]);
   } else {
     const key = getSelectedKeyValue() || 'key';
-    const progression =
-      document.getElementById('progression')?.value || 'progression';
+    const progression = isCustomProgressionSelected()
+      ? getProgressionChords().chords?.join('-') || 'custom'
+      : document.getElementById('progression')?.value || 'progression';
     const bars = document.getElementById('bars')?.value || 'bars';
     parts = parts.concat([
       sanitizeFilePart(key),
@@ -4013,7 +4301,13 @@ document.addEventListener('DOMContentLoaded', function () {
     updatePlaybackControls();
 
     document.getElementById('progression').addEventListener('change', (event) => {
+      updateCustomProgressionVisibility();
       updateBarsForProgression(event.target.value);
+      updateExportTitle();
+    });
+
+    document.getElementById('customProgression')?.addEventListener('input', () => {
+      updateBarsForProgression('custom');
       updateExportTitle();
     });
 
@@ -4135,7 +4429,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    ['rhythmSound', 'soundAmbience'].forEach((id) => {
+    ['rhythmSound', 'soundAmbience', 'backingChords'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => {
         if (playbackState.engine !== 'strudel') {
           return;
@@ -4159,6 +4453,27 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     window.addEventListener('resize', repositionFretboardBoxLabel);
+
+    // Remember the form as it is left. The inline window.onload handler in the
+    // page rebuilds the shape list, so the restore waits for 'load' to run
+    // after it — otherwise the restored shape is overwritten.
+    const rememberedIds = new Set([...SNAPSHOT_CONTROL_IDS, ...EXTRA_PREF_CONTROL_IDS]);
+    document.addEventListener('change', (event) => {
+      if (rememberedIds.has(event.target?.id) || event.target?.id === 'trueChorusLength') {
+        saveUserDefaults();
+      }
+    });
+    document.getElementById('customProgression')?.addEventListener('input', saveUserDefaults);
+    ['modeRandom', 'modeSong'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('click', saveUserDefaults);
+    });
+    window.addEventListener('load', () => {
+      if (restoreUserDefaults()) {
+        debugLog('Restored the settings from the last session.');
+        updateKeyDebug(getSelectedKeyValue());
+        updateExportTitle();
+      }
+    });
 
     pinnedExercises = readPinnedExercises();
     renderExerciseHistory();
