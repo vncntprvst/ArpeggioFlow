@@ -108,6 +108,21 @@ function getSelectedRhythm() {
   return document.getElementById('rhythmSound')?.value || 'off';
 }
 
+// Bars of rest appended to the loop, so there is time to reset (or to move to
+// the next shape) before it comes round again. Rest bars are part of the loop
+// grid: the notes stop, the backing rhythm keeps time through them.
+const MAX_LOOP_PAUSE_BARS = 16;
+
+function getSelectedLoopPauseBars() {
+  const bars = parseInt(document.getElementById('loopPause')?.value || '0', 10);
+  if (!Number.isFinite(bars) || bars <= 0) return 0;
+  return Math.min(bars, MAX_LOOP_PAUSE_BARS);
+}
+
+function getLoopPauseBeats() {
+  return getSelectedLoopPauseBars() * BEATS_PER_CYCLE;
+}
+
 function getSelectedBackingChords() {
   return document.getElementById('backingChords')?.value || 'off';
 }
@@ -952,20 +967,25 @@ function buildLookahead(steps, index) {
   const byMidi = new Map();
   const positions = [];
   if (!steps || steps.length < 2) return { byMidi, positions };
+  // Rest bars are not notes: the preview looks straight through them to what
+  // sounds next, which is the next loop (or this one coming round again).
+  const noteSteps = steps.filter((step) => step.note !== undefined);
+  const noteIndex = noteSteps.indexOf(steps[index]);
+  if (noteIndex === -1 || noteSteps.length < 2) return { byMidi, positions };
   const currentSegment = steps[index]?.segment;
   const currentMidi = Tonal.Note.midi(steps[index]?.note);
   const nextLoop = nextExercisePreview;
   for (let ahead = 1; ahead <= FRETBOARD_LOOKAHEAD_OPACITIES.length; ahead += 1) {
-    const target = index + ahead;
-    if (target >= steps.length && nextLoop) {
-      const nextStep = nextLoop.steps[target - steps.length];
+    const target = noteIndex + ahead;
+    if (target >= noteSteps.length && nextLoop) {
+      const nextStep = nextLoop.steps[target - noteSteps.length];
       if (nextStep?.position) {
         positions.push({ ...nextStep.position, rank: ahead, note: nextStep.note });
       }
       continue;
     }
-    const step = steps[target % steps.length];
-    if (!step || step.note === undefined) break;
+    const step = noteSteps[target % noteSteps.length];
+    if (!step) break;
     const midi = Tonal.Note.midi(step.note);
     if (!Number.isFinite(midi) || midi === currentMidi || byMidi.has(midi)) continue;
     byMidi.set(midi, { rank: ahead, nextChord: step.segment !== currentSegment });
@@ -1148,11 +1168,21 @@ function buildVisualSteps(mode) {
       }
     });
   });
+  // One step per rest bar: the chart clears and, when a shift is pending, the
+  // incoming box stays lit — the pause is exactly when you move to it.
+  const pauseBars = getSelectedLoopPauseBars();
+  for (let bar = 0; bar < pauseBars; bar += 1) {
+    steps.push({ pause: true, beats: BEATS_PER_CYCLE });
+  }
   return steps;
 }
 
 function applyVisualStep(step, mode, steps, index) {
   if (!isVisualPlaybackEnabled() || !step) return;
+  if (step.pause) {
+    applyPauseStep();
+    return;
+  }
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
   let lookahead = null;
   if (step.note !== undefined) {
@@ -1165,6 +1195,28 @@ function applyVisualStep(step, mode, steps, index) {
   // The incoming scale is named only while its notes are actually on screen.
   const nextLabel = lookahead?.positions.length ? nextExercisePreview : null;
   renderFretboardBoxLabel(step.segment.chordName, nextLabel);
+}
+
+/**
+ * A rest bar: the chart goes back to its resting colours and the notation
+ * highlight clears. If a shift is pending, the incoming box keeps its preview
+ * so there is something to aim at while waiting.
+ */
+function applyPauseStep() {
+  const fretboardDiv = document.getElementById('fretboard-container');
+  clearArpeggioDiagramHighlight();
+  hideHighlightRect();
+  if (fretboardDiv) {
+    clearNextLoopPreview(fretboardDiv);
+    applyScaleDegreeColoring(fretboardDiv);
+    const positions = (nextExercisePreview?.steps || [])
+      .map((previewStep, rank) =>
+        previewStep.position ? { ...previewStep.position, rank: rank + 1, note: previewStep.note } : null
+      )
+      .filter(Boolean);
+    renderNextLoopPreview(fretboardDiv, positions);
+  }
+  renderFretboardBoxLabel(null, nextExercisePreview);
 }
 
 function startVisualPlayback() {
@@ -1235,10 +1287,9 @@ function clearContinuousShiftTimer() {
 }
 
 function getLoopDurationMs() {
-  const totalBeats = playbackState.measuresData.reduce(
-    (sum, segment) => sum + (segment.beats || 4),
-    0
-  );
+  const totalBeats =
+    playbackState.measuresData.reduce((sum, segment) => sum + (segment.beats || 4), 0) +
+    getLoopPauseBeats();
   return totalBeats * (60000 / getSelectedTempoBpm());
 }
 
@@ -1671,6 +1722,7 @@ const SNAPSHOT_CONTROL_IDS = [
   'backingChords',
   'soundAmbience',
   'playbackHighlightMode',
+  'loopPause',
 ];
 
 const exerciseHistory = []; // newest first, this session only
@@ -2185,10 +2237,19 @@ function getBeatMeta(beatCount) {
         meta.push({ beat, beats });
       }
     });
-    return meta;
+  } else {
+    for (let index = 0; index < beatCount; index += 1) {
+      meta.push({ beat: index % BEATS_PER_CYCLE, beats: BEATS_PER_CYCLE });
+    }
   }
-  for (let index = 0; index < beatCount; index += 1) {
-    meta.push({ beat: index % BEATS_PER_CYCLE, beats: BEATS_PER_CYCLE });
+  // Trailing rest bars, if any: part of the loop's grid, so every layer and
+  // the visual clock see the same length.
+  for (let index = 0; index < getLoopPauseBeats(); index += 1) {
+    meta.push({
+      beat: index % BEATS_PER_CYCLE,
+      beats: BEATS_PER_CYCLE,
+      isPause: true,
+    });
   }
   return meta;
 }
@@ -2264,7 +2325,8 @@ function applyAmbience(pattern) {
 
 /** Loop length + tempo of the exercise currently loaded, as a comparable key. */
 function getStrudelLoopSignature() {
-  const beatCount = playbackState.beatSlots?.length || playbackState.notes.length;
+  const beatCount =
+    (playbackState.beatSlots?.length || playbackState.notes.length) + getLoopPauseBeats();
   return `${getMeasures(beatCount)}@${getCyclesPerMinute(getSelectedTempoBpm())}`;
 }
 
@@ -2315,7 +2377,8 @@ async function buildBackingChordsPattern(api, beatMeta, measures) {
   if (config.type === 'off') return null;
   const segments = playbackState.measuresData || [];
   const totalBeats = segments.reduce((sum, segment) => sum + (segment.beats || 4), 0);
-  if (!segments.length || totalBeats !== beatMeta.length) {
+  const pauseBeats = beatMeta.filter((entry) => entry.isPause).length;
+  if (!segments.length || totalBeats + pauseBeats !== beatMeta.length) {
     debugLog('Backing chords skipped: measure data does not line up with the beat grid.');
     return null;
   }
@@ -2331,6 +2394,12 @@ async function buildBackingChordsPattern(api, beatMeta, measures) {
       clipTokens.push(hit ? `${hit.clip}` : '1');
     }
   });
+  // The comp rests through the trailing bars; only the backing rhythm keeps
+  // time there, so the pause reads as a pause.
+  for (let index = 0; index < pauseBeats; index += 1) {
+    noteTokens.push('~');
+    clipTokens.push('1');
+  }
   if (!noteTokens.some((token) => token !== '~')) return null;
 
   if (!(await ensureSoundfontsLoaded(api))) {
@@ -2354,6 +2423,13 @@ async function buildBackingChordsPattern(api, beatMeta, measures) {
   }
   return pattern;
 }
+
+// SONG_MELODY (planned, see TODO.md): the head played once before the exercise
+// and/or stacked as a backing layer. The playback side is a sibling of
+// buildBackingChordsPattern() — a note pattern over the same beat grid — but it
+// needs melody data that does not exist yet: songs/songs.js carries chord
+// charts only, and the standards currently listed have copyrighted melodies.
+// Nothing here reads a `melody` field yet; adding one is the first step.
 
 function stackPatterns(api, first, second) {
   if (!first) return second;
@@ -2388,9 +2464,16 @@ async function playStrudelExercise(notes) {
     setPlaybackBanner('No playable notes were generated.', 'warning');
     return;
   }
-  const measures = getMeasures(beatSlots.length);
+  // Rest bars extend the loop rather than pausing the transport: the notes go
+  // quiet, the grid keeps running, and the swap at the loop boundary still
+  // lands where it should.
+  const pauseBeats = getLoopPauseBeats();
+  const loopText = pauseBeats
+    ? `${patternText} ${Array(pauseBeats).fill('~').join(' ')}`
+    : patternText;
+  const measures = getMeasures(beatSlots.length + pauseBeats);
   const beatMeta = getBeatMeta(beatSlots.length);
-  let pattern = soundConfig.type === 'none' ? null : api.note(patternText).slow(measures);
+  let pattern = soundConfig.type === 'none' ? null : api.note(loopText).slow(measures);
   if (soundConfig.type === 'none') {
     // "None (rhythm only)": the backing rhythm below is the whole pattern.
   } else if (soundConfig.type === 'dirt') {
@@ -4429,7 +4512,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    ['rhythmSound', 'soundAmbience', 'backingChords'].forEach((id) => {
+    ['rhythmSound', 'soundAmbience', 'backingChords', 'loopPause'].forEach((id) => {
       document.getElementById(id)?.addEventListener('change', () => {
         if (playbackState.engine !== 'strudel') {
           return;
