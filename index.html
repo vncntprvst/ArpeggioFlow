@@ -136,6 +136,7 @@
                       <option value="vi-I-V-I">vi - I - V - I</option>
                       <option value="IV-I-V-I">IV - I - V - I</option>
                       <option value="I-IV-V-I">I - IV - V - I</option>
+                      <option value="custom">Custom…</option>
                     </select>
                   </div>
 
@@ -150,6 +151,21 @@
                       required
                     />
                   </div>
+                </div>
+
+                <div class="form-field" id="customProgressionField" hidden>
+                  <label for="customProgression">Your progression</label>
+                  <input
+                    type="text"
+                    id="customProgression"
+                    name="customProgression"
+                    placeholder="e.g. I - vi - ii - V"
+                    autocomplete="off"
+                  />
+                  <p class="field-hint">
+                    Roman numerals, one chord per bar: I ii iii IV V vi vii.
+                    Separate with spaces, dashes or “|”.
+                  </p>
                 </div>
               </div>
             </div>
@@ -292,9 +308,6 @@
                     <input type="checkbox" id="playbackAudio" checked />
                     Audio
                   </label>
-                  <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
-                    Play
-                  </button>
                   <button type="button" id="exerciseHistoryButton" class="secondary-button">
                     History
                   </button>
@@ -315,6 +328,28 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                   <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
+              </div>
+
+              <div class="form-field">
+                <label for="loopPause">Wait between loops</label>
+                <input
+                  type="number"
+                  id="loopPause"
+                  name="loopPause"
+                  value="0"
+                  min="0"
+                  max="16"
+                  step="1"
+                  list="loopPauseOptions"
+                />
+                <datalist id="loopPauseOptions">
+                  <option value="0" label="none"></option>
+                  <option value="1" label="1 bar"></option>
+                  <option value="2" label="2 bars"></option>
+                  <option value="4" label="4 bars"></option>
+                  <option value="8" label="8 bars"></option>
+                </datalist>
+                <p class="field-hint">Bars of rest before the loop repeats.</p>
               </div>
             </div>
 
@@ -380,6 +415,15 @@
                 </select>
               </div>
               <div class="form-field">
+                <label for="backingChords">Backing chords</label>
+                <select id="backingChords" name="backingChords">
+                  <option value="off" selected>Off</option>
+                  <option value="piano-held">Piano — held</option>
+                  <option value="piano-comp">Piano — comp on 2 &amp; 4</option>
+                  <option value="piano-quarters">Piano — quarter notes</option>
+                </select>
+              </div>
+              <div class="form-field">
                 <label for="soundAmbience">Ambience</label>
                 <select id="soundAmbience" name="soundAmbience">
                   <option value="dry">Dry (no effects)</option>
@@ -428,12 +472,15 @@
               <!-- Music notation -->
               <div id="notation"></div>
 
-              <!-- Arpeggio chord diagrams -->
-              <div id="arpeggio-diagrams-header" style="display:none">
-                <button type="button" id="scaleDegreeModalBtn" class="secondary-button">
-                  View all scale arpeggios ↗
+              <!-- Transport for the exercise on screen. Kept out of the
+                   exported image (see data-export-ignore). -->
+              <div id="preview-transport" data-export-ignore="true">
+                <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
+                  Play
                 </button>
               </div>
+
+              <!-- Arpeggio chord diagrams -->
               <div id="arpeggio-diagrams"></div>
 
               <!-- Scale degrees modal -->
@@ -448,12 +495,22 @@
           </div>
 
           <footer class="card-footer card-footer-actions">
-            <button type="button" id="exportPngButton">
-              Export PNG
+            <button
+              type="button"
+              id="scaleDegreeModalBtn"
+              class="secondary-button"
+              style="display:none"
+            >
+              View all scale arpeggios ↗
             </button>
-            <button type="button" id="exportPdfButton">
-              Export PDF
-            </button>
+            <div class="card-footer__exports">
+              <button type="button" id="exportPngButton">
+                Export PNG
+              </button>
+              <button type="button" id="exportPdfButton">
+                Export PDF
+              </button>
+            </div>
           </footer>
         </article>
       </section>

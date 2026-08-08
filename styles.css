@@ -341,14 +341,14 @@ input[type="number"]:focus {
 #fretboard-container {
   width: 100%;
   max-width: 100%;
-  margin: 0 auto 8px auto;
-  min-height: 220px;
+  margin: 0 auto 4px auto;
   position: relative;
 }
 
 #fretboard-container svg {
   display: block;
-  max-width: 100%;
+  width: 100%;
+  height: auto;
 }
 
 #arpeggio-diagrams {
@@ -394,10 +394,12 @@ input[type="number"]:focus {
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  margin-top: 8px;
+  margin-top: 0;
   overflow-x: auto;
 }
 
+/* VexFlow writes width/height inline; the renderer clears them so the viewBox
+   scales the staves instead of letterboxing them inside a fixed-height box. */
 #notation svg {
   max-width: 100%;
   height: auto;
@@ -571,10 +573,6 @@ input[type="number"]:focus {
   height: auto;
 }
 
-#arpeggio-diagrams-header {
-  margin-bottom: 8px;
-}
-
 /* ── Exercise history modal ─────────────────────────────────────────────── */
 
 .hist-toolbar {
@@ -664,9 +662,10 @@ input[type="number"]:focus {
 
 #fretboard-labels {
   position: relative;
-  /* Two rows: the box being played, and the box the next loop moves to. The
-     height is fixed so the preview appearing mid-loop never shifts the page. */
-  height: 38px;
+  /* One row normally. The second row is reserved for the whole of a
+     continuous-shift session (see .has-next-row), so the incoming-box caption
+     appearing mid-loop never shifts the notation below it. */
+  height: 20px;
   max-width: 900px;
   min-width: 320px;
   margin: 0 auto 6px;
@@ -679,8 +678,22 @@ input[type="number"]:focus {
   white-space: nowrap;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 12px;
   font-size: 13px;
+}
+
+.fretboard-box-label__part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.fretboard-box-label__tag {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #9ca3af;
 }
 
 .fretboard-box-label__scale {
@@ -691,6 +704,10 @@ input[type="number"]:focus {
 .fretboard-box-label__chord {
   font-weight: 700;
   color: #b26a00;
+}
+
+#fretboard-labels.has-next-row {
+  height: 38px;
 }
 
 .fretboard-box-label--next {
@@ -725,4 +742,32 @@ input[type="number"]:focus {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.field-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+#customProgression {
+  width: 100%;
+}
+
+/* ── Preview card: transport above the chord diagrams, footer actions ────── */
+
+#preview-transport {
+  display: flex;
+  justify-content: center;
+  margin: 4px 0 12px;
+}
+
+#preview-transport #playbackPlayButton {
+  min-width: 96px;
+}
+
+.card-footer__exports {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
 }
