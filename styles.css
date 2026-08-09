@@ -318,6 +318,8 @@ input[type="number"]:focus {
   background: #ffffff;
   font-size: 13px;
   cursor: pointer;
+  /* Keep labels like "History (5)" on one line inside the pill. */
+  white-space: nowrap;
 }
 
 .secondary-button:disabled {

@@ -881,6 +881,9 @@ function applyScaleDegreeColoring(fretboardDiv) {
 function updateFretboardForChord(measure) {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv || !measure) return;
+  // The loop below only touches in-box dots, so a preview drawn outside the
+  // box on the previous step has to be cleared here.
+  clearNextLoopPreview(fretboardDiv);
 
   const { rootNote, quality } = measure;
   const chordData = Tonal.Chord.get(`${rootNote}${quality}`);
@@ -1184,17 +1187,35 @@ function applyVisualStep(step, mode, steps, index) {
     return;
   }
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
-  let lookahead = null;
   if (step.note !== undefined) {
-    lookahead = buildLookahead(steps, index);
-    updateFretboardForNote(step.segment, step.note, mode, lookahead);
+    updateFretboardForNote(step.segment, step.note, mode, buildLookahead(steps, index));
   } else {
     updateFretboardForChord(step.segment);
+    // Chord mode has no per-note lookahead, so the incoming box lights up for
+    // the last chord of the loop instead — the same cue, one chord wide.
+    const isLastChord = steps.slice(index + 1).every((later) => later.pause);
+    if (isLastChord) {
+      const fretboardDiv = document.getElementById('fretboard-container');
+      if (fretboardDiv) {
+        renderNextLoopPreview(fretboardDiv, getNextLoopPreviewPositions());
+      }
+    }
   }
   updateArpeggioDiagramHighlight(step.segment.chordName);
-  // The incoming scale is named only while its notes are actually on screen.
-  const nextLabel = lookahead?.positions.length ? nextExercisePreview : null;
-  renderFretboardBoxLabel(step.segment.chordName, nextLabel);
+  // The incoming box is named for as long as the shift is pending, whatever
+  // the highlight mode: it says where the loop is going, not what sounds next.
+  renderFretboardBoxLabel(step.segment.chordName, nextExercisePreview);
+}
+
+/** The precomputed next loop's opening notes, as ranked neck positions. */
+function getNextLoopPreviewPositions() {
+  return (nextExercisePreview?.steps || [])
+    .map((previewStep, rank) =>
+      previewStep.position
+        ? { ...previewStep.position, rank: rank + 1, note: previewStep.note }
+        : null
+    )
+    .filter(Boolean);
 }
 
 /**
@@ -1209,12 +1230,7 @@ function applyPauseStep() {
   if (fretboardDiv) {
     clearNextLoopPreview(fretboardDiv);
     applyScaleDegreeColoring(fretboardDiv);
-    const positions = (nextExercisePreview?.steps || [])
-      .map((previewStep, rank) =>
-        previewStep.position ? { ...previewStep.position, rank: rank + 1, note: previewStep.note } : null
-      )
-      .filter(Boolean);
-    renderNextLoopPreview(fretboardDiv, positions);
+    renderNextLoopPreview(fretboardDiv, getNextLoopPreviewPositions());
   }
   renderFretboardBoxLabel(null, nextExercisePreview);
 }
@@ -1646,6 +1662,33 @@ async function performContinuousShift(mode) {
   scheduleContinuousShift();
 }
 
+const AUDIO_OFF_MESSAGE = 'Audio is off — showing the exercise without sound.';
+
+/**
+ * Re-apply the Visual / Audio switches to a playback already in progress.
+ * Both layers restart from the top of the loop together, so they cannot end up
+ * out of phase with each other or with the continuous-shift timer.
+ */
+async function restartPlaybackLayers() {
+  if (!playbackState.isPlaying) return;
+  clearVisualTimer();
+  if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    await playStrudelExercise(playbackState.notes);
+  } else {
+    await stopStrudelExercise();
+    setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
+  }
+  if (!playbackState.isPlaying) return;
+  if (isVisualPlaybackEnabled()) {
+    startVisualPlayback();
+  } else {
+    resetFretboardHighlight();
+    clearArpeggioDiagramHighlight();
+    hideHighlightRect();
+  }
+  scheduleContinuousShift();
+}
+
 // Starting playback awaits Strudel (a cold start loads the library and a
 // soundfont, seconds on a slow link). A Stop — or a second Play — during that
 // wait bumps this token, and the stale start bails out instead of flipping the
@@ -1664,6 +1707,10 @@ async function startPlayback() {
   // sound share the same t0.
   if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
     await playStrudelExercise(playbackState.notes);
+  }
+  if (!isAudioPlaybackEnabled()) {
+    // Silence here is a setting, not a fault — say so, or it reads as a bug.
+    setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
   }
   if (token !== playbackSessionToken) {
     // Silence the pattern this call just started, unless a newer session is
@@ -2093,6 +2140,10 @@ function updatePlaybackStateFromExercise(exerciseData) {
 
 function refreshPlaybackBanner() {
   if (playbackState.engine === 'strudel') {
+    if (!isAudioPlaybackEnabled()) {
+      setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
+      return;
+    }
     if (playbackState.notes.length) {
       const bpm = getSelectedTempoBpm();
       setPlaybackBanner(
@@ -4505,6 +4556,20 @@ document.addEventListener('DOMContentLoaded', function () {
         refreshPlaybackBanner();
       });
     }
+    // The Visual / Audio switches apply straight away: leaving Audio off from
+    // an earlier session and pressing Play is the most confusing way to get
+    // silence, so toggling it back on has to be audible immediately.
+    ['playbackVisual', 'playbackAudio'].forEach((id) => {
+      document.getElementById(id)?.addEventListener('change', () => {
+        updatePlaybackControls();
+        if (playbackState.isPlaying) {
+          restartPlaybackLayers();
+        } else {
+          refreshPlaybackBanner();
+        }
+      });
+    });
+
     // Changing the shift mid-loop must rebuild the precomputed next exercise,
     // or the preview would still point at the old target.
     document.getElementById('continuousShift')?.addEventListener('change', (event) => {

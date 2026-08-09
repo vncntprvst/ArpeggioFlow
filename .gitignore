@@ -16,3 +16,9 @@ dist/
 
 # tmp
 .**/*.md
+
+# Verification tooling: the headless browser used to drive the app in tests is
+# downloaded into the project folder, and probe scripts are throwaway.
+chrome-headless-shell/
+chrome/
+.afa-*
