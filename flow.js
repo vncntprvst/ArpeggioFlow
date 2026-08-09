@@ -853,6 +853,30 @@ function addDegreeLabelToDot(dotEl, dotCircle, degreeNum) {
   dotEl.appendChild(label);
 }
 
+// How long the note lasts, as a glyph beside the dot: the exercise only writes
+// quarters and beamed eighths today, and anything longer would be a half note.
+function getDurationGlyph(beats) {
+  if (!Number.isFinite(beats) || beats <= 0) return null;
+  if (beats <= 0.5) return '♪';
+  if (beats >= 2) return '𝅗𝅥';
+  return '♩';
+}
+
+/** Note-value glyph to the right of a dot, level with its centre. */
+function addDurationLabelToDot(dotEl, dotCircle, beats) {
+  const glyph = getDurationGlyph(beats);
+  if (!glyph) return;
+  const label = document.createElementNS(FRETBOARD_SVG_NS, 'text');
+  // cx/cy can be percentage strings, so offset with dx/dy like the degree tag.
+  label.setAttribute('x', dotCircle.getAttribute('cx'));
+  label.setAttribute('y', dotCircle.getAttribute('cy'));
+  label.setAttribute('dx', FRETBOARD_DOT_RING_RADIUS + 5);
+  label.setAttribute('dy', 4);
+  label.setAttribute('class', 'dot-duration');
+  label.textContent = glyph;
+  dotEl.appendChild(label);
+}
+
 /** Restore static scale-degree coloring (CSS controls fills; we only manage rings + opacity). */
 function applyScaleDegreeColoring(fretboardDiv) {
   fretboardDiv.querySelectorAll('.dot').forEach((dotEl) => {
@@ -863,7 +887,7 @@ function applyScaleDegreeColoring(fretboardDiv) {
     dotEl.style.opacity = '1';
     // Remove any playback-time inline fill override so CSS !important takes over again
     dotCircle.style.removeProperty('fill');
-    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
     if (data.inBox && SCALE_DEGREE_RING_DEGREES.has(data.degree)) {
       addRingToDot(dotEl, dotCircle);
       addDegreeLabelToDot(dotEl, dotCircle, data.degree);
@@ -906,7 +930,7 @@ function updateFretboardForChord(measure) {
     const dotCircle = dotEl.querySelector('.dot-circle');
     if (!dotCircle) return;
 
-    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
 
     const intervalNum = chromaToIntervalNum[Tonal.Note.chroma(data.note)];
 
@@ -983,7 +1007,12 @@ function buildLookahead(steps, index) {
     if (target >= noteSteps.length && nextLoop) {
       const nextStep = nextLoop.steps[target - noteSteps.length];
       if (nextStep?.position) {
-        positions.push({ ...nextStep.position, rank: ahead, note: nextStep.note });
+        positions.push({
+          ...nextStep.position,
+          rank: ahead,
+          note: nextStep.note,
+          beats: nextStep.beats,
+        });
       }
       continue;
     }
@@ -991,7 +1020,11 @@ function buildLookahead(steps, index) {
     if (!step) break;
     const midi = Tonal.Note.midi(step.note);
     if (!Number.isFinite(midi) || midi === currentMidi || byMidi.has(midi)) continue;
-    byMidi.set(midi, { rank: ahead, nextChord: step.segment !== currentSegment });
+    byMidi.set(midi, {
+      rank: ahead,
+      nextChord: step.segment !== currentSegment,
+      beats: step.beats,
+    });
   }
   return { byMidi, positions };
 }
@@ -1033,6 +1066,17 @@ function drawNextLoopMarker(fretboardDiv, position, opacity) {
   text.setAttribute('fill', '#ffffff');
   text.textContent = Tonal.Note.pitchClass(position.note) || '';
   marker.append(circle, text);
+  const glyph = getDurationGlyph(position.beats);
+  if (glyph) {
+    const duration = document.createElementNS(FRETBOARD_SVG_NS, 'text');
+    duration.setAttribute('x', `${coords.x}%`);
+    duration.setAttribute('y', coords.y);
+    duration.setAttribute('dx', FRETBOARD_DOT_RING_RADIUS + 5);
+    duration.setAttribute('dy', 4);
+    duration.setAttribute('class', 'dot-duration');
+    duration.textContent = glyph;
+    marker.append(duration);
+  }
   group.appendChild(marker);
 }
 
@@ -1043,6 +1087,7 @@ function clearNextLoopPreview(fretboardDiv) {
     dotEl.classList.remove('dot-next-loop');
     dotEl.style.opacity = '1';
     dotEl.querySelector('.dot-circle')?.style.removeProperty('fill');
+    dotEl.querySelectorAll('.dot-duration').forEach((label) => label.remove());
   });
 }
 
@@ -1057,9 +1102,11 @@ function renderNextLoopPreview(fretboardDiv, positions) {
     }
     dotEl.classList.add('dot-next-loop');
     dotEl.style.opacity = String(opacity);
-    dotEl
-      .querySelector('.dot-circle')
-      ?.style.setProperty('fill', FRETBOARD_COLOR_UPCOMING_NEXT_LOOP, 'important');
+    const dotCircle = dotEl.querySelector('.dot-circle');
+    dotCircle?.style.setProperty('fill', FRETBOARD_COLOR_UPCOMING_NEXT_LOOP, 'important');
+    if (dotCircle) {
+      addDurationLabelToDot(dotEl, dotCircle, position.beats);
+    }
   });
 }
 
@@ -1070,7 +1117,7 @@ function renderNextLoopPreview(fretboardDiv, positions) {
  * or the whole scale shape ('note-scale'). The next few notes are previewed,
  * fading with distance in time and switching colour on the next chord.
  */
-function updateFretboardForNote(segment, note, mode, lookahead) {
+function updateFretboardForNote(segment, note, mode, lookahead, beats) {
   const fretboardDiv = document.getElementById('fretboard-container');
   if (!fretboardDiv || !segment) return;
   const targetMidi = Tonal.Note.midi(note);
@@ -1085,7 +1132,7 @@ function updateFretboardForNote(segment, note, mode, lookahead) {
     if (!data || !data.inBox) return;
     const dotCircle = dotEl.querySelector('.dot-circle');
     if (!dotCircle) return;
-    dotEl.querySelectorAll('.dot-ring, .dot-degree-label').forEach((r) => r.remove());
+    dotEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
 
     const stringIndex = tuning.length - data.string;
     const openMidi = Tonal.Note.midi(tuning[stringIndex]);
@@ -1095,6 +1142,7 @@ function updateFretboardForNote(segment, note, mode, lookahead) {
       dotEl.style.opacity = '1';
       dotCircle.style.setProperty('fill', FRETBOARD_COLOR_PLAYING, 'important');
       addPlayedNotesRing(dotEl, dotCircle);
+      addDurationLabelToDot(dotEl, dotCircle, beats);
       return;
     }
 
@@ -1106,6 +1154,7 @@ function updateFretboardForNote(segment, note, mode, lookahead) {
         preview.nextChord ? FRETBOARD_COLOR_UPCOMING_NEXT_CHORD : FRETBOARD_COLOR_UPCOMING,
         'important'
       );
+      addDurationLabelToDot(dotEl, dotCircle, preview.beats);
       return;
     }
 
@@ -1188,7 +1237,13 @@ function applyVisualStep(step, mode, steps, index) {
   }
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
   if (step.note !== undefined) {
-    updateFretboardForNote(step.segment, step.note, mode, buildLookahead(steps, index));
+    updateFretboardForNote(
+      step.segment,
+      step.note,
+      mode,
+      buildLookahead(steps, index),
+      step.beats
+    );
   } else {
     updateFretboardForChord(step.segment);
     // Chord mode has no per-note lookahead, so the incoming box lights up for
@@ -1402,11 +1457,34 @@ function findBoxPositionForNote(cagedShape, note) {
 
 /** The opening notes of the next exercise, with where they sit on the neck. */
 function buildNextLoopSteps(measureData, cagedShape) {
+  return collectPreviewSteps(
+    (measureData || []).map((measure) => ({
+      notes: measure.generatedNotes || [],
+      slots: measure.slots || [],
+    })),
+    cagedShape
+  );
+}
+
+/**
+ * The first few notes of an upcoming exercise, each with its neck position and
+ * its length in beats (a slot of 2 is a beamed pair, so half a beat each).
+ */
+function collectPreviewSteps(measures, cagedShape) {
   const steps = [];
-  for (const measure of measureData || []) {
-    for (const note of measure.generatedNotes || []) {
-      steps.push({ note, position: findBoxPositionForNote(cagedShape, note) });
-      if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
+  for (const measure of measures) {
+    const slots = measure.slots.length ? measure.slots : measure.notes.map(() => 1);
+    let noteIdx = 0;
+    for (const slotSize of slots) {
+      for (let k = 0; k < slotSize && noteIdx < measure.notes.length; k += 1, noteIdx += 1) {
+        const note = measure.notes[noteIdx];
+        steps.push({
+          note,
+          beats: slotSize === 2 ? 0.5 : 1,
+          position: findBoxPositionForNote(cagedShape, note),
+        });
+        if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
+      }
     }
   }
   return steps;
@@ -1470,14 +1548,13 @@ function getShapeForSettings(settings) {
 
 /** Opening notes of a stored snapshot, positioned in its own box. */
 function buildSnapshotSteps(snapshot, cagedShape) {
-  const steps = [];
-  for (const measure of snapshot.measures || []) {
-    for (const note of measure.notes || []) {
-      steps.push({ note, position: findBoxPositionForNote(cagedShape, note) });
-      if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
-    }
-  }
-  return steps;
+  return collectPreviewSteps(
+    (snapshot.measures || []).map((measure) => ({
+      notes: measure.notes || [],
+      slots: measure.slots || [],
+    })),
+    cagedShape
+  );
 }
 
 function precomputePinnedCycle() {

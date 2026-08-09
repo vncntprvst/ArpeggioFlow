@@ -332,16 +332,19 @@
 
               <div class="form-field">
                 <label for="loopPause">Wait between loops</label>
-                <input
-                  type="number"
-                  id="loopPause"
-                  name="loopPause"
-                  value="0"
-                  min="0"
-                  max="16"
-                  step="1"
-                  list="loopPauseOptions"
-                />
+                <div class="input-with-suffix">
+                  <input
+                    type="number"
+                    id="loopPause"
+                    name="loopPause"
+                    value="0"
+                    min="0"
+                    max="16"
+                    step="1"
+                    list="loopPauseOptions"
+                  />
+                  <span class="input-suffix">bars</span>
+                </div>
                 <datalist id="loopPauseOptions">
                   <option value="0" label="none"></option>
                   <option value="1" label="1 bar"></option>
@@ -349,7 +352,6 @@
                   <option value="4" label="4 bars"></option>
                   <option value="8" label="8 bars"></option>
                 </datalist>
-                <p class="field-hint">Bars of rest before the loop repeats.</p>
               </div>
             </div>
 
