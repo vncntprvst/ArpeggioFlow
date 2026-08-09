@@ -328,6 +328,10 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                   <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
+                <label class="toggle-label toggle-label--under" for="stayInPosition">
+                  <input type="checkbox" id="stayInPosition" />
+                  Stay in neck position
+                </label>
               </div>
 
               <div class="form-field">
@@ -531,7 +535,16 @@
         <button type="button" id="pinCurrentExerciseButton" class="secondary-button">
           ☆ Pin current exercise
         </button>
-        <span class="hist-toolbar__hint">Every loop you play is recorded here for this session.</span>
+        <button type="button" id="exportPinnedButton" class="secondary-button">
+          Save pinned to file
+        </button>
+        <button type="button" id="importPinnedButton" class="secondary-button">
+          Load from file
+        </button>
+        <input type="file" id="importPinnedInput" accept="application/json,.json" hidden />
+        <span class="hist-toolbar__hint" id="histToolbarHint">
+          Every loop you play is recorded here for this session.
+        </span>
       </div>
       <div id="exerciseHistoryBody"></div>
     </div>

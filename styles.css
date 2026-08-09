@@ -803,3 +803,13 @@ input[type="number"]:focus {
   stroke-linejoin: round;
   pointer-events: none;
 }
+
+.toggle-label--under {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.toggle-label.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
