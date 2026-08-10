@@ -255,6 +255,7 @@ const playbackState = {
   stavePositions: [],
   beatSlots: [],
   isPlaying: false,
+  isPaused: false,
 };
 
 // Stores the last generated exercise state for use in the scale-degrees modal
@@ -1329,7 +1330,7 @@ function stopVisualPlayback() {
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+  updateTransportButtons();
 }
 
 // ─── Continuous shift ────────────────────────────────────────────────────────
@@ -1811,6 +1812,7 @@ async function performContinuousShift(mode) {
 }
 
 const AUDIO_OFF_MESSAGE = 'Audio is off — showing the exercise without sound.';
+const PAUSED_MESSAGE = 'Paused — Resume picks up from the top of the loop.';
 
 /**
  * Re-apply the Visual / Audio switches to a playback already in progress.
@@ -1849,7 +1851,8 @@ async function startPlayback() {
   // read as "stop" instead of starting a second, overlapping playback.
   const token = ++playbackSessionToken;
   playbackState.isPlaying = true;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Stop';
+  playbackState.isPaused = false;
+  updateTransportButtons();
   // Start audio first (loading Strudel and soundfonts can take a while), then
   // the visual clock right after the pattern starts, so the highlight and the
   // sound share the same t0.
@@ -1884,7 +1887,45 @@ async function stopPlayback() {
     await stopStrudelExercise();
   }
   playbackState.isPlaying = false;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+  playbackState.isPaused = false;
+  updateTransportButtons();
+}
+
+/**
+ * Pause holds the picture: the highlight freezes on the note you stopped on,
+ * so you can look at where you are. The scheduler cannot be resumed mid-cycle
+ * without drifting off the grid, so Resume starts the loop again from the top —
+ * the banner says as much.
+ */
+async function pausePlayback() {
+  if (!playbackState.isPlaying) return;
+  playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearContinuousShiftTimer();
+  clearNextExercisePreview();
+  clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
+  if (playbackState.engine === 'strudel') {
+    await stopStrudelExercise();
+  }
+  playbackState.isPlaying = false;
+  playbackState.isPaused = true;
+  updateTransportButtons();
+  setPlaybackBanner(PAUSED_MESSAGE, 'info');
+}
+
+/** Play / Pause / Resume on the main button, with Stop beside it when active. */
+function updateTransportButtons() {
+  const playButton = playbackUi.playButton;
+  const stopButton = playbackUi.stopButton;
+  if (playButton) {
+    playButton.textContent = playbackState.isPlaying
+      ? 'Pause'
+      : playbackState.isPaused
+        ? 'Resume'
+        : 'Play';
+  }
+  if (stopButton) {
+    stopButton.hidden = !(playbackState.isPlaying || playbackState.isPaused);
+  }
 }
 
 // ─── Exercise history & pinned exercises ─────────────────────────────────────
@@ -2370,7 +2411,7 @@ function updateHistoryButton() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updatePlaybackControls() {
-  if (!playbackUi.playButton || !playbackUi.stopButton) {
+  if (!playbackUi.playButton) {
     return;
   }
   const hasExercise = playbackState.measuresData.length > 0;
@@ -2379,7 +2420,10 @@ function updatePlaybackControls() {
     (isVisualPlaybackEnabled() ||
       (playbackState.engine === 'strudel' && playbackState.notes.length > 0));
   playbackUi.playButton.disabled = !canPlay;
-  playbackUi.stopButton.disabled = !hasExercise;
+  if (playbackUi.stopButton) {
+    playbackUi.stopButton.disabled = !hasExercise;
+  }
+  updateTransportButtons();
 }
 
 function updatePlaybackStateFromExercise(exerciseData) {
@@ -2392,6 +2436,10 @@ function updatePlaybackStateFromExercise(exerciseData) {
 }
 
 function refreshPlaybackBanner() {
+  if (playbackState.isPaused) {
+    setPlaybackBanner(PAUSED_MESSAGE, 'info');
+    return;
+  }
   if (playbackState.engine === 'strudel') {
     if (!isAudioPlaybackEnabled()) {
       setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
@@ -4690,7 +4738,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     playbackUi.banner = document.getElementById('playback-banner');
     playbackUi.playButton = document.getElementById('playbackPlayButton');
-    playbackUi.stopButton = playbackUi.playButton; // same element
+    playbackUi.stopButton = document.getElementById('playbackStopButton');
     playbackState.engine = getSelectedPlaybackEngine();
     updatePlaybackControls();
 
@@ -4850,12 +4898,16 @@ document.addEventListener('DOMContentLoaded', function () {
     if (playbackUi.playButton) {
       playbackUi.playButton.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
-          await stopPlayback();
+          await pausePlayback();
         } else {
           await startPlayback();
         }
       });
     }
+    playbackUi.stopButton?.addEventListener('click', async () => {
+      await stopPlayback();
+      refreshPlaybackBanner();
+    });
 
     document.getElementById('generateButton').addEventListener('click', () => {
       regenerateExercise();

@@ -813,3 +813,7 @@ input[type="number"]:focus {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+#preview-transport {
+  gap: 8px;
+}
