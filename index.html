@@ -239,8 +239,8 @@
               <div class="form-field">
                 <label for="startDegree">Start each chord on</label>
                 <select id="startDegree" name="startDegree">
-                  <option value="flow" selected>Closest tone</option>
-                  <option value="flow-different">Closest different tone</option>
+                  <option value="flow">Closest tone</option>
+                  <option value="flow-different" selected>Closest different tone</option>
                   <option value="1">Root</option>
                   <option value="3">3rd</option>
                   <option value="5">5th</option>
@@ -328,6 +328,10 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                   <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
+                <label class="toggle-label toggle-label--under" for="stayInPosition">
+                  <input type="checkbox" id="stayInPosition" />
+                  Stay in neck position
+                </label>
               </div>
 
               <div class="form-field">
@@ -386,6 +390,9 @@
                   <option value="gm_acoustic_guitar_nylon">Acoustic Guitar (Nylon)</option>
                   <option value="gm_acoustic_guitar_steel">Acoustic Guitar (Steel)</option>
                   <option value="gm_distortion_guitar">Distortion Guitar</option>
+                  <!-- Novelty / rarely used sounds — kept for reference,
+                       re-enable by uncommenting (configs still exist in
+                       STRUDEL_SOUND_CONFIG in flow.js):
                   <option value="gm_guitar_fret_noise">Guitar Fret Noise</option>
                   <option value="gm_guitar_harmonics">Guitar Harmonics</option>
                   <option value="gm_overdriven_guitar">Overdriven Guitar</option>
@@ -395,6 +402,8 @@
                   <option value="triangle">Triangle</option>
                   <option value="square">Square</option>
                   <option value="sawtooth">Sawtooth</option>
+                  -->
+
                   <option value="none">None (rhythm only)</option>
                 </select>
               </div>
@@ -480,6 +489,9 @@
                 <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
                   Play
                 </button>
+                <button type="button" id="playbackStopButton" class="secondary-button" hidden>
+                  Stop
+                </button>
               </div>
 
               <!-- Arpeggio chord diagrams -->
@@ -531,7 +543,16 @@
         <button type="button" id="pinCurrentExerciseButton" class="secondary-button">
           ☆ Pin current exercise
         </button>
-        <span class="hist-toolbar__hint">Every loop you play is recorded here for this session.</span>
+        <button type="button" id="exportPinnedButton" class="secondary-button">
+          Save pinned to file
+        </button>
+        <button type="button" id="importPinnedButton" class="secondary-button">
+          Load from file
+        </button>
+        <input type="file" id="importPinnedInput" accept="application/json,.json" hidden />
+        <span class="hist-toolbar__hint" id="histToolbarHint">
+          Every loop you play is recorded here for this session.
+        </span>
       </div>
       <div id="exerciseHistoryBody"></div>
     </div>

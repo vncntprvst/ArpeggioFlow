@@ -255,6 +255,7 @@ const playbackState = {
   stavePositions: [],
   beatSlots: [],
   isPlaying: false,
+  isPaused: false,
 };
 
 // Stores the last generated exercise state for use in the scale-degrees modal
@@ -1329,7 +1330,7 @@ function stopVisualPlayback() {
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+  updateTransportButtons();
 }
 
 // ─── Continuous shift ────────────────────────────────────────────────────────
@@ -1375,22 +1376,91 @@ function peekSelectValue(selectId, delta) {
   return values[(idx + delta + values.length) % values.length];
 }
 
-// Advance a select to a nearby option (wrapping; skips empty placeholders)
-function advanceSelect(selectId, delta) {
-  const next = peekSelectValue(selectId, delta);
-  if (next === null) return false;
+function setSelectValue(selectId, value) {
   const select = document.getElementById(selectId);
-  select.value = next;
+  if (!select || value === null || value === undefined) return false;
+  select.value = value;
   select.dispatchEvent(new Event('change'));
   return true;
 }
 
-/** Where a shift would land, as { key } or { shape } — nothing is changed. */
+// ─── Staying in one neck position ────────────────────────────────────────────
+// A key shift moves every box up or down the neck, so following it with the
+// shape whose box lands closest to the one being left keeps the hand still:
+// Bb/G shape → Eb/C → Ab/E → Db/A around the circle of 4ths, each within half a
+// fret of the last. Positions come from the shape data itself rather than CAGED
+// theory, so stretched shapes and any future shape are handled the same way.
+
+function isStayInPositionEnabled() {
+  return document.getElementById('stayInPosition')?.checked ?? false;
+}
+
+/** The toggle only means anything for the key-changing shifts. */
+function updateStayInPositionAvailability() {
+  const toggle = document.getElementById('stayInPosition');
+  if (!toggle) return;
+  const applies = getSelectedContinuousShift() in CONTINUOUS_SHIFT_KEY_DELTAS;
+  toggle.disabled = !applies;
+  toggle.closest('.toggle-label')?.classList.toggle('is-disabled', !applies);
+}
+
+/** Middle fret of a shape's box in a given key, or null if it has none. */
+function getShapeBoxCenter(shape, cagedKey) {
+  const cagedShape = getCAGEDShape(shape, cagedKey);
+  const frets = (cagedShape?.scale_frets || [])
+    .flat()
+    .filter((fret) => typeof fret === 'number' && fret >= 0);
+  if (!frets.length) return null;
+  return (Math.min(...frets) + Math.max(...frets)) / 2;
+}
+
+/** Where the hand is now: the box currently rendered, or the selected one. */
+function getCurrentBoxCenter() {
+  const current = lastExerciseState?.cagedShape;
+  if (current) {
+    const frets = (current.scale_frets || [])
+      .flat()
+      .filter((fret) => typeof fret === 'number' && fret >= 0);
+    if (frets.length) return (Math.min(...frets) + Math.max(...frets)) / 2;
+  }
+  const shape = document.getElementById('shape')?.value;
+  if (!shape) return null;
+  return getShapeBoxCenter(shape, getKeyContext(getSelectedKeyValue()).cagedKey);
+}
+
+/** The available shape whose box in `keyValue` sits closest to `center`. */
+function pickShapeNearPosition(keyValue, center) {
+  if (center === null || center === undefined) return null;
+  const shapes = [...(document.getElementById('shape')?.options || [])]
+    .map((option) => option.value)
+    .filter(Boolean);
+  const cagedKey = getKeyContext(keyValue).cagedKey;
+  let best = null;
+  shapes.forEach((shape) => {
+    const shapeCenter = getShapeBoxCenter(shape, cagedKey);
+    if (shapeCenter === null) return;
+    const distance = Math.abs(shapeCenter - center);
+    if (!best || distance < best.distance) {
+      best = { shape, distance };
+    }
+  });
+  return best?.shape || null;
+}
+
+/** Where a shift would land, as { key } and/or { shape } — nothing is changed. */
 function peekContinuousShiftTarget(mode) {
   if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
     if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) return null;
     const key = peekSelectValue('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
-    return key ? { key } : null;
+    if (!key) return null;
+    const target = { key };
+    if (isStayInPositionEnabled()) {
+      const scaleType = document.getElementById('scaleType')?.value || 'major';
+      const keyValue = scaleType === 'minor' ? `${key}m` : key;
+      const shape = pickShapeNearPosition(keyValue, getCurrentBoxCenter());
+      if (shape) target.shape = shape;
+    }
+    return target;
   }
   if (mode === 'shape-up') {
     const shape = peekSelectValue('shape', 1);
@@ -1404,16 +1474,18 @@ function peekContinuousShiftTarget(mode) {
 }
 
 function applyContinuousShift(mode) {
-  if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
-    if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) {
-      debugLog('Continuous key shift is not available in song mode.');
-      return false;
-    }
-    return advanceSelect('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
+  if (mode in CONTINUOUS_SHIFT_KEY_DELTAS && getSelectedExerciseMode() === EXERCISE_MODES.SONG) {
+    debugLog('Continuous key shift is not available in song mode.');
+    return false;
   }
-  if (mode === 'shape-up') return advanceSelect('shape', 1);
-  if (mode === 'shape-down') return advanceSelect('shape', -1);
-  return false;
+  // Apply exactly what the preview was built from, so what was shown is what
+  // gets generated.
+  const target = peekContinuousShiftTarget(mode);
+  if (!target) return false;
+  let applied = false;
+  if (target.key) applied = setSelectValue('key', target.key) || applied;
+  if (target.shape) applied = setSelectValue('shape', target.shape) || applied;
+  return applied;
 }
 
 // ─── Next-loop preview ───────────────────────────────────────────────────────
@@ -1740,6 +1812,7 @@ async function performContinuousShift(mode) {
 }
 
 const AUDIO_OFF_MESSAGE = 'Audio is off — showing the exercise without sound.';
+const PAUSED_MESSAGE = 'Paused — Resume picks up from the top of the loop.';
 
 /**
  * Re-apply the Visual / Audio switches to a playback already in progress.
@@ -1778,7 +1851,8 @@ async function startPlayback() {
   // read as "stop" instead of starting a second, overlapping playback.
   const token = ++playbackSessionToken;
   playbackState.isPlaying = true;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Stop';
+  playbackState.isPaused = false;
+  updateTransportButtons();
   // Start audio first (loading Strudel and soundfonts can take a while), then
   // the visual clock right after the pattern starts, so the highlight and the
   // sound share the same t0.
@@ -1813,7 +1887,45 @@ async function stopPlayback() {
     await stopStrudelExercise();
   }
   playbackState.isPlaying = false;
-  if (playbackUi.playButton) playbackUi.playButton.textContent = 'Play';
+  playbackState.isPaused = false;
+  updateTransportButtons();
+}
+
+/**
+ * Pause holds the picture: the highlight freezes on the note you stopped on,
+ * so you can look at where you are. The scheduler cannot be resumed mid-cycle
+ * without drifting off the grid, so Resume starts the loop again from the top —
+ * the banner says as much.
+ */
+async function pausePlayback() {
+  if (!playbackState.isPlaying) return;
+  playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearContinuousShiftTimer();
+  clearNextExercisePreview();
+  clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
+  if (playbackState.engine === 'strudel') {
+    await stopStrudelExercise();
+  }
+  playbackState.isPlaying = false;
+  playbackState.isPaused = true;
+  updateTransportButtons();
+  setPlaybackBanner(PAUSED_MESSAGE, 'info');
+}
+
+/** Play / Pause / Resume on the main button, with Stop beside it when active. */
+function updateTransportButtons() {
+  const playButton = playbackUi.playButton;
+  const stopButton = playbackUi.stopButton;
+  if (playButton) {
+    playButton.textContent = playbackState.isPlaying
+      ? 'Pause'
+      : playbackState.isPaused
+        ? 'Resume'
+        : 'Play';
+  }
+  if (stopButton) {
+    stopButton.hidden = !(playbackState.isPlaying || playbackState.isPaused);
+  }
 }
 
 // ─── Exercise history & pinned exercises ─────────────────────────────────────
@@ -1836,6 +1948,7 @@ const SNAPSHOT_CONTROL_IDS = [
   'progression',
   'customProgression',
   'bars',
+  'trueChorusLength',
   'notesPerMeasure',
   'startDegree',
   'turnaroundMode',
@@ -1879,7 +1992,7 @@ function writePinnedExercises() {
 const SETTINGS_STORAGE_KEY = 'arpeggioFlow.lastSettings';
 // A history snapshot deliberately leaves the shift mode alone (loading a saved
 // exercise must not change how playback behaves), but "last used" remembers it.
-const EXTRA_PREF_CONTROL_IDS = ['continuousShift'];
+const EXTRA_PREF_CONTROL_IDS = ['continuousShift', 'stayInPosition'];
 
 function saveUserDefaults() {
   try {
@@ -1903,18 +2016,26 @@ function restoreUserDefaults() {
   return true;
 }
 
+function readControlValue(element) {
+  return element.type === 'checkbox' ? element.checked : element.value;
+}
+
+function writeControlValue(element, value) {
+  if (element.type === 'checkbox') {
+    element.checked = Boolean(value);
+  } else {
+    element.value = value;
+  }
+}
+
 function captureControlValues(extraIds = []) {
   const values = {};
   [...SNAPSHOT_CONTROL_IDS, ...extraIds].forEach((id) => {
     const element = document.getElementById(id);
     if (element) {
-      values[id] = element.value;
+      values[id] = readControlValue(element);
     }
   });
-  const trueChorus = document.getElementById('trueChorusLength');
-  if (trueChorus) {
-    values.trueChorusLength = trueChorus.checked;
-  }
   values.exerciseMode = getSelectedExerciseMode();
   return values;
 }
@@ -1934,13 +2055,9 @@ function applyControlValues(values, extraIds = []) {
     // No change events here: they would re-derive bars from the progression
     // and re-apply song defaults over the values being restored.
     if (element) {
-      element.value = values[id];
+      writeControlValue(element, values[id]);
     }
   });
-  const trueChorus = document.getElementById('trueChorusLength');
-  if (trueChorus && values.trueChorusLength !== undefined) {
-    trueChorus.checked = values.trueChorusLength;
-  }
   if (values.exerciseMode) {
     setExerciseMode(values.exerciseMode);
   }
@@ -2065,6 +2182,106 @@ function removePinned(id) {
   writePinnedExercises();
   updateHistoryButton();
   renderExerciseHistory();
+}
+
+// ─── Pinned exercises: file in, file out ─────────────────────────────────────
+// localStorage is per browser, so the pinned set is also written to (and read
+// from) a plain JSON file — a backup, and the way to carry a practice set to
+// another device.
+
+const PINNED_FILE_VERSION = 1;
+
+function setHistoryHint(message) {
+  const hint = document.getElementById('histToolbarHint');
+  if (hint) {
+    hint.textContent = message;
+  }
+}
+
+function exportPinnedExercises() {
+  if (!pinnedExercises.length) {
+    setHistoryHint('Nothing pinned yet — star an exercise first.');
+    return;
+  }
+  const payload = {
+    app: 'arpeggio-flow',
+    kind: 'pinned-exercises',
+    version: PINNED_FILE_VERSION,
+    savedAt: new Date().toISOString(),
+    exercises: pinnedExercises,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `arpeggio-flow-pinned-${new Date().toISOString().slice(0, 10)}.json`;
+  // Safari only downloads from an anchor that is in the document, and revoking
+  // the blob URL in the same tick cancels the download — hence the timeout.
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 1000);
+  setHistoryHint(`Saved ${pinnedExercises.length} pinned exercise(s) to a file.`);
+}
+
+/** Accepts the exported wrapper or a bare array of exercises. */
+function readPinnedFilePayload(text) {
+  const parsed = JSON.parse(text);
+  const list = Array.isArray(parsed) ? parsed : parsed?.exercises;
+  if (!Array.isArray(list)) {
+    throw new Error('not an Arpeggio Flow pinned file');
+  }
+  return list.filter(
+    (entry) =>
+      entry &&
+      typeof entry.label === 'string' &&
+      entry.settings &&
+      typeof entry.settings === 'object' &&
+      Array.isArray(entry.measures) &&
+      entry.measures.length &&
+      entry.measures.every((measure) => Array.isArray(measure?.notes) && measure.notes.length)
+  );
+}
+
+async function importPinnedExercises(file) {
+  if (!file) return;
+  let incoming = [];
+  try {
+    incoming = readPinnedFilePayload(await file.text());
+  } catch (error) {
+    console.warn('Could not read the pinned file:', error);
+    setHistoryHint('That file could not be read as an Arpeggio Flow pinned list.');
+    return;
+  }
+  if (!incoming.length) {
+    setHistoryHint('No usable exercises in that file.');
+    return;
+  }
+  // Merge rather than replace, and match on content so re-importing the same
+  // file does not pile up duplicates.
+  const known = new Set(pinnedExercises.map((entry) => snapshotSignature(entry)));
+  const added = [];
+  incoming.forEach((entry) => {
+    const signature = snapshotSignature(entry);
+    if (known.has(signature)) return;
+    known.add(signature);
+    added.push({
+      ...entry,
+      id: entry.id || `ex-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      savedAt: entry.savedAt || Date.now(),
+    });
+  });
+  pinnedExercises = [...added, ...pinnedExercises].slice(0, PINNED_LIMIT);
+  writePinnedExercises();
+  updateHistoryButton();
+  renderExerciseHistory();
+  const skipped = incoming.length - added.length;
+  setHistoryHint(
+    `Loaded ${added.length} exercise(s)${skipped ? `, ${skipped} already pinned` : ''}.`
+  );
 }
 
 function formatRelativeTime(timestamp) {
@@ -2194,7 +2411,7 @@ function updateHistoryButton() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updatePlaybackControls() {
-  if (!playbackUi.playButton || !playbackUi.stopButton) {
+  if (!playbackUi.playButton) {
     return;
   }
   const hasExercise = playbackState.measuresData.length > 0;
@@ -2203,7 +2420,10 @@ function updatePlaybackControls() {
     (isVisualPlaybackEnabled() ||
       (playbackState.engine === 'strudel' && playbackState.notes.length > 0));
   playbackUi.playButton.disabled = !canPlay;
-  playbackUi.stopButton.disabled = !hasExercise;
+  if (playbackUi.stopButton) {
+    playbackUi.stopButton.disabled = !hasExercise;
+  }
+  updateTransportButtons();
 }
 
 function updatePlaybackStateFromExercise(exerciseData) {
@@ -2216,6 +2436,10 @@ function updatePlaybackStateFromExercise(exerciseData) {
 }
 
 function refreshPlaybackBanner() {
+  if (playbackState.isPaused) {
+    setPlaybackBanner(PAUSED_MESSAGE, 'info');
+    return;
+  }
   if (playbackState.engine === 'strudel') {
     if (!isAudioPlaybackEnabled()) {
       setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
@@ -4514,7 +4738,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     playbackUi.banner = document.getElementById('playback-banner');
     playbackUi.playButton = document.getElementById('playbackPlayButton');
-    playbackUi.stopButton = playbackUi.playButton; // same element
+    playbackUi.stopButton = document.getElementById('playbackStopButton');
     playbackState.engine = getSelectedPlaybackEngine();
     updatePlaybackControls();
 
@@ -4650,6 +4874,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Changing the shift mid-loop must rebuild the precomputed next exercise,
     // or the preview would still point at the old target.
     document.getElementById('continuousShift')?.addEventListener('change', (event) => {
+      updateStayInPositionAvailability();
       if (event.target.value === 'cycle-pinned' && !pinnedExercises.length) {
         setPlaybackBanner(
           'Nothing pinned yet — open History and star the exercises you want in the cycle.',
@@ -4673,12 +4898,16 @@ document.addEventListener('DOMContentLoaded', function () {
     if (playbackUi.playButton) {
       playbackUi.playButton.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
-          await stopPlayback();
+          await pausePlayback();
         } else {
           await startPlayback();
         }
       });
     }
+    playbackUi.stopButton?.addEventListener('click', async () => {
+      await stopPlayback();
+      refreshPlaybackBanner();
+    });
 
     document.getElementById('generateButton').addEventListener('click', () => {
       regenerateExercise();
@@ -4691,11 +4920,15 @@ document.addEventListener('DOMContentLoaded', function () {
     // after it — otherwise the restored shape is overwritten.
     const rememberedIds = new Set([...SNAPSHOT_CONTROL_IDS, ...EXTRA_PREF_CONTROL_IDS]);
     document.addEventListener('change', (event) => {
-      if (rememberedIds.has(event.target?.id) || event.target?.id === 'trueChorusLength') {
+      if (rememberedIds.has(event.target?.id)) {
         saveUserDefaults();
       }
     });
     document.getElementById('customProgression')?.addEventListener('input', saveUserDefaults);
+    document.getElementById('stayInPosition')?.addEventListener('change', () => {
+      if (playbackState.isPlaying) precomputeNextExercise();
+    });
+    updateStayInPositionAvailability();
     ['modeRandom', 'modeSong'].forEach((id) => {
       document.getElementById(id)?.addEventListener('click', saveUserDefaults);
     });
@@ -4705,6 +4938,9 @@ document.addEventListener('DOMContentLoaded', function () {
         updateKeyDebug(getSelectedKeyValue());
         updateExportTitle();
       }
+      // Runs either way: the restored (or default) shift decides whether the
+      // stay-in-position toggle applies.
+      updateStayInPositionAvailability();
     });
 
     pinnedExercises = readPinnedExercises();
@@ -4721,6 +4957,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     historyModal?.addEventListener('click', (event) => {
       if (event.target === historyModal) historyModal.close();
+    });
+    document.getElementById('exportPinnedButton')?.addEventListener('click', exportPinnedExercises);
+    const importInput = document.getElementById('importPinnedInput');
+    document.getElementById('importPinnedButton')?.addEventListener('click', () => {
+      importInput?.click();
+    });
+    importInput?.addEventListener('change', async (event) => {
+      await importPinnedExercises(event.target.files?.[0]);
+      // Clear the input so picking the same file twice still fires a change.
+      event.target.value = '';
     });
     document.getElementById('pinCurrentExerciseButton')?.addEventListener('click', () => {
       const snapshot = captureExerciseSnapshot();
