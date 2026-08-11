@@ -881,13 +881,11 @@ input[type="number"]:focus {
 
 /* ===== Instrument toggle & piano keyboard ===== */
 
-/* Guitar-only / piano-only controls swap with the instrument */
-.piano-only {
+/* Guitar-only / piano-only controls swap with the instrument. Scoped to the
+   body class (rather than hide-then-revert) so visible elements keep their
+   own display value — .form-row must stay a grid. */
+body:not(.instrument-piano) .piano-only {
   display: none;
-}
-
-body.instrument-piano .piano-only {
-  display: revert;
 }
 
 body.instrument-piano .guitar-only {

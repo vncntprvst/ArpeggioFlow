@@ -79,6 +79,11 @@ function getActiveInstrument() {
   return document.getElementById('instrument')?.value === 'piano' ? 'piano' : 'guitar';
 }
 
+/** Which hand practices the arpeggio in piano mode; the other one comps. */
+function getSelectedPianoHand() {
+  return document.getElementById('pianoHand')?.value === 'left' ? 'left' : 'right';
+}
+
 const INSTRUMENT_VIEWS = {
   guitar: {
     shapeControlId: 'shape',
@@ -2290,6 +2295,7 @@ const SNAPSHOT_CONTROL_IDS = [
   'key',
   'scaleType',
   'shape',
+  'pianoHand',
   'pianoRange',
   'progression',
   'customProgression',
@@ -2419,7 +2425,7 @@ function applyControlValues(values, extraIds = []) {
 function describeSnapshotSettings(values) {
   const shapeLabel =
     values.instrument === 'piano'
-      ? `Piano ${window.pianoKeyboard.parsePianoRange(values.pianoRange).label}`
+      ? `Piano ${values.pianoHand === 'left' ? 'LH' : 'RH'} ${window.pianoKeyboard.parsePianoRange(values.pianoRange).label}`
       : `Shape ${values.shape}`;
   if (values.exerciseMode === EXERCISE_MODES.SONG) {
     const song = getSongById(values.songSelect);
@@ -3138,12 +3144,32 @@ const BACKING_CHORD_MAX_TONES = 4;
  * A close-position voicing for one chord, as Strudel note tokens. Chord tones
  * are stacked upwards from the root, so the shape never inverts mid-chart.
  */
-function buildBackingChordVoicing(rootNote, quality) {
+/**
+ * Where the comp voicing starts. On guitar it always sits at C3, under the
+ * exercise. On piano the comp is the resting hand, so it moves to the other
+ * side of the practice register: below it for right-hand practice, above it
+ * for left-hand practice.
+ */
+function getBackingChordLowMidi() {
+  if (getActiveInstrument() !== 'piano') {
+    return BACKING_CHORD_LOW_MIDI;
+  }
+  const range = window.pianoKeyboard.parsePianoRange(
+    document.getElementById('pianoRange')?.value
+  );
+  if (getSelectedPianoHand() === 'left') {
+    return range.maxMidi + 4; // right hand comps just above the register
+  }
+  // Left hand comps an octave under the register, kept out of the mud.
+  return Math.max(36, range.minMidi - 12);
+}
+
+function buildBackingChordVoicing(rootNote, quality, lowMidi = BACKING_CHORD_LOW_MIDI) {
   const chordData = Tonal.Chord.get(`${rootNote}${quality || ''}`);
   const pitchClasses = (chordData?.notes || []).slice(0, BACKING_CHORD_MAX_TONES);
   if (!pitchClasses.length) return null;
   const tokens = [];
-  let previousMidi = BACKING_CHORD_LOW_MIDI - 1;
+  let previousMidi = lowMidi - 1;
   pitchClasses.forEach((pitchClass) => {
     let octave = Math.floor(previousMidi / 12) - 1;
     let midi = Tonal.Note.midi(`${pitchClass}${octave}`);
@@ -3180,7 +3206,11 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
   const clipTokens = [];
   segments.forEach((segment) => {
     const beats = segment.beats || 4;
-    const voicing = buildBackingChordVoicing(segment.rootNote, segment.quality);
+    const voicing = buildBackingChordVoicing(
+      segment.rootNote,
+      segment.quality,
+      getBackingChordLowMidi()
+    );
     const hits = new Map((config.hits(beats) || []).map((hit) => [hit.beat, hit]));
     for (let beat = 0; beat < beats; beat += 1) {
       const hit = voicing ? hits.get(beat) : null;
@@ -3764,6 +3794,26 @@ const INSTRUMENT_DEFAULT_SOUNDS = {
   piano: 'gm_acoustic_grand_piano',
 };
 
+// Where each hand's practice register lands when the hand is picked; the
+// register list stays free to change afterwards.
+const PIANO_HAND_DEFAULT_RANGE = {
+  left: 'C2-C4',
+  right: 'C4-C6',
+};
+
+/**
+ * The register select must always show a real register. Every reader of it
+ * falls back to C3–C5 on garbage (playback keeps working), so a stale or
+ * invalid stored value would otherwise sit as a silently-blank select —
+ * snap the control to the same fallback the readers use instead.
+ */
+function normalizePianoRangeSelection() {
+  const select = document.getElementById('pianoRange');
+  if (select && select.selectedIndex === -1) {
+    select.value = 'C3-C5';
+  }
+}
+
 /** Swap the melody sound only when the current pick belongs to the other
  * instrument's optgroup; ungrouped picks ("None") are left alone. */
 function updateInstrumentSoundSelection(instrument) {
@@ -3783,6 +3833,7 @@ function setInstrument(instrument, { skipSave = false } = {}) {
   const target = instrument === 'piano' ? 'piano' : 'guitar';
   const input = document.getElementById('instrument');
   if (input) input.value = target;
+  normalizePianoRangeSelection();
   const isPiano = target === 'piano';
   const guitarButton = document.getElementById('instrumentGuitar');
   const pianoButton = document.getElementById('instrumentPiano');
@@ -3844,7 +3895,8 @@ function updateExportTitle() {
   let shapeCaption;
   if (isPiano) {
     const rangeValue = document.getElementById('pianoRange')?.value;
-    shapeCaption = `Piano: ${window.pianoKeyboard.parsePianoRange(rangeValue).label}`;
+    const handTag = getSelectedPianoHand() === 'left' ? 'LH' : 'RH';
+    shapeCaption = `Piano: ${handTag} ${window.pianoKeyboard.parsePianoRange(rangeValue).label}`;
   } else {
     const shapeSelect = document.getElementById('shape');
     const shapeLabel =
@@ -6136,6 +6188,16 @@ document.addEventListener('DOMContentLoaded', function () {
     });
     document.getElementById('pianoRange')?.addEventListener('change', () => {
       updateExportTitle();
+    });
+    // Picking a hand lands the register on that hand's home range (the
+    // change event this fires also saves and refreshes the title), then
+    // re-rolls the exercise so the sheet matches the new register.
+    document.getElementById('pianoHand')?.addEventListener('change', () => {
+      setSelectValue('pianoRange', PIANO_HAND_DEFAULT_RANGE[getSelectedPianoHand()]);
+      updateExportTitle();
+      if (getActiveInstrument() === 'piano' && lastExerciseState?.measureData?.length) {
+        regenerateExercise();
+      }
     });
 
     const playbackEngineSelect = document.getElementById('playbackEngine');

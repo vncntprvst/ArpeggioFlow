@@ -236,18 +236,31 @@
 
             <div class="mode-panel-section">
               <h3 class="section-subtitle guitar-only">Scale Shape</h3>
-              <h3 class="section-subtitle piano-only">Register</h3>
+              <h3 class="section-subtitle piano-only">Hand &amp; Register</h3>
 
-              <div class="form-field piano-only">
-                <label for="pianoRange">Octave range</label>
-                <select id="pianoRange" name="pianoRange">
-                  <option value="C2-C4">Low — C2 to C4</option>
-                  <option value="C3-C5" selected>Mid-low — C3 to C5</option>
-                  <option value="C4-C6">Mid-high — C4 to C6</option>
-                  <option value="C5-C7">High — C5 to C7</option>
-                  <option value="C3-C6">Wide — C3 to C6</option>
-                </select>
+              <div class="form-row piano-only">
+                <div class="form-field">
+                  <label for="pianoHand">Practice hand</label>
+                  <select id="pianoHand" name="pianoHand">
+                    <option value="right" selected>Right hand</option>
+                    <option value="left">Left hand</option>
+                  </select>
+                </div>
+                <div class="form-field">
+                  <label for="pianoRange">Octave range</label>
+                  <select id="pianoRange" name="pianoRange">
+                    <option value="C2-C4">Low — C2 to C4</option>
+                    <option value="C3-C5" selected>Mid-low — C3 to C5</option>
+                    <option value="C4-C6">Mid-high — C4 to C6</option>
+                    <option value="C5-C7">High — C5 to C7</option>
+                    <option value="C3-C6">Wide — C3 to C6</option>
+                  </select>
+                </div>
               </div>
+              <p class="field-hint piano-only">
+                The other hand comps: turn on “Backing chords” below and it
+                plays the chart on the opposite side of this register.
+              </p>
 
               <div class="form-row guitar-only">
                 <div class="form-field">
@@ -636,7 +649,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260419b"></script>
+  <script type="module" src="flow.js?v=20260811"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>
