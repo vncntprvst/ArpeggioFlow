@@ -47,6 +47,12 @@ body {
   color: #4b5563;
 }
 
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .app-header-link {
   font-size: 13px;
   text-decoration: none;
@@ -55,6 +61,24 @@ body {
   border: 1px solid #d1d5db;
   color: #111827;
   background: #ffffff;
+}
+
+/* Single two-state instrument button: shows the current instrument, click
+   flips to the other one. */
+.instrument-toggle {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #00bcd4;
+  background: #e0f7fa;
+  color: #111827;
+  cursor: pointer;
+}
+
+.instrument-toggle:hover {
+  background: #00bcd4;
+  color: #ffffff;
 }
 
 .status-banner {
@@ -890,10 +914,6 @@ body:not(.instrument-piano) .piano-only {
 
 body.instrument-piano .guitar-only {
   display: none;
-}
-
-.mode-toggle--instrument {
-  margin-bottom: 16px;
 }
 
 /* Piano keyboard diagram (pianoKeyboard.js) */

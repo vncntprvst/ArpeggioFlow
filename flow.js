@@ -3835,15 +3835,17 @@ function setInstrument(instrument, { skipSave = false } = {}) {
   if (input) input.value = target;
   normalizePianoRangeSelection();
   const isPiano = target === 'piano';
-  const guitarButton = document.getElementById('instrumentGuitar');
-  const pianoButton = document.getElementById('instrumentPiano');
-  if (guitarButton) {
-    guitarButton.classList.toggle('is-active', !isPiano);
-    guitarButton.setAttribute('aria-pressed', (!isPiano).toString());
-  }
-  if (pianoButton) {
-    pianoButton.classList.toggle('is-active', isPiano);
-    pianoButton.setAttribute('aria-pressed', isPiano.toString());
+  // One header button showing the current instrument; clicking flips it.
+  const toggleButton = document.getElementById('instrumentToggle');
+  if (toggleButton) {
+    toggleButton.textContent = isPiano ? '🎹 Piano' : '🎸 Guitar';
+    toggleButton.title = isPiano ? 'Switch to guitar' : 'Switch to piano';
+    toggleButton.setAttribute(
+      'aria-label',
+      isPiano
+        ? 'Instrument: piano. Switch to guitar.'
+        : 'Instrument: guitar. Switch to piano.'
+    );
   }
   document.body.classList.toggle('instrument-piano', isPiano);
   const shiftSelect = document.getElementById('continuousShift');
@@ -6180,11 +6182,8 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     }
 
-    document.getElementById('instrumentGuitar')?.addEventListener('click', () => {
-      switchInstrument('guitar');
-    });
-    document.getElementById('instrumentPiano')?.addEventListener('click', () => {
-      switchInstrument('piano');
+    document.getElementById('instrumentToggle')?.addEventListener('click', () => {
+      switchInstrument(getActiveInstrument() === 'piano' ? 'guitar' : 'piano');
     });
     document.getElementById('pianoRange')?.addEventListener('change', () => {
       updateExportTitle();

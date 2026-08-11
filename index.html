@@ -48,14 +48,25 @@
           </p>
         </div>
 
-        <a
-          href="https://github.com/vncntprvst/ArpeggioFlow"
-          class="app-header-link"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          View on GitHub
-        </a>
+        <div class="app-header-actions">
+          <button
+            type="button"
+            id="instrumentToggle"
+            class="instrument-toggle"
+            title="Switch to piano"
+            aria-label="Instrument: guitar. Switch to piano."
+          >
+            🎸 Guitar
+          </button>
+          <a
+            href="https://github.com/vncntprvst/ArpeggioFlow"
+            class="app-header-link"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on GitHub
+          </a>
+        </div>
       </div>
 
       <!-- Library status (hidden once everything is loaded) -->
@@ -70,24 +81,6 @@
       <section class="controls-panel" aria-label="Exercise settings">
         <form id="exerciseForm" class="controls-form" novalidate>
           <div class="form-section">
-            <div class="mode-toggle mode-toggle--instrument" role="group" aria-label="Instrument">
-              <button
-                type="button"
-                id="instrumentGuitar"
-                class="mode-toggle__button is-active"
-                aria-pressed="true"
-              >
-                Guitar
-              </button>
-              <button
-                type="button"
-                id="instrumentPiano"
-                class="mode-toggle__button"
-                aria-pressed="false"
-              >
-                Piano
-              </button>
-            </div>
             <input type="hidden" id="instrument" name="instrument" value="guitar" />
 
             <h2 class="section-title">Exercise Generator</h2>
