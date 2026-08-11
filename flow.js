@@ -263,8 +263,10 @@ let lastExerciseState = null; // { cagedShape, measureData, keyLabel }
 
 const playbackUi = {
   banner: null,
-  playButton: null,
-  stopButton: null,
+  // Two mirrored transports: below the notation and above the head/exercise
+  // (long sheets otherwise put the buttons a screen away).
+  playButtons: [],
+  stopButtons: [],
 };
 
 let strudelApi = null;
@@ -1983,20 +1985,20 @@ async function pausePlayback() {
   setPlaybackBanner(PAUSED_MESSAGE, 'info');
 }
 
-/** Play / Pause / Resume on the main button, with Stop beside it when active. */
+/** Play / Pause / Resume on the main buttons, with Stop beside them when active. */
 function updateTransportButtons() {
-  const playButton = playbackUi.playButton;
-  const stopButton = playbackUi.stopButton;
-  if (playButton) {
-    playButton.textContent = playbackState.isPlaying
-      ? 'Pause'
-      : playbackState.isPaused
-        ? 'Resume'
-        : 'Play';
-  }
-  if (stopButton) {
-    stopButton.hidden = !(playbackState.isPlaying || playbackState.isPaused);
-  }
+  const playLabel = playbackState.isPlaying
+    ? 'Pause'
+    : playbackState.isPaused
+      ? 'Resume'
+      : 'Play';
+  playbackUi.playButtons.forEach((button) => {
+    button.textContent = playLabel;
+  });
+  const stopHidden = !(playbackState.isPlaying || playbackState.isPaused);
+  playbackUi.stopButtons.forEach((button) => {
+    button.hidden = stopHidden;
+  });
 }
 
 // ─── Exercise history & pinned exercises ─────────────────────────────────────
@@ -2558,7 +2560,7 @@ function updateHistoryButton() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updatePlaybackControls() {
-  if (!playbackUi.playButton) {
+  if (!playbackUi.playButtons.length) {
     return;
   }
   const hasExercise = playbackState.measuresData.length > 0;
@@ -2566,10 +2568,12 @@ function updatePlaybackControls() {
     hasExercise &&
     (isVisualPlaybackEnabled() ||
       (playbackState.engine === 'strudel' && playbackState.notes.length > 0));
-  playbackUi.playButton.disabled = !canPlay;
-  if (playbackUi.stopButton) {
-    playbackUi.stopButton.disabled = !hasExercise;
-  }
+  playbackUi.playButtons.forEach((button) => {
+    button.disabled = !canPlay;
+  });
+  playbackUi.stopButtons.forEach((button) => {
+    button.disabled = !hasExercise;
+  });
   updateTransportButtons();
 }
 
@@ -5394,8 +5398,12 @@ document.addEventListener('DOMContentLoaded', function () {
     setExerciseMode(EXERCISE_MODES.RANDOM);
 
     playbackUi.banner = document.getElementById('playback-banner');
-    playbackUi.playButton = document.getElementById('playbackPlayButton');
-    playbackUi.stopButton = document.getElementById('playbackStopButton');
+    playbackUi.playButtons = ['playbackPlayButton', 'playbackPlayButtonTop']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    playbackUi.stopButtons = ['playbackStopButton', 'playbackStopButtonTop']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
     playbackState.engine = getSelectedPlaybackEngine();
     updatePlaybackControls();
 
@@ -5552,18 +5560,20 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
 
-    if (playbackUi.playButton) {
-      playbackUi.playButton.addEventListener('click', async () => {
+    playbackUi.playButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
           await pausePlayback();
         } else {
           await startPlayback();
         }
       });
-    }
-    playbackUi.stopButton?.addEventListener('click', async () => {
-      await stopPlayback();
-      refreshPlaybackBanner();
+    });
+    playbackUi.stopButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        await stopPlayback();
+        refreshPlaybackBanner();
+      });
     });
 
     document.getElementById('generateButton').addEventListener('click', () => {

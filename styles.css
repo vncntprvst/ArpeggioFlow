@@ -775,13 +775,15 @@ input[type="number"]:focus {
 
 /* ── Preview card: transport above the chord diagrams, footer actions ────── */
 
-#preview-transport {
+#preview-transport,
+#preview-transport-top {
   display: flex;
   justify-content: center;
   margin: 4px 0 12px;
 }
 
-#preview-transport #playbackPlayButton {
+#preview-transport #playbackPlayButton,
+#preview-transport-top #playbackPlayButtonTop {
   min-width: 96px;
 }
 
@@ -831,7 +833,8 @@ input[type="number"]:focus {
   cursor: not-allowed;
 }
 
-#preview-transport {
+#preview-transport,
+#preview-transport-top {
   gap: 8px;
 }
 

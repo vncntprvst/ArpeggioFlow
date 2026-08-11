@@ -487,6 +487,17 @@
               <!-- Scale + current chord, aligned under the highlighted box -->
               <div id="fretboard-labels"></div>
 
+              <!-- Mirror of the transport below, for long sheets where the
+                   other one sits a screen away. Not exported. -->
+              <div id="preview-transport-top" data-export-ignore="true">
+                <button type="button" id="playbackPlayButtonTop" class="secondary-button" disabled>
+                  Play
+                </button>
+                <button type="button" id="playbackStopButtonTop" class="secondary-button" hidden>
+                  Stop
+                </button>
+              </div>
+
               <!-- Head lead sheet (song mode, "Play the head first"): the
                    melody when the song has one, chords over slashes to play
                    the head yourself otherwise -->
