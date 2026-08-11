@@ -1,14 +1,26 @@
 import './progressionParser.js';
+import './melodyParser.js';
 
 const { parseProgressionString } = window.progressionParser;
+const { parseMelodyString } = window.melodyParser;
 
 /**
  * Define a song from an iReal Pro-style progression string.
  * Bars are separated by '|', chords within a bar by spaces, '%' repeats
  * the previous bar. See progressionParser.js.
+ *
+ * An optional `melody` string (see melodyParser.js: `Pitch:beats` tokens,
+ * `~` rests, one 4-beat bar between '|') becomes `melodyBars` — the head
+ * played once before the exercise when "Play the head first" is on. Only
+ * public-domain melodies belong in this file; users can supply the rest
+ * locally (planned melody editor).
  */
-function defineSong({ progression, ...song }) {
-  return { ...song, progressionBars: parseProgressionString(progression) };
+function defineSong({ progression, melody, ...song }) {
+  return {
+    ...song,
+    progressionBars: parseProgressionString(progression),
+    melodyBars: melody ? parseMelodyString(melody) : null,
+  };
 }
 
 const AUTUMN_LEAVES = defineSong({

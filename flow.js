@@ -1845,6 +1845,45 @@ async function restartPlaybackLayers() {
 // transport back to "playing" after the fact.
 let playbackSessionToken = 0;
 
+// After the intro chorus, hand the running pattern over to the exercise at
+// the loop boundary (same early-swap + on-grid restart logic as continuous
+// shift), then bring up the visual clock, history and shift timer that were
+// held back while the head played.
+let introTimerId = null;
+
+function clearIntroTimer() {
+  if (introTimerId !== null) {
+    clearTimeout(introTimerId);
+    introTimerId = null;
+  }
+}
+
+function scheduleIntroHandoff(token, introBeats) {
+  const introMs = introBeats * (60000 / getSelectedTempoBpm());
+  introTimerId = setTimeout(async () => {
+    introTimerId = null;
+    if (token !== playbackSessionToken || !playbackState.isPlaying) return;
+    const boundaryAt = performance.now() + CONTINUOUS_SHIFT_GUARD_MS;
+    const restartsClock = willRestartStrudelLoop();
+    if (!restartsClock) {
+      await playStrudelExercise(playbackState.notes);
+    }
+    const waitMs = boundaryAt - performance.now();
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    if (token !== playbackSessionToken || !playbackState.isPlaying) return;
+    if (restartsClock) {
+      await playStrudelExercise(playbackState.notes);
+    }
+    if (isVisualPlaybackEnabled()) {
+      startVisualPlayback();
+    }
+    recordExerciseInHistory();
+    scheduleContinuousShift();
+  }, Math.max(0, introMs - CONTINUOUS_SHIFT_GUARD_MS));
+}
+
 async function startPlayback() {
   // Cycle mode: make sure what plays first is part of the rotation.
   ensurePinnedRotationStart();
@@ -1859,6 +1898,21 @@ async function startPlayback() {
   // the visual clock right after the pattern starts, so the highlight and the
   // sound share the same t0.
   if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    // "Play the head first": one chorus of comped chords (+ melody when the
+    // song has one), then the exercise takes over at the loop boundary.
+    if (shouldPlayHeadFirst()) {
+      const introBeats = await playSongIntro();
+      if (token !== playbackSessionToken) {
+        if (!playbackState.isPlaying) {
+          await stopStrudelExercise();
+        }
+        return;
+      }
+      if (introBeats > 0) {
+        scheduleIntroHandoff(token, introBeats);
+        return; // visual, history and continuous shift start with the exercise
+      }
+    }
     await playStrudelExercise(playbackState.notes);
   }
   if (!isAudioPlaybackEnabled()) {
@@ -1882,6 +1936,7 @@ async function startPlayback() {
 
 async function stopPlayback() {
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearIntroTimer();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   stopVisualPlayback();
@@ -1902,6 +1957,7 @@ async function stopPlayback() {
 async function pausePlayback() {
   if (!playbackState.isPlaying) return;
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearIntroTimer();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
@@ -2802,10 +2858,12 @@ function buildBackingChordVoicing(rootNote, quality) {
  * "[c3,e3,g3,b3]" where the preset asks for a hit and "~" elsewhere. Clip is
  * patterned alongside so a held chord can ring past its own beat.
  */
-async function buildBackingChordsPattern(api, beatMeta, measures) {
-  const config = getBackingChordConfig(getSelectedBackingChords());
+async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) {
+  // The song intro reuses this layer over the chart's own bars (and forces a
+  // preset when backing chords are off, so the head is always comped).
+  const config = options.forceConfig || getBackingChordConfig(getSelectedBackingChords());
   if (config.type === 'off') return null;
-  const segments = playbackState.measuresData || [];
+  const segments = options.segments || playbackState.measuresData || [];
   const totalBeats = segments.reduce((sum, segment) => sum + (segment.beats || 4), 0);
   const pauseBeats = beatMeta.filter((entry) => entry.isPause).length;
   if (!segments.length || totalBeats + pauseBeats !== beatMeta.length) {
@@ -2854,12 +2912,202 @@ async function buildBackingChordsPattern(api, beatMeta, measures) {
   return pattern;
 }
 
-// SONG_MELODY (planned, see TODO.md): the head played once before the exercise
-// and/or stacked as a backing layer. The playback side is a sibling of
-// buildBackingChordsPattern() — a note pattern over the same beat grid — but it
-// needs melody data that does not exist yet: songs/songs.js carries chord
-// charts only, and the standards currently listed have copyrighted melodies.
-// Nothing here reads a `melody` field yet; adding one is the first step.
+// ─── Song intro: the head played once before the exercise ────────────────────
+// One pass of the song's chart — comped chords, plus the melody when the song
+// carries one (`melodyBars`, parsed from the PD-only `melody` field in
+// songs/songs.js). After the chart, the running pattern is handed over to the
+// exercise at the loop boundary (same wrapper-swap machinery as continuous
+// shift).
+
+function shouldPlayHeadFirst() {
+  return (
+    getSelectedExerciseMode() === EXERCISE_MODES.SONG &&
+    (document.getElementById('playHeadFirst')?.checked ?? false)
+  );
+}
+
+/** Chord segments of the chart's true form (one bar per written bar). */
+function getSongIntroSegments(song) {
+  const chartBars = normalizeSongBars(song?.progressionBars);
+  if (!chartBars.length) return null;
+  const segments = [];
+  chartBars.forEach((barChords) => {
+    const segmentBeats = distributeBeatsPerBar(barChords.length);
+    segmentBeats.forEach((beats, index) => {
+      const parsed = parseChordSymbol(barChords[index]);
+      segments.push({
+        rootNote: parsed?.rootNote || '',
+        quality: parsed?.quality || '',
+        beats,
+      });
+    });
+  });
+  return segments;
+}
+
+/**
+ * Melody as one weighted mini-notation sequence: token weight = beats
+ * ("g4@2 e4 [~]…"), so the total weight equals the chart's beat count and the
+ * exercise tempo math applies unchanged. Padded with a rest when the melody
+ * is shorter than the form.
+ */
+function buildMelodyPatternText(melodyBars, totalBeats) {
+  const tokens = [];
+  let beatsUsed = 0;
+  (melodyBars || []).forEach((events) => {
+    events.forEach(({ note, beats }) => {
+      const token = note ? toStrudelNote(note) : '~';
+      if (!token || !(beats > 0)) return;
+      tokens.push(beats === 1 ? token : `${token}@${beats}`);
+      beatsUsed += beats;
+    });
+  });
+  if (!tokens.some((token) => !token.startsWith('~'))) return null;
+  if (beatsUsed > totalBeats) {
+    debugLog('Melody is longer than the chart; it will spill past the form.', {
+      beatsUsed,
+      totalBeats,
+    });
+  } else if (beatsUsed < totalBeats) {
+    tokens.push(`~@${totalBeats - beatsUsed}`);
+  }
+  return tokens.join(' ');
+}
+
+/**
+ * Build and start the intro pattern. Returns its length in beats, or 0 when
+ * there is nothing to play (not in song mode, empty chart, Strudel missing).
+ */
+async function playSongIntro() {
+  const song = getSelectedSong();
+  const segments = getSongIntroSegments(song);
+  if (!segments) return 0;
+  const api = await ensureStrudelReady();
+  if (!api) return 0;
+  const bpm = getSelectedTempoBpm();
+  const introBeats = segments.reduce((sum, segment) => sum + segment.beats, 0);
+  const measures = getMeasures(introBeats);
+  const beatMeta = [];
+  segments.forEach((segment) => {
+    for (let beat = 0; beat < segment.beats; beat += 1) {
+      beatMeta.push({ beat, beats: segment.beats });
+    }
+  });
+
+  // The head is always comped: the selected backing preset, or quarter-note
+  // piano when backing chords are off.
+  const backingSelection = getBackingChordConfig(getSelectedBackingChords());
+  const compConfig =
+    backingSelection.type === 'off'
+      ? getBackingChordConfig('piano-quarters')
+      : backingSelection;
+  let pattern = await buildBackingChordsPattern(api, beatMeta, measures, {
+    segments,
+    forceConfig: compConfig,
+  });
+
+  const sound = getSelectedStrudelSound();
+  const soundConfig = getStrudelSoundConfig(sound);
+  const melodyText =
+    soundConfig.type === 'none'
+      ? null
+      : buildMelodyPatternText(song.melodyBars, introBeats);
+  if (melodyText) {
+    let melody = api.note(melodyText).slow(measures);
+    melody = await applySelectedSound(api, melody, sound, soundConfig);
+    melody = applyAmbience(melody);
+    pattern = stackPatterns(api, pattern, melody);
+  }
+  pattern = stackPatterns(api, pattern, await buildRhythmPattern(api, beatMeta, measures));
+  if (!pattern) return 0;
+
+  if (typeof pattern.cpm === 'function') {
+    pattern = pattern.cpm(getCyclesPerMinute(bpm));
+  } else if (!applyStrudelTempo(api, bpm)) {
+    debugLog('No Strudel tempo API available; using the default clock.');
+  }
+  startOrSwapStrudelPattern(api, pattern, `${measures}@${getCyclesPerMinute(bpm)}`);
+  const barsCount = normalizeSongBars(song.progressionBars).length;
+  setPlaybackBanner(
+    `Playing the head first (${barsCount} bars${song.melodyBars ? ', with melody' : ''}) — the exercise follows.`,
+    'info'
+  );
+  return introBeats;
+}
+
+/**
+ * Give a melodic pattern the selected instrument voice, loading whatever
+ * sample set the sound needs. Shared by the exercise notes and the intro
+ * melody. Returns the pattern unchanged when the sound is the synth default
+ * or a load fails (with a banner).
+ */
+async function applySelectedSound(api, pattern, sound, soundConfig) {
+  if (!pattern) return pattern;
+  if (soundConfig.type === 'dirt') {
+    const loaded = await ensureGuitarSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+  } else if (soundConfig.type === 'sample-map') {
+    const loaded = await ensureGuitarVariantSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+  } else if (soundConfig.type === 'soundfont') {
+    const loaded = await ensureSoundfontsLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Soundfont guitars failed to load. Using default synth.', 'warning');
+  } else if (sound !== 'default' && typeof pattern.s === 'function') {
+    return pattern.s(sound);
+  }
+  return pattern;
+}
+
+/**
+ * Start the delegating wrapper for a ready pattern, or swap its target when
+ * one is already playing on the same cycle grid. The wrapper (see
+ * strudelPatternRef) is what keeps loop-boundary swaps seamless.
+ */
+function startOrSwapStrudelPattern(api, pattern, signature) {
+  strudelPatternRef = pattern;
+  const PatternClass = getStrudelPatternClass(api);
+  // A different loop length or tempo means a different cycle grid: swapping in
+  // place would drop the new pattern in mid-cycle, so the clock restarts.
+  if (strudelWrapperActive && strudelLoopSignature !== signature) {
+    debugLog('Strudel loop grid changed; restarting the clock.', {
+      from: strudelLoopSignature,
+      to: signature,
+    });
+    strudelWrapperActive = false;
+  }
+  strudelLoopSignature = signature;
+  if (strudelWrapperActive) {
+    // Already playing through the delegating wrapper: swapping the ref is
+    // enough. The scheduler clock never stops, so there is no restart seam
+    // (no doubled or re-scheduled boundary notes); the new pattern has the
+    // same loop length, so it stays on the same cycle grid.
+    debugLog('Strudel pattern swapped in place.');
+  } else if (PatternClass) {
+    // Fresh start: stop the clock so the pattern begins at cycle 0, then
+    // play a wrapper that delegates every query to the current pattern ref.
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
+    wrapper.play();
+    strudelWrapperActive = true;
+  } else {
+    // No Pattern class exposed by this build: restart the scheduler directly
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    pattern.play();
+  }
+}
 
 function stackPatterns(api, first, second) {
   if (!first) return second;
@@ -2904,32 +3152,8 @@ async function playStrudelExercise(notes) {
   const measures = getMeasures(beatSlots.length + pauseBeats);
   const beatMeta = getBeatMeta(beatSlots.length);
   let pattern = soundConfig.type === 'none' ? null : api.note(loopText).slow(measures);
-  if (soundConfig.type === 'none') {
-    // "None (rhythm only)": the backing rhythm below is the whole pattern.
-  } else if (soundConfig.type === 'dirt') {
-    const loaded = await ensureGuitarSamplesLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
-    }
-  } else if (soundConfig.type === 'sample-map') {
-    const loaded = await ensureGuitarVariantSamplesLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
-    }
-  } else if (soundConfig.type === 'soundfont') {
-    const loaded = await ensureSoundfontsLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Soundfont guitars failed to load. Using default synth.', 'warning');
-    }
-  } else if (sound !== 'default' && typeof pattern.s === 'function') {
-    pattern = pattern.s(sound);
-  }
+  // "None (rhythm only)": the backing rhythm below is the whole pattern.
+  pattern = await applySelectedSound(api, pattern, sound, soundConfig);
 
   // Effects go on the notes only — a reverbed metronome is unusable as a
   // reference, and the drum samples already have their own room in them.
@@ -2957,41 +3181,7 @@ async function playStrudelExercise(notes) {
     debugLog('No Strudel tempo API available; using the default clock.');
   }
 
-  strudelPatternRef = pattern;
-  const PatternClass = getStrudelPatternClass(api);
-  const signature = getStrudelLoopSignature();
-  // A different loop length or tempo means a different cycle grid: swapping in
-  // place would drop the new exercise in mid-pattern, so the clock restarts.
-  if (strudelWrapperActive && strudelLoopSignature !== signature) {
-    debugLog('Strudel loop grid changed; restarting the clock.', {
-      from: strudelLoopSignature,
-      to: signature,
-    });
-    strudelWrapperActive = false;
-  }
-  strudelLoopSignature = signature;
-  if (strudelWrapperActive) {
-    // Already playing through the delegating wrapper: swapping the ref is
-    // enough. The scheduler clock never stops, so there is no restart seam
-    // (no doubled or re-scheduled boundary notes); the new pattern has the
-    // same loop length, so it stays on the same cycle grid.
-    debugLog('Strudel pattern swapped in place.');
-  } else if (PatternClass) {
-    // Fresh start: stop the clock so the pattern begins at cycle 0, then
-    // play a wrapper that delegates every query to the current pattern ref.
-    if (typeof api.hush === 'function') {
-      api.hush();
-    }
-    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
-    wrapper.play();
-    strudelWrapperActive = true;
-  } else {
-    // No Pattern class exposed by this build: restart the scheduler directly
-    if (typeof api.hush === 'function') {
-      api.hush();
-    }
-    pattern.play();
-  }
+  startOrSwapStrudelPattern(api, pattern, getStrudelLoopSignature());
   const context = getStrudelAudioContext();
   if (context && context.state !== 'running') {
     // Nothing will be heard until a gesture wakes the context back up.
