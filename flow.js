@@ -1876,6 +1876,7 @@ function scheduleIntroHandoff(token, introBeats) {
     if (restartsClock) {
       await playStrudelExercise(playbackState.notes);
     }
+    clearHeadVisual();
     if (isVisualPlaybackEnabled()) {
       startVisualPlayback();
     }
@@ -1910,7 +1911,10 @@ async function startPlayback() {
       }
       if (introBeats > 0) {
         scheduleIntroHandoff(token, introBeats);
-        return; // visual, history and continuous shift start with the exercise
+        if (isVisualPlaybackEnabled()) {
+          startHeadVisual(introBeats / BEATS_PER_CYCLE);
+        }
+        return; // exercise visual, history and continuous shift start later
       }
     }
     await playStrudelExercise(playbackState.notes);
@@ -1937,6 +1941,7 @@ async function startPlayback() {
 async function stopPlayback() {
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
   clearIntroTimer();
+  clearHeadVisual();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   stopVisualPlayback();
@@ -1958,6 +1963,7 @@ async function pausePlayback() {
   if (!playbackState.isPlaying) return;
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
   clearIntroTimer();
+  clearHeadVisual();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
@@ -4804,6 +4810,319 @@ function generateExercise(options = {}) {
   };
 }
 
+// ─── Head lead sheet ─────────────────────────────────────────────────────────
+// Notation for the intro chorus: the song's melody (with ties and beams) when
+// it has one, chord symbols over slash notation otherwise — so the user can
+// play the head along with the comped intro.
+
+const HEAD_BEAT_TO_DURATION = [
+  { beats: 4, duration: 'w', dots: 0 },
+  { beats: 3, duration: 'h', dots: 1 },
+  { beats: 2, duration: 'h', dots: 0 },
+  { beats: 1.5, duration: 'q', dots: 1 },
+  { beats: 1, duration: 'q', dots: 0 },
+  { beats: 0.5, duration: '8', dots: 0 },
+];
+
+function headDurationFor(beats) {
+  return HEAD_BEAT_TO_DURATION.find((entry) => Math.abs(entry.beats - beats) < 1e-6);
+}
+
+function makeHeadNote(VF, note, beats) {
+  const spec = headDurationFor(beats);
+  if (!spec) return null;
+  let staveNote;
+  if (note) {
+    staveNote = new VF.StaveNote({
+      clef: 'treble',
+      keys: [toVexFlowFormat(note)],
+      duration: spec.duration,
+    });
+  } else {
+    staveNote = new VF.StaveNote({
+      clef: 'treble',
+      keys: ['b/4'],
+      duration: `${spec.duration}r`,
+    });
+  }
+  for (let dot = 0; dot < spec.dots; dot += 1) {
+    if (VF.Dot?.buildAndAttach) {
+      VF.Dot.buildAndAttach([staveNote], { all: true });
+    } else if (typeof staveNote.addDot === 'function') {
+      staveNote.addDot(0);
+    }
+  }
+  return staveNote;
+}
+
+// Rests avoid dotted values (a dotted rest reads worse than two plain ones)
+function decomposeRestBeats(beats) {
+  const parts = [];
+  let remaining = beats;
+  [4, 2, 1, 0.5].forEach((value) => {
+    while (remaining >= value - 1e-9) {
+      parts.push(value);
+      remaining -= value;
+    }
+  });
+  return parts;
+}
+
+/**
+ * Build the VexFlow notes for one head bar plus the tie plan.
+ * Returns { notes, ties } where ties are index pairs into `notes`, and the
+ * bar's trailing tie (into the next bar) is flagged on the last note entry.
+ */
+function buildHeadBarNotes(VF, fragments) {
+  const notes = [];
+  const ties = [];
+  const noteMeta = []; // { startBeat, tieToNext }
+  fragments.forEach((fragment) => {
+    const values = fragment.note
+      ? decomposeBeatsForHead(fragment.beats)
+      : decomposeRestBeats(fragment.beats);
+    let startBeat = fragment.startBeat;
+    values.forEach((beats, index) => {
+      const staveNote = makeHeadNote(VF, fragment.note, beats);
+      if (!staveNote) return;
+      const noteIndex = notes.length;
+      notes.push(staveNote);
+      noteMeta.push({ startBeat, tieToNext: false });
+      // Tie decomposed parts of one fragment together, and honor the
+      // fragment's own tie flags at its edges.
+      if (fragment.note) {
+        if (index > 0 || fragment.tieFrom) {
+          if (noteIndex > 0 || fragment.tieFrom) {
+            ties.push({ from: noteIndex - 1, to: noteIndex, fromPreviousBar: noteIndex === 0 });
+          }
+        }
+        if (index === values.length - 1 && fragment.tieTo) {
+          noteMeta[noteIndex].tieToNext = true;
+        }
+      }
+      startBeat += beats;
+    });
+  });
+  return { notes, ties, noteMeta };
+}
+
+function decomposeBeatsForHead(beats) {
+  return window.melodyParser.decomposeBeats(beats);
+}
+
+/** Chord-over-slashes bar for songs without a melody: one slash per beat. */
+function buildHeadSlashBarNotes(VF) {
+  const notes = [];
+  for (let beat = 0; beat < BEATS_PER_CYCLE; beat += 1) {
+    let staveNote;
+    try {
+      staveNote = new VF.StaveNote({ keys: ['b/4'], duration: 'qs' });
+    } catch (error) {
+      staveNote = new VF.StaveNote({ clef: 'treble', keys: ['b/4'], duration: 'qr' });
+    }
+    notes.push(staveNote);
+  }
+  return { notes, ties: [], noteMeta: notes.map((unused, beat) => ({ startBeat: beat, tieToNext: false })) };
+}
+
+let headStavePositions = [];
+let headVisualTimerId = null;
+
+function ensureHeadHighlightRect() {
+  const container = document.getElementById('head-notation');
+  if (!container) return null;
+  let rect = container.querySelector('#head-highlight');
+  if (!rect) {
+    const svg = container.querySelector('svg');
+    if (!svg) return null;
+    rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('id', 'head-highlight');
+    rect.setAttribute('fill', 'rgba(255, 220, 80, 0.18)');
+    rect.setAttribute('stroke', 'rgba(255, 190, 0, 0.55)');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('rx', '4');
+    svg.insertBefore(rect, svg.firstChild);
+  }
+  return rect;
+}
+
+function moveHeadHighlightToBar(index) {
+  const pos = headStavePositions[index];
+  const rect = ensureHeadHighlightRect();
+  if (!pos || !rect) return;
+  const padding = 4;
+  rect.setAttribute('x', pos.x - padding);
+  rect.setAttribute('y', pos.y - padding);
+  rect.setAttribute('width', pos.width + padding * 2);
+  rect.setAttribute('height', pos.height + padding * 2);
+  rect.setAttribute('visibility', 'visible');
+}
+
+function clearHeadVisual() {
+  if (headVisualTimerId !== null) {
+    clearTimeout(headVisualTimerId);
+    headVisualTimerId = null;
+  }
+  const rect = document.querySelector('#head-notation #head-highlight');
+  if (rect) rect.setAttribute('visibility', 'hidden');
+}
+
+/** Step the head-sheet bar highlight through one pass of the form. */
+function startHeadVisual(totalBars) {
+  clearHeadVisual();
+  if (!totalBars || !headStavePositions.length) return;
+  const msPerBar = BEATS_PER_CYCLE * (60000 / getSelectedTempoBpm());
+  let barIndex = 0;
+  moveHeadHighlightToBar(0);
+  let nextTime = performance.now();
+  const scheduleNext = () => {
+    nextTime += msPerBar;
+    headVisualTimerId = setTimeout(() => {
+      barIndex += 1;
+      debugLog('Head highlight bar:', barIndex, 'of', totalBars);
+      if (barIndex >= totalBars) {
+        clearHeadVisual(); // the exercise handoff takes over from here
+        return;
+      }
+      moveHeadHighlightToBar(barIndex);
+      scheduleNext();
+    }, Math.max(0, nextTime - performance.now()));
+  };
+  scheduleNext();
+}
+
+function renderHeadSheet(song) {
+  const wrapper = document.getElementById('head-sheet');
+  const container = document.getElementById('head-notation');
+  if (!wrapper || !container) return;
+  container.innerHTML = '';
+  headStavePositions = [];
+  const shouldShow =
+    Boolean(song) &&
+    getSelectedExerciseMode() === EXERCISE_MODES.SONG &&
+    (document.getElementById('playHeadFirst')?.checked ?? false);
+  wrapper.hidden = !shouldShow;
+  if (!shouldShow) return;
+
+  const chartBars = normalizeSongBars(song.progressionBars);
+  if (!chartBars.length) return;
+
+  const hasMelody = Boolean(song.melodyBars && song.melodyBars.length);
+  const melodyFragmentBars = hasMelody
+    ? window.melodyParser.sliceTimelineIntoBars(
+        window.melodyParser.melodyToTimeline(song.melodyBars),
+        chartBars.length
+      )
+    : null;
+
+  const keyValue = song.scaleType === 'minor' ? `${song.key}m` : song.key;
+  const keyContext = getKeyContext(keyValue);
+  const VF = Vex.Flow;
+  const { Renderer, Stave, Voice, Formatter, Annotation, Beam, StaveTie } = VF;
+
+  const containerWidth = container.getBoundingClientRect().width;
+  const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
+  const maxStaveWidth = width - 20;
+  const maxMeasuresPerLine = 4;
+
+  // Build every bar's notes first, so layout can size to note counts
+  const bars = chartBars.map((barChords, barIndex) => {
+    const built = hasMelody
+      ? buildHeadBarNotes(VF, melodyFragmentBars[barIndex])
+      : buildHeadSlashBarNotes(VF);
+    return { barChords, ...built };
+  });
+
+  const measureWidths = bars.map((bar, index) =>
+    calculateMeasureWidth(keyContext.vexflowKeySignature, index === 0, Math.max(4, bar.notes.length))
+  );
+  const lineLayouts = [];
+  let currentLine = { measures: [], width: 0 };
+  measureWidths.forEach((measureWidth, index) => {
+    const needsWrap =
+      currentLine.measures.length >= maxMeasuresPerLine ||
+      (currentLine.width + measureWidth > maxStaveWidth && currentLine.measures.length > 0);
+    if (needsWrap) {
+      lineLayouts.push(currentLine);
+      currentLine = { measures: [], width: 0 };
+    }
+    currentLine.measures.push({ index, width: measureWidth });
+    currentLine.width += measureWidth;
+  });
+  if (currentLine.measures.length > 0) lineLayouts.push(currentLine);
+
+  const staveHeight = 120;
+  const topPadding = 30;
+  const height = topPadding + lineLayouts.length * staveHeight + 20;
+  const renderer = new Renderer(container, Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const context = renderer.getContext();
+
+  const pendingCrossBarTies = []; // { fromNote } waiting for the next bar's first note
+  lineLayouts.forEach((line, lineIndex) => {
+    let xStart = Math.max(20, Math.floor((width - line.width) / 2));
+    const yStart = topPadding + lineIndex * staveHeight;
+    line.measures.forEach(({ index, width: staveWidth }) => {
+      const bar = bars[index];
+      const stave = new Stave(xStart, yStart, staveWidth);
+      if (index === 0) {
+        stave
+          .addClef('treble')
+          .addKeySignature(keyContext.vexflowKeySignature)
+          .addTimeSignature('4/4');
+      }
+      stave.setContext(context).draw();
+      headStavePositions[index] = { x: xStart, y: yStart, width: staveWidth, height: 80 };
+
+      // Chord symbols at their beats (2-chord bars annotate beat 0 and 2)
+      const chordBeats = distributeBeatsPerBar(bar.barChords.length);
+      let chordStart = 0;
+      bar.barChords.slice(0, chordBeats.length).forEach((chordSymbol, chordIndex) => {
+        const target =
+          bar.noteMeta.findIndex((meta) => meta.startBeat >= chordStart - 1e-6) ?? 0;
+        const noteForChord = bar.notes[target === -1 ? bar.notes.length - 1 : target];
+        if (noteForChord) {
+          const annotation = new Annotation(formatChordSymbol(chordSymbol))
+            .setFont('Arial', 12, 'normal')
+            .setVerticalJustification(Annotation.VerticalJustify.TOP)
+            .setYShift(10);
+          noteForChord.addModifier(annotation, 0);
+        }
+        chordStart += chordBeats[chordIndex];
+      });
+
+      const beams = Beam.generateBeams(bar.notes);
+      const voice = new Voice({ num_beats: 4, beat_value: 4 })
+        .setMode(Voice.Mode.SOFT)
+        .addTickables(bar.notes);
+      const extraNotes = Math.max(0, bar.notes.length - 4);
+      const reserve = index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
+      new Formatter().joinVoices([voice]).format([voice], Math.max(120, staveWidth - reserve));
+      voice.draw(context, stave);
+      beams.forEach((beam) => beam.setContext(context).draw());
+
+      // Ties inside the bar, plus any tie left hanging from the previous bar
+      bar.ties.forEach(({ from, to, fromPreviousBar }) => {
+        if (fromPreviousBar) return; // handled via pendingCrossBarTies
+        new StaveTie({ first_note: bar.notes[from], last_note: bar.notes[to] })
+          .setContext(context)
+          .draw();
+      });
+      if (pendingCrossBarTies.length && bar.notes.length) {
+        const from = pendingCrossBarTies.pop();
+        new StaveTie({ first_note: from, last_note: bar.notes[0] })
+          .setContext(context)
+          .draw();
+      }
+      const lastMeta = bar.noteMeta[bar.noteMeta.length - 1];
+      if (lastMeta?.tieToNext) {
+        pendingCrossBarTies.push(bar.notes[bar.notes.length - 1]);
+      }
+      xStart += stave.width;
+    });
+  });
+}
+
 // Full regeneration: scale diagram + notation + playback state, from the
 // current form values. Used by the Generate button and by continuous shift
 // (which passes options.carryOver to voice-lead across the boundary).
@@ -4850,6 +5169,7 @@ function regenerateExercise(options = {}) {
     replay: options.replay || null,
     warnOnReplayMismatch: options.warnOnReplayMismatch || false,
   });
+  renderHeadSheet(mode === EXERCISE_MODES.SONG ? song : null);
   updateExportTitle();
   updatePlaybackStateFromExercise(exerciseData);
 }
@@ -5235,6 +5555,13 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('customProgression')?.addEventListener('input', saveUserDefaults);
     document.getElementById('stayInPosition')?.addEventListener('change', () => {
       if (playbackState.isPlaying) precomputeNextExercise();
+    });
+    // Show/hide the head lead sheet as the toggle changes, without waiting
+    // for the next Generate.
+    document.getElementById('playHeadFirst')?.addEventListener('change', () => {
+      renderHeadSheet(
+        getSelectedExerciseMode() === EXERCISE_MODES.SONG ? getSelectedSong() : null
+      );
     });
     updateStayInPositionAvailability();
     ['modeRandom', 'modeSong'].forEach((id) => {

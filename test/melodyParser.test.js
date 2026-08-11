@@ -9,6 +9,9 @@ const {
   parseMelodyToken,
   barBeats,
   melodyTotalBeats,
+  melodyToTimeline,
+  sliceTimelineIntoBars,
+  decomposeBeats,
 } = require('../songs/melodyParser.js');
 
 describe('parseMelodyToken', () => {
@@ -84,5 +87,56 @@ describe('beat helpers', () => {
   test('melodyTotalBeats sums the whole melody', () => {
     const bars = parseMelodyString('| C4:4 | % | D4:2 ~:2 |');
     expect(melodyTotalBeats(bars)).toBe(12);
+  });
+});
+
+describe('timeline slicing (notation)', () => {
+  test('melodyToTimeline flattens bars into absolute starts', () => {
+    const bars = parseMelodyString('| C4:2 D4:2 | E4:4 |');
+    expect(melodyToTimeline(bars)).toEqual([
+      { note: 'C4', start: 0, beats: 2 },
+      { note: 'D4', start: 2, beats: 2 },
+      { note: 'E4', start: 4, beats: 4 },
+    ]);
+  });
+
+  test('splits a merged-duration tie at the barline with tie flags', () => {
+    // "A4:5" spans bars 1-2 (the merged-tie idiom used in songs.js)
+    const bars = parseMelodyString('| E4:2 A4:5 | F4:1 |');
+    const sliced = sliceTimelineIntoBars(melodyToTimeline(bars), 2);
+    expect(sliced[0]).toEqual([
+      { note: 'E4', beats: 2, startBeat: 0, tieFrom: false, tieTo: false },
+      { note: 'A4', beats: 2, startBeat: 2, tieFrom: false, tieTo: true },
+    ]);
+    expect(sliced[1]).toEqual([
+      { note: 'A4', beats: 3, startBeat: 0, tieFrom: true, tieTo: false },
+      { note: 'F4', beats: 1, startBeat: 3, tieFrom: false, tieTo: false },
+    ]);
+  });
+
+  test('rests split silently and short melodies pad with rests', () => {
+    const bars = parseMelodyString('| C4:2 ~:6 |');
+    const sliced = sliceTimelineIntoBars(melodyToTimeline(bars), 3);
+    expect(sliced[0][1]).toEqual({ note: null, beats: 2, startBeat: 2, tieFrom: false, tieTo: false });
+    expect(sliced[1]).toEqual([{ note: null, beats: 4, startBeat: 0, tieFrom: false, tieTo: false }]);
+    // bar 3 has no melody at all: padded to a whole rest
+    expect(sliced[2]).toEqual([{ note: null, beats: 4, startBeat: 0, tieFrom: false, tieTo: false }]);
+  });
+
+  test('events past the form are dropped', () => {
+    const bars = parseMelodyString('| C4:4 | D4:4 |');
+    const sliced = sliceTimelineIntoBars(melodyToTimeline(bars), 1);
+    expect(sliced).toHaveLength(1);
+    expect(sliced[0]).toEqual([
+      { note: 'C4', beats: 4, startBeat: 0, tieFrom: false, tieTo: false },
+    ]);
+  });
+
+  test('decomposeBeats breaks fragments into engravable values', () => {
+    expect(decomposeBeats(4)).toEqual([4]);
+    expect(decomposeBeats(2.5)).toEqual([2, 0.5]);
+    expect(decomposeBeats(3.5)).toEqual([3, 0.5]);
+    expect(decomposeBeats(1.5)).toEqual([1.5]);
+    expect(decomposeBeats(0.5)).toEqual([0.5]);
   });
 });

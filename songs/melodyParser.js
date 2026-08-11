@@ -70,12 +70,110 @@ function melodyTotalBeats(bars) {
   return (bars || []).reduce((sum, events) => sum + barBeats(events), 0);
 }
 
+/**
+ * Flatten parsed bars into one absolute timeline. Merged-duration ties (a
+ * "bar" carrying more than 4 beats) simply become long events, so bar
+ * boundaries in the source text stop mattering here.
+ */
+function melodyToTimeline(bars) {
+  const events = [];
+  let start = 0;
+  (bars || []).forEach((barEvents) => {
+    (barEvents || []).forEach(({ note, beats }) => {
+      if (!(beats > 0)) return;
+      events.push({ note: note || null, start, beats });
+      start += beats;
+    });
+  });
+  return events;
+}
+
+/**
+ * Re-slice a timeline into fixed-length bars for notation. Events that cross
+ * a barline are split into fragments carrying tieFrom/tieTo flags (rests
+ * split silently — rests never tie).
+ */
+function sliceTimelineIntoBars(events, barCount, beatsPerBar = 4) {
+  const bars = Array.from({ length: barCount }, () => []);
+  (events || []).forEach(({ note, start, beats }) => {
+    let remaining = beats;
+    let position = start;
+    let first = true;
+    while (remaining > 1e-9) {
+      const barIndex = Math.floor(position / beatsPerBar + 1e-9);
+      if (barIndex >= barCount) break; // spills past the form: dropped
+      const barEnd = (barIndex + 1) * beatsPerBar;
+      const chunk = Math.min(remaining, barEnd - position);
+      const last = remaining - chunk <= 1e-9;
+      bars[barIndex].push({
+        note,
+        beats: chunk,
+        startBeat: position - barIndex * beatsPerBar,
+        tieFrom: Boolean(note) && !first,
+        tieTo: Boolean(note) && !last,
+      });
+      position += chunk;
+      remaining -= chunk;
+      first = false;
+    }
+  });
+  // Pad each bar to its full length with a trailing rest
+  bars.forEach((barEvents, barIndex) => {
+    const used = barEvents.reduce((sum, event) => sum + event.beats, 0);
+    if (used < beatsPerBar - 1e-9) {
+      barEvents.push({
+        note: null,
+        beats: beatsPerBar - used,
+        startBeat: used,
+        tieFrom: false,
+        tieTo: false,
+      });
+    }
+  });
+  return bars;
+}
+
+/**
+ * Break a fragment length into engravable values (whole to eighth, dotted
+ * included), longest first: 2.5 → [2, 0.5], 3.5 → [3, 0.5]. Values map to
+ * VexFlow as 4=w, 3=hd, 2=h, 1.5=qd, 1=q, 0.5=8.
+ */
+const ENGRAVABLE_BEATS = [4, 3, 2, 1.5, 1, 0.5];
+
+function decomposeBeats(beats) {
+  const parts = [];
+  let remaining = beats;
+  while (remaining > 1e-9) {
+    const value = ENGRAVABLE_BEATS.find((candidate) => candidate <= remaining + 1e-9);
+    if (!value) break; // below eighth resolution: dropped
+    parts.push(value);
+    remaining -= value;
+  }
+  return parts;
+}
+
 // Export for Node.js/Jest testing
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { parseMelodyString, parseMelodyToken, barBeats, melodyTotalBeats };
+  module.exports = {
+    parseMelodyString,
+    parseMelodyToken,
+    barBeats,
+    melodyTotalBeats,
+    melodyToTimeline,
+    sliceTimelineIntoBars,
+    decomposeBeats,
+  };
 }
 
 // Export to window for browser usage
 if (typeof window !== 'undefined') {
-  window.melodyParser = { parseMelodyString, parseMelodyToken, barBeats, melodyTotalBeats };
+  window.melodyParser = {
+    parseMelodyString,
+    parseMelodyToken,
+    barBeats,
+    melodyTotalBeats,
+    melodyToTimeline,
+    sliceTimelineIntoBars,
+    decomposeBeats,
+  };
 }
