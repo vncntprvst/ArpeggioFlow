@@ -263,8 +263,10 @@ let lastExerciseState = null; // { cagedShape, measureData, keyLabel }
 
 const playbackUi = {
   banner: null,
-  playButton: null,
-  stopButton: null,
+  // Two mirrored transports: below the notation and above the head/exercise
+  // (long sheets otherwise put the buttons a screen away).
+  playButtons: [],
+  stopButtons: [],
 };
 
 let strudelApi = null;
@@ -1845,6 +1847,51 @@ async function restartPlaybackLayers() {
 // transport back to "playing" after the fact.
 let playbackSessionToken = 0;
 
+// After the intro chorus, hand the running pattern over to the exercise at
+// the loop boundary (same early-swap + on-grid restart logic as continuous
+// shift), then bring up the visual clock, history and shift timer that were
+// held back while the head played.
+let introTimerId = null;
+// True once the head has fully played and handed off to the exercise. Pause
+// keeps it (Resume goes straight to the exercise instead of sitting through
+// the whole head again); Stop resets it (a fresh Play replays the head).
+let headPlayedThisSession = false;
+
+function clearIntroTimer() {
+  if (introTimerId !== null) {
+    clearTimeout(introTimerId);
+    introTimerId = null;
+  }
+}
+
+function scheduleIntroHandoff(token, introBeats) {
+  const introMs = introBeats * (60000 / getSelectedTempoBpm());
+  introTimerId = setTimeout(async () => {
+    introTimerId = null;
+    if (token !== playbackSessionToken || !playbackState.isPlaying) return;
+    const boundaryAt = performance.now() + CONTINUOUS_SHIFT_GUARD_MS;
+    const restartsClock = willRestartStrudelLoop();
+    if (!restartsClock) {
+      await playStrudelExercise(playbackState.notes);
+    }
+    const waitMs = boundaryAt - performance.now();
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+    if (token !== playbackSessionToken || !playbackState.isPlaying) return;
+    if (restartsClock) {
+      await playStrudelExercise(playbackState.notes);
+    }
+    headPlayedThisSession = true;
+    clearHeadVisual();
+    if (isVisualPlaybackEnabled()) {
+      startVisualPlayback();
+    }
+    recordExerciseInHistory();
+    scheduleContinuousShift();
+  }, Math.max(0, introMs - CONTINUOUS_SHIFT_GUARD_MS));
+}
+
 async function startPlayback() {
   // Cycle mode: make sure what plays first is part of the rotation.
   ensurePinnedRotationStart();
@@ -1859,6 +1906,25 @@ async function startPlayback() {
   // the visual clock right after the pattern starts, so the highlight and the
   // sound share the same t0.
   if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
+    // "Play the head first": one chorus of comped chords (+ melody when the
+    // song has one), then the exercise takes over at the loop boundary.
+    // After a pause, Resume skips the head it already played.
+    if (shouldPlayHeadFirst() && !headPlayedThisSession) {
+      const introBeats = await playSongIntro();
+      if (token !== playbackSessionToken) {
+        if (!playbackState.isPlaying) {
+          await stopStrudelExercise();
+        }
+        return;
+      }
+      if (introBeats > 0) {
+        scheduleIntroHandoff(token, introBeats);
+        if (isVisualPlaybackEnabled()) {
+          startHeadVisual(introBeats / BEATS_PER_CYCLE);
+        }
+        return; // exercise visual, history and continuous shift start later
+      }
+    }
     await playStrudelExercise(playbackState.notes);
   }
   if (!isAudioPlaybackEnabled()) {
@@ -1882,6 +1948,9 @@ async function startPlayback() {
 
 async function stopPlayback() {
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  headPlayedThisSession = false; // a fresh Play replays the head
+  clearIntroTimer();
+  clearHeadVisual();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   stopVisualPlayback();
@@ -1902,6 +1971,8 @@ async function stopPlayback() {
 async function pausePlayback() {
   if (!playbackState.isPlaying) return;
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  clearIntroTimer();
+  clearHeadVisual();
   clearContinuousShiftTimer();
   clearNextExercisePreview();
   clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
@@ -1914,20 +1985,20 @@ async function pausePlayback() {
   setPlaybackBanner(PAUSED_MESSAGE, 'info');
 }
 
-/** Play / Pause / Resume on the main button, with Stop beside it when active. */
+/** Play / Pause / Resume on the main buttons, with Stop beside them when active. */
 function updateTransportButtons() {
-  const playButton = playbackUi.playButton;
-  const stopButton = playbackUi.stopButton;
-  if (playButton) {
-    playButton.textContent = playbackState.isPlaying
-      ? 'Pause'
-      : playbackState.isPaused
-        ? 'Resume'
-        : 'Play';
-  }
-  if (stopButton) {
-    stopButton.hidden = !(playbackState.isPlaying || playbackState.isPaused);
-  }
+  const playLabel = playbackState.isPlaying
+    ? 'Pause'
+    : playbackState.isPaused
+      ? 'Resume'
+      : 'Play';
+  playbackUi.playButtons.forEach((button) => {
+    button.textContent = playLabel;
+  });
+  const stopHidden = !(playbackState.isPlaying || playbackState.isPaused);
+  playbackUi.stopButtons.forEach((button) => {
+    button.hidden = stopHidden;
+  });
 }
 
 // ─── Exercise history & pinned exercises ─────────────────────────────────────
@@ -2489,7 +2560,7 @@ function updateHistoryButton() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function updatePlaybackControls() {
-  if (!playbackUi.playButton) {
+  if (!playbackUi.playButtons.length) {
     return;
   }
   const hasExercise = playbackState.measuresData.length > 0;
@@ -2497,10 +2568,12 @@ function updatePlaybackControls() {
     hasExercise &&
     (isVisualPlaybackEnabled() ||
       (playbackState.engine === 'strudel' && playbackState.notes.length > 0));
-  playbackUi.playButton.disabled = !canPlay;
-  if (playbackUi.stopButton) {
-    playbackUi.stopButton.disabled = !hasExercise;
-  }
+  playbackUi.playButtons.forEach((button) => {
+    button.disabled = !canPlay;
+  });
+  playbackUi.stopButtons.forEach((button) => {
+    button.disabled = !hasExercise;
+  });
   updateTransportButtons();
 }
 
@@ -2802,10 +2875,12 @@ function buildBackingChordVoicing(rootNote, quality) {
  * "[c3,e3,g3,b3]" where the preset asks for a hit and "~" elsewhere. Clip is
  * patterned alongside so a held chord can ring past its own beat.
  */
-async function buildBackingChordsPattern(api, beatMeta, measures) {
-  const config = getBackingChordConfig(getSelectedBackingChords());
+async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) {
+  // The song intro reuses this layer over the chart's own bars (and forces a
+  // preset when backing chords are off, so the head is always comped).
+  const config = options.forceConfig || getBackingChordConfig(getSelectedBackingChords());
   if (config.type === 'off') return null;
-  const segments = playbackState.measuresData || [];
+  const segments = options.segments || playbackState.measuresData || [];
   const totalBeats = segments.reduce((sum, segment) => sum + (segment.beats || 4), 0);
   const pauseBeats = beatMeta.filter((entry) => entry.isPause).length;
   if (!segments.length || totalBeats + pauseBeats !== beatMeta.length) {
@@ -2854,12 +2929,202 @@ async function buildBackingChordsPattern(api, beatMeta, measures) {
   return pattern;
 }
 
-// SONG_MELODY (planned, see TODO.md): the head played once before the exercise
-// and/or stacked as a backing layer. The playback side is a sibling of
-// buildBackingChordsPattern() — a note pattern over the same beat grid — but it
-// needs melody data that does not exist yet: songs/songs.js carries chord
-// charts only, and the standards currently listed have copyrighted melodies.
-// Nothing here reads a `melody` field yet; adding one is the first step.
+// ─── Song intro: the head played once before the exercise ────────────────────
+// One pass of the song's chart — comped chords, plus the melody when the song
+// carries one (`melodyBars`, parsed from the PD-only `melody` field in
+// songs/songs.js). After the chart, the running pattern is handed over to the
+// exercise at the loop boundary (same wrapper-swap machinery as continuous
+// shift).
+
+function shouldPlayHeadFirst() {
+  return (
+    getSelectedExerciseMode() === EXERCISE_MODES.SONG &&
+    (document.getElementById('playHeadFirst')?.checked ?? false)
+  );
+}
+
+/** Chord segments of the chart's true form (one bar per written bar). */
+function getSongIntroSegments(song) {
+  const chartBars = normalizeSongBars(song?.progressionBars);
+  if (!chartBars.length) return null;
+  const segments = [];
+  chartBars.forEach((barChords) => {
+    const segmentBeats = distributeBeatsPerBar(barChords.length);
+    segmentBeats.forEach((beats, index) => {
+      const parsed = parseChordSymbol(barChords[index]);
+      segments.push({
+        rootNote: parsed?.rootNote || '',
+        quality: parsed?.quality || '',
+        beats,
+      });
+    });
+  });
+  return segments;
+}
+
+/**
+ * Melody as one weighted mini-notation sequence: token weight = beats
+ * ("g4@2 e4 [~]…"), so the total weight equals the chart's beat count and the
+ * exercise tempo math applies unchanged. Padded with a rest when the melody
+ * is shorter than the form.
+ */
+function buildMelodyPatternText(melodyBars, totalBeats) {
+  const tokens = [];
+  let beatsUsed = 0;
+  (melodyBars || []).forEach((events) => {
+    events.forEach(({ note, beats }) => {
+      const token = note ? toStrudelNote(note) : '~';
+      if (!token || !(beats > 0)) return;
+      tokens.push(beats === 1 ? token : `${token}@${beats}`);
+      beatsUsed += beats;
+    });
+  });
+  if (!tokens.some((token) => !token.startsWith('~'))) return null;
+  if (beatsUsed > totalBeats) {
+    debugLog('Melody is longer than the chart; it will spill past the form.', {
+      beatsUsed,
+      totalBeats,
+    });
+  } else if (beatsUsed < totalBeats) {
+    tokens.push(`~@${totalBeats - beatsUsed}`);
+  }
+  return tokens.join(' ');
+}
+
+/**
+ * Build and start the intro pattern. Returns its length in beats, or 0 when
+ * there is nothing to play (not in song mode, empty chart, Strudel missing).
+ */
+async function playSongIntro() {
+  const song = getSelectedSong();
+  const segments = getSongIntroSegments(song);
+  if (!segments) return 0;
+  const api = await ensureStrudelReady();
+  if (!api) return 0;
+  const bpm = getSelectedTempoBpm();
+  const introBeats = segments.reduce((sum, segment) => sum + segment.beats, 0);
+  const measures = getMeasures(introBeats);
+  const beatMeta = [];
+  segments.forEach((segment) => {
+    for (let beat = 0; beat < segment.beats; beat += 1) {
+      beatMeta.push({ beat, beats: segment.beats });
+    }
+  });
+
+  // The head is always comped: the selected backing preset, or quarter-note
+  // piano when backing chords are off.
+  const backingSelection = getBackingChordConfig(getSelectedBackingChords());
+  const compConfig =
+    backingSelection.type === 'off'
+      ? getBackingChordConfig('piano-quarters')
+      : backingSelection;
+  let pattern = await buildBackingChordsPattern(api, beatMeta, measures, {
+    segments,
+    forceConfig: compConfig,
+  });
+
+  const sound = getSelectedStrudelSound();
+  const soundConfig = getStrudelSoundConfig(sound);
+  const melodyText =
+    soundConfig.type === 'none'
+      ? null
+      : buildMelodyPatternText(song.melodyBars, introBeats);
+  if (melodyText) {
+    let melody = api.note(melodyText).slow(measures);
+    melody = await applySelectedSound(api, melody, sound, soundConfig);
+    melody = applyAmbience(melody);
+    pattern = stackPatterns(api, pattern, melody);
+  }
+  pattern = stackPatterns(api, pattern, await buildRhythmPattern(api, beatMeta, measures));
+  if (!pattern) return 0;
+
+  if (typeof pattern.cpm === 'function') {
+    pattern = pattern.cpm(getCyclesPerMinute(bpm));
+  } else if (!applyStrudelTempo(api, bpm)) {
+    debugLog('No Strudel tempo API available; using the default clock.');
+  }
+  startOrSwapStrudelPattern(api, pattern, `${measures}@${getCyclesPerMinute(bpm)}`);
+  const barsCount = normalizeSongBars(song.progressionBars).length;
+  setPlaybackBanner(
+    `Playing the head first (${barsCount} bars${song.melodyBars ? ', with melody' : ''}) — the exercise follows.`,
+    'info'
+  );
+  return introBeats;
+}
+
+/**
+ * Give a melodic pattern the selected instrument voice, loading whatever
+ * sample set the sound needs. Shared by the exercise notes and the intro
+ * melody. Returns the pattern unchanged when the sound is the synth default
+ * or a load fails (with a banner).
+ */
+async function applySelectedSound(api, pattern, sound, soundConfig) {
+  if (!pattern) return pattern;
+  if (soundConfig.type === 'dirt') {
+    const loaded = await ensureGuitarSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+  } else if (soundConfig.type === 'sample-map') {
+    const loaded = await ensureGuitarVariantSamplesLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
+  } else if (soundConfig.type === 'soundfont') {
+    const loaded = await ensureSoundfontsLoaded(api);
+    if (loaded && typeof pattern.s === 'function') {
+      return pattern.s(soundConfig.sample);
+    }
+    setPlaybackBanner('Soundfont guitars failed to load. Using default synth.', 'warning');
+  } else if (sound !== 'default' && typeof pattern.s === 'function') {
+    return pattern.s(sound);
+  }
+  return pattern;
+}
+
+/**
+ * Start the delegating wrapper for a ready pattern, or swap its target when
+ * one is already playing on the same cycle grid. The wrapper (see
+ * strudelPatternRef) is what keeps loop-boundary swaps seamless.
+ */
+function startOrSwapStrudelPattern(api, pattern, signature) {
+  strudelPatternRef = pattern;
+  const PatternClass = getStrudelPatternClass(api);
+  // A different loop length or tempo means a different cycle grid: swapping in
+  // place would drop the new pattern in mid-cycle, so the clock restarts.
+  if (strudelWrapperActive && strudelLoopSignature !== signature) {
+    debugLog('Strudel loop grid changed; restarting the clock.', {
+      from: strudelLoopSignature,
+      to: signature,
+    });
+    strudelWrapperActive = false;
+  }
+  strudelLoopSignature = signature;
+  if (strudelWrapperActive) {
+    // Already playing through the delegating wrapper: swapping the ref is
+    // enough. The scheduler clock never stops, so there is no restart seam
+    // (no doubled or re-scheduled boundary notes); the new pattern has the
+    // same loop length, so it stays on the same cycle grid.
+    debugLog('Strudel pattern swapped in place.');
+  } else if (PatternClass) {
+    // Fresh start: stop the clock so the pattern begins at cycle 0, then
+    // play a wrapper that delegates every query to the current pattern ref.
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
+    wrapper.play();
+    strudelWrapperActive = true;
+  } else {
+    // No Pattern class exposed by this build: restart the scheduler directly
+    if (typeof api.hush === 'function') {
+      api.hush();
+    }
+    pattern.play();
+  }
+}
 
 function stackPatterns(api, first, second) {
   if (!first) return second;
@@ -2904,32 +3169,8 @@ async function playStrudelExercise(notes) {
   const measures = getMeasures(beatSlots.length + pauseBeats);
   const beatMeta = getBeatMeta(beatSlots.length);
   let pattern = soundConfig.type === 'none' ? null : api.note(loopText).slow(measures);
-  if (soundConfig.type === 'none') {
-    // "None (rhythm only)": the backing rhythm below is the whole pattern.
-  } else if (soundConfig.type === 'dirt') {
-    const loaded = await ensureGuitarSamplesLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
-    }
-  } else if (soundConfig.type === 'sample-map') {
-    const loaded = await ensureGuitarVariantSamplesLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Guitar samples failed to load. Using default synth.', 'warning');
-    }
-  } else if (soundConfig.type === 'soundfont') {
-    const loaded = await ensureSoundfontsLoaded(api);
-    if (loaded && typeof pattern.s === 'function') {
-      pattern = pattern.s(soundConfig.sample);
-    } else {
-      setPlaybackBanner('Soundfont guitars failed to load. Using default synth.', 'warning');
-    }
-  } else if (sound !== 'default' && typeof pattern.s === 'function') {
-    pattern = pattern.s(sound);
-  }
+  // "None (rhythm only)": the backing rhythm below is the whole pattern.
+  pattern = await applySelectedSound(api, pattern, sound, soundConfig);
 
   // Effects go on the notes only — a reverbed metronome is unusable as a
   // reference, and the drum samples already have their own room in them.
@@ -2957,41 +3198,7 @@ async function playStrudelExercise(notes) {
     debugLog('No Strudel tempo API available; using the default clock.');
   }
 
-  strudelPatternRef = pattern;
-  const PatternClass = getStrudelPatternClass(api);
-  const signature = getStrudelLoopSignature();
-  // A different loop length or tempo means a different cycle grid: swapping in
-  // place would drop the new exercise in mid-pattern, so the clock restarts.
-  if (strudelWrapperActive && strudelLoopSignature !== signature) {
-    debugLog('Strudel loop grid changed; restarting the clock.', {
-      from: strudelLoopSignature,
-      to: signature,
-    });
-    strudelWrapperActive = false;
-  }
-  strudelLoopSignature = signature;
-  if (strudelWrapperActive) {
-    // Already playing through the delegating wrapper: swapping the ref is
-    // enough. The scheduler clock never stops, so there is no restart seam
-    // (no doubled or re-scheduled boundary notes); the new pattern has the
-    // same loop length, so it stays on the same cycle grid.
-    debugLog('Strudel pattern swapped in place.');
-  } else if (PatternClass) {
-    // Fresh start: stop the clock so the pattern begins at cycle 0, then
-    // play a wrapper that delegates every query to the current pattern ref.
-    if (typeof api.hush === 'function') {
-      api.hush();
-    }
-    const wrapper = new PatternClass((state) => strudelPatternRef.query(state));
-    wrapper.play();
-    strudelWrapperActive = true;
-  } else {
-    // No Pattern class exposed by this build: restart the scheduler directly
-    if (typeof api.hush === 'function') {
-      api.hush();
-    }
-    pattern.play();
-  }
+  startOrSwapStrudelPattern(api, pattern, getStrudelLoopSignature());
   const context = getStrudelAudioContext();
   if (context && context.state !== 'running') {
     // Nothing will be heard until a gesture wakes the context back up.
@@ -4614,6 +4821,347 @@ function generateExercise(options = {}) {
   };
 }
 
+// ─── Head lead sheet ─────────────────────────────────────────────────────────
+// Notation for the intro chorus: the song's melody (with ties and beams) when
+// it has one, chord symbols over slash notation otherwise — so the user can
+// play the head along with the comped intro.
+
+const HEAD_BEAT_TO_DURATION = [
+  { beats: 4, duration: 'w', dots: 0 },
+  { beats: 3, duration: 'h', dots: 1 },
+  { beats: 2, duration: 'h', dots: 0 },
+  { beats: 1.5, duration: 'q', dots: 1 },
+  { beats: 1, duration: 'q', dots: 0 },
+  { beats: 0.5, duration: '8', dots: 0 },
+];
+
+function headDurationFor(beats) {
+  return HEAD_BEAT_TO_DURATION.find((entry) => Math.abs(entry.beats - beats) < 1e-6);
+}
+
+function makeHeadNote(VF, note, beats) {
+  const spec = headDurationFor(beats);
+  if (!spec) return null;
+  let staveNote;
+  if (note) {
+    staveNote = new VF.StaveNote({
+      clef: 'treble',
+      keys: [toVexFlowFormat(note)],
+      duration: spec.duration,
+    });
+  } else {
+    staveNote = new VF.StaveNote({
+      clef: 'treble',
+      keys: ['b/4'],
+      duration: `${spec.duration}r`,
+    });
+  }
+  for (let dot = 0; dot < spec.dots; dot += 1) {
+    if (VF.Dot?.buildAndAttach) {
+      VF.Dot.buildAndAttach([staveNote], { all: true });
+    } else if (typeof staveNote.addDot === 'function') {
+      staveNote.addDot(0);
+    }
+  }
+  return staveNote;
+}
+
+// Rests avoid dotted values (a dotted rest reads worse than two plain ones)
+function decomposeRestBeats(beats) {
+  const parts = [];
+  let remaining = beats;
+  [4, 2, 1, 0.5].forEach((value) => {
+    while (remaining >= value - 1e-9) {
+      parts.push(value);
+      remaining -= value;
+    }
+  });
+  return parts;
+}
+
+/**
+ * Build the VexFlow notes for one head bar plus the tie plan.
+ * Returns { notes, ties } where ties are index pairs into `notes`, and the
+ * bar's trailing tie (into the next bar) is flagged on the last note entry.
+ */
+function buildHeadBarNotes(VF, fragments) {
+  const notes = [];
+  const ties = [];
+  const noteMeta = []; // { startBeat, tieToNext }
+  fragments.forEach((fragment) => {
+    const values = fragment.note
+      ? decomposeBeatsForHead(fragment.beats)
+      : decomposeRestBeats(fragment.beats);
+    let startBeat = fragment.startBeat;
+    values.forEach((beats, index) => {
+      const staveNote = makeHeadNote(VF, fragment.note, beats);
+      if (!staveNote) return;
+      const noteIndex = notes.length;
+      notes.push(staveNote);
+      noteMeta.push({ startBeat, tieToNext: false });
+      // Tie decomposed parts of one fragment together, and honor the
+      // fragment's own tie flags at its edges.
+      if (fragment.note) {
+        if (index > 0 || fragment.tieFrom) {
+          if (noteIndex > 0 || fragment.tieFrom) {
+            ties.push({ from: noteIndex - 1, to: noteIndex, fromPreviousBar: noteIndex === 0 });
+          }
+        }
+        if (index === values.length - 1 && fragment.tieTo) {
+          noteMeta[noteIndex].tieToNext = true;
+        }
+      }
+      startBeat += beats;
+    });
+  });
+  return { notes, ties, noteMeta };
+}
+
+function decomposeBeatsForHead(beats) {
+  return window.melodyParser.decomposeBeats(beats);
+}
+
+/** Chord-over-slashes bar for songs without a melody: one slash per beat. */
+function buildHeadSlashBarNotes(VF) {
+  const notes = [];
+  for (let beat = 0; beat < BEATS_PER_CYCLE; beat += 1) {
+    let staveNote;
+    try {
+      staveNote = new VF.StaveNote({ keys: ['b/4'], duration: 'qs' });
+    } catch (error) {
+      staveNote = new VF.StaveNote({ clef: 'treble', keys: ['b/4'], duration: 'qr' });
+    }
+    notes.push(staveNote);
+  }
+  return { notes, ties: [], noteMeta: notes.map((unused, beat) => ({ startBeat: beat, tieToNext: false })) };
+}
+
+let headStavePositions = [];
+let headVisualTimerId = null;
+
+function ensureHeadHighlightRect() {
+  const container = document.getElementById('head-notation');
+  if (!container) return null;
+  let rect = container.querySelector('#head-highlight');
+  if (!rect) {
+    const svg = container.querySelector('svg');
+    if (!svg) return null;
+    rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('id', 'head-highlight');
+    rect.setAttribute('fill', 'rgba(255, 220, 80, 0.18)');
+    rect.setAttribute('stroke', 'rgba(255, 190, 0, 0.55)');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('rx', '4');
+    svg.insertBefore(rect, svg.firstChild);
+  }
+  return rect;
+}
+
+function moveHeadHighlightToBar(index) {
+  const pos = headStavePositions[index];
+  const rect = ensureHeadHighlightRect();
+  if (!pos || !rect) return;
+  const padding = 4;
+  rect.setAttribute('x', pos.x - padding);
+  rect.setAttribute('y', pos.y - padding);
+  rect.setAttribute('width', pos.width + padding * 2);
+  rect.setAttribute('height', pos.height + padding * 2);
+  rect.setAttribute('visibility', 'visible');
+}
+
+function clearHeadVisual() {
+  if (headVisualTimerId !== null) {
+    clearTimeout(headVisualTimerId);
+    headVisualTimerId = null;
+  }
+  const rect = document.querySelector('#head-notation #head-highlight');
+  if (rect) rect.setAttribute('visibility', 'hidden');
+}
+
+/** Step the head-sheet bar highlight through one pass of the form. */
+function startHeadVisual(totalBars) {
+  clearHeadVisual();
+  if (!totalBars || !headStavePositions.length) return;
+  const msPerBar = BEATS_PER_CYCLE * (60000 / getSelectedTempoBpm());
+  let barIndex = 0;
+  moveHeadHighlightToBar(0);
+  let nextTime = performance.now();
+  const scheduleNext = () => {
+    nextTime += msPerBar;
+    headVisualTimerId = setTimeout(() => {
+      barIndex += 1;
+      debugLog('Head highlight bar:', barIndex, 'of', totalBars);
+      if (barIndex >= totalBars) {
+        clearHeadVisual(); // the exercise handoff takes over from here
+        return;
+      }
+      moveHeadHighlightToBar(barIndex);
+      scheduleNext();
+    }, Math.max(0, nextTime - performance.now()));
+  };
+  scheduleNext();
+}
+
+function renderHeadSheet(song) {
+  const wrapper = document.getElementById('head-sheet');
+  const container = document.getElementById('head-notation');
+  if (!wrapper || !container) return;
+  container.innerHTML = '';
+  headStavePositions = [];
+  const shouldShow =
+    Boolean(song) &&
+    getSelectedExerciseMode() === EXERCISE_MODES.SONG &&
+    (document.getElementById('playHeadFirst')?.checked ?? false);
+  wrapper.hidden = !shouldShow;
+  if (!shouldShow) return;
+
+  const chartBars = normalizeSongBars(song.progressionBars);
+  if (!chartBars.length) return;
+
+  const hasMelody = Boolean(song.melodyBars && song.melodyBars.length);
+  const melodyFragmentBars = hasMelody
+    ? window.melodyParser.sliceTimelineIntoBars(
+        window.melodyParser.melodyToTimeline(song.melodyBars),
+        chartBars.length
+      )
+    : null;
+
+  const keyValue = song.scaleType === 'minor' ? `${song.key}m` : song.key;
+  const keyContext = getKeyContext(keyValue);
+  const VF = Vex.Flow;
+  const { Renderer, Stave, Voice, Formatter, Annotation, Beam, StaveTie } = VF;
+
+  const containerWidth = container.getBoundingClientRect().width;
+  const width = Math.max(900, Math.min(1600, Math.floor(containerWidth || 1200)));
+  const maxStaveWidth = width - 20;
+  const maxMeasuresPerLine = 4;
+
+  // Build every bar's notes first, so layout can size to note counts
+  const bars = chartBars.map((barChords, barIndex) => {
+    const built = hasMelody
+      ? buildHeadBarNotes(VF, melodyFragmentBars[barIndex])
+      : buildHeadSlashBarNotes(VF);
+    return { barChords, ...built };
+  });
+
+  const measureWidths = bars.map((bar, index) =>
+    calculateMeasureWidth(keyContext.vexflowKeySignature, index === 0, Math.max(4, bar.notes.length))
+  );
+  const lineLayouts = [];
+  let currentLine = { measures: [], width: 0 };
+  measureWidths.forEach((measureWidth, index) => {
+    const needsWrap =
+      currentLine.measures.length >= maxMeasuresPerLine ||
+      (currentLine.width + measureWidth > maxStaveWidth && currentLine.measures.length > 0);
+    if (needsWrap) {
+      lineLayouts.push(currentLine);
+      currentLine = { measures: [], width: 0 };
+    }
+    currentLine.measures.push({ index, width: measureWidth });
+    currentLine.width += measureWidth;
+  });
+  if (currentLine.measures.length > 0) lineLayouts.push(currentLine);
+
+  const staveHeight = 120;
+  const topPadding = 30;
+  const height = topPadding + lineLayouts.length * staveHeight + 20;
+  const renderer = new Renderer(container, Renderer.Backends.SVG);
+  renderer.resize(width, height);
+  const context = renderer.getContext();
+
+  const pendingCrossBarTies = []; // { fromNote } waiting for the next bar's first note
+  lineLayouts.forEach((line, lineIndex) => {
+    let xStart = Math.max(20, Math.floor((width - line.width) / 2));
+    const yStart = topPadding + lineIndex * staveHeight;
+    line.measures.forEach(({ index, width: staveWidth }) => {
+      const bar = bars[index];
+      const stave = new Stave(xStart, yStart, staveWidth);
+      if (index === 0) {
+        stave
+          .addClef('treble')
+          .addKeySignature(keyContext.vexflowKeySignature)
+          .addTimeSignature('4/4');
+      }
+      stave.setContext(context).draw();
+      headStavePositions[index] = { x: xStart, y: yStart, width: staveWidth, height: 80 };
+
+      // Chord symbols at their beats (2-chord bars annotate beat 0 and 2)
+      const chordBeats = distributeBeatsPerBar(bar.barChords.length);
+      const floatingChords = [];
+      let chordStart = 0;
+      bar.barChords.slice(0, chordBeats.length).forEach((chordSymbol, chordIndex) => {
+        const target = bar.noteMeta.findIndex(
+          (meta) => meta.startBeat >= chordStart - 1e-6
+        );
+        if (target !== -1) {
+          const annotation = new Annotation(formatChordSymbol(chordSymbol))
+            .setFont('Arial', 12, 'normal')
+            .setVerticalJustification(Annotation.VerticalJustify.TOP)
+            .setYShift(10);
+          bar.notes[target].addModifier(annotation, 0);
+        } else {
+          // A held note spans this chord's beat — nothing to attach to, so
+          // the symbol is drawn at its beat position once the bar is laid out
+          // (otherwise both chords stack on the same note).
+          floatingChords.push({
+            text: formatChordSymbol(chordSymbol),
+            beat: chordStart,
+          });
+        }
+        chordStart += chordBeats[chordIndex];
+      });
+
+      const beams = Beam.generateBeams(bar.notes);
+      const voice = new Voice({ num_beats: 4, beat_value: 4 })
+        .setMode(Voice.Mode.SOFT)
+        .addTickables(bar.notes);
+      const extraNotes = Math.max(0, bar.notes.length - 4);
+      const reserve = index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
+      new Formatter().joinVoices([voice]).format([voice], Math.max(120, staveWidth - reserve));
+      voice.draw(context, stave);
+      beams.forEach((beam) => beam.setContext(context).draw());
+
+      // Chords whose beat had no note to carry them: draw at the beat's
+      // proportional x, on the same text line as the attached annotations
+      floatingChords.forEach(({ text, beat }) => {
+        const startX = stave.getNoteStartX();
+        const endX =
+          typeof stave.getNoteEndX === 'function'
+            ? stave.getNoteEndX()
+            : stave.getX() + stave.getWidth();
+        const x = startX + ((endX - startX) * beat) / BEATS_PER_CYCLE;
+        const y =
+          typeof stave.getYForTopText === 'function'
+            ? stave.getYForTopText(1)
+            : yStart;
+        context.save();
+        context.setFont('Arial', 12, 'normal');
+        context.fillText(text, x, y);
+        context.restore();
+      });
+
+      // Ties inside the bar, plus any tie left hanging from the previous bar
+      bar.ties.forEach(({ from, to, fromPreviousBar }) => {
+        if (fromPreviousBar) return; // handled via pendingCrossBarTies
+        new StaveTie({ first_note: bar.notes[from], last_note: bar.notes[to] })
+          .setContext(context)
+          .draw();
+      });
+      if (pendingCrossBarTies.length && bar.notes.length) {
+        const from = pendingCrossBarTies.pop();
+        new StaveTie({ first_note: from, last_note: bar.notes[0] })
+          .setContext(context)
+          .draw();
+      }
+      const lastMeta = bar.noteMeta[bar.noteMeta.length - 1];
+      if (lastMeta?.tieToNext) {
+        pendingCrossBarTies.push(bar.notes[bar.notes.length - 1]);
+      }
+      xStart += stave.width;
+    });
+  });
+}
+
 // Full regeneration: scale diagram + notation + playback state, from the
 // current form values. Used by the Generate button and by continuous shift
 // (which passes options.carryOver to voice-lead across the boundary).
@@ -4660,6 +5208,7 @@ function regenerateExercise(options = {}) {
     replay: options.replay || null,
     warnOnReplayMismatch: options.warnOnReplayMismatch || false,
   });
+  renderHeadSheet(mode === EXERCISE_MODES.SONG ? song : null);
   updateExportTitle();
   updatePlaybackStateFromExercise(exerciseData);
 }
@@ -4849,8 +5398,12 @@ document.addEventListener('DOMContentLoaded', function () {
     setExerciseMode(EXERCISE_MODES.RANDOM);
 
     playbackUi.banner = document.getElementById('playback-banner');
-    playbackUi.playButton = document.getElementById('playbackPlayButton');
-    playbackUi.stopButton = document.getElementById('playbackStopButton');
+    playbackUi.playButtons = ['playbackPlayButton', 'playbackPlayButtonTop']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
+    playbackUi.stopButtons = ['playbackStopButton', 'playbackStopButtonTop']
+      .map((id) => document.getElementById(id))
+      .filter(Boolean);
     playbackState.engine = getSelectedPlaybackEngine();
     updatePlaybackControls();
 
@@ -5007,18 +5560,20 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
 
-    if (playbackUi.playButton) {
-      playbackUi.playButton.addEventListener('click', async () => {
+    playbackUi.playButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
         if (playbackState.isPlaying) {
           await pausePlayback();
         } else {
           await startPlayback();
         }
       });
-    }
-    playbackUi.stopButton?.addEventListener('click', async () => {
-      await stopPlayback();
-      refreshPlaybackBanner();
+    });
+    playbackUi.stopButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        await stopPlayback();
+        refreshPlaybackBanner();
+      });
     });
 
     document.getElementById('generateButton').addEventListener('click', () => {
@@ -5045,6 +5600,13 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('customProgression')?.addEventListener('input', saveUserDefaults);
     document.getElementById('stayInPosition')?.addEventListener('change', () => {
       if (playbackState.isPlaying) precomputeNextExercise();
+    });
+    // Show/hide the head lead sheet as the toggle changes, without waiting
+    // for the next Generate.
+    document.getElementById('playHeadFirst')?.addEventListener('change', () => {
+      renderHeadSheet(
+        getSelectedExerciseMode() === EXERCISE_MODES.SONG ? getSelectedSong() : null
+      );
     });
     updateStayInPositionAvailability();
     ['modeRandom', 'modeSong'].forEach((id) => {

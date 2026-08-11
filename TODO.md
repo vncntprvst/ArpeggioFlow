@@ -5,15 +5,13 @@
 * Port to React + TypeScript?
 * Create licks by selecting less or more notes for each measure, with sustained or silent notes. 
 * Add more songs
-* Song melodies (revisit): play the head once before the exercise, and/or as a
-  backing track. Blocked on data, not on code — `songs/songs.js` holds chord
-  charts only, and the melodies of the standards currently listed (Misty,
-  Stardust, Autumn Leaves…) are still under copyright, unlike their changes.
-  Options when we pick this up:
-    - public-domain or original heads only, shipped in the repo;
-    - a `melody` field per song (note + duration per bar), filled by hand;
-    - a runtime MusicXML/MIDI import so melodies stay on the user's machine.
-  Playback side is small: melody → the same Strudel note pattern the exercise
-  uses, either played once as an intro or stacked as a layer. See
-  `buildBackingChordsPattern()` in flow.js for the layer shape to copy, and the
-  SONG_MELODY placeholder next to it.
+* Song melodies, pass 2 (pass 1 done: "Play the head first" intro plays the
+  chart comped once, with the melody stacked on top when the song has a
+  `melody` field — Stardust ships one, transcribed from the public-domain
+  1929 edition; the other standards' melodies are still copyrighted and stay
+  out of the repo). Remaining:
+    - melody editor in the Songs panel: textarea in the melodyParser format,
+      live VexFlow preview, saved to localStorage per song id so user-entered
+      melodies stay on the user's machine;
+    - ride melodies along in the .json exercise export/import;
+    - maybe later: MusicXML/MIDI import feeding the same format.

@@ -381,6 +381,33 @@ input[type="number"]:focus {
   max-width: 110px;
 }
 
+/* Head lead sheet: same treatment as the exercise notation */
+#head-sheet {
+  margin-top: 4px;
+}
+
+.head-sheet__caption {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b7280;
+  text-align: center;
+}
+
+#head-notation {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-x: auto;
+}
+
+#head-notation svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
 /* Music notation: keep centered and scrollable if too wide */
 #notation {
   display: flex;
@@ -748,13 +775,15 @@ input[type="number"]:focus {
 
 /* ── Preview card: transport above the chord diagrams, footer actions ────── */
 
-#preview-transport {
+#preview-transport,
+#preview-transport-top {
   display: flex;
   justify-content: center;
   margin: 4px 0 12px;
 }
 
-#preview-transport #playbackPlayButton {
+#preview-transport #playbackPlayButton,
+#preview-transport-top #playbackPlayButtonTop {
   min-width: 96px;
 }
 
@@ -804,7 +833,8 @@ input[type="number"]:focus {
   cursor: not-allowed;
 }
 
-#preview-transport {
+#preview-transport,
+#preview-transport-top {
   gap: 8px;
 }
 
@@ -812,6 +842,11 @@ input[type="number"]:focus {
 
 .export-menu {
   position: relative;
+}
+
+.export-menu__list[hidden] {
+  /* display:flex below would otherwise override the hidden attribute */
+  display: none;
 }
 
 .export-menu__list {

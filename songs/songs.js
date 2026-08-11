@@ -1,14 +1,26 @@
 import './progressionParser.js';
+import './melodyParser.js';
 
 const { parseProgressionString } = window.progressionParser;
+const { parseMelodyString } = window.melodyParser;
 
 /**
  * Define a song from an iReal Pro-style progression string.
  * Bars are separated by '|', chords within a bar by spaces, '%' repeats
  * the previous bar. See progressionParser.js.
+ *
+ * An optional `melody` string (see melodyParser.js: `Pitch:beats` tokens,
+ * `~` rests, one 4-beat bar between '|') becomes `melodyBars` — the head
+ * played once before the exercise when "Play the head first" is on. Only
+ * public-domain melodies belong in this file; users can supply the rest
+ * locally (planned melody editor).
  */
-function defineSong({ progression, ...song }) {
-  return { ...song, progressionBars: parseProgressionString(progression) };
+function defineSong({ progression, melody, ...song }) {
+  return {
+    ...song,
+    progressionBars: parseProgressionString(progression),
+    melodyBars: melody ? parseMelodyString(melody) : null,
+  };
 }
 
 const AUTUMN_LEAVES = defineSong({
@@ -128,6 +140,22 @@ const STARDUST = defineSong({
     | Cmaj7     | Em7 A7  | Dm7 A7  | Dm7     |
     | Fm7       | Bb7     | Cmaj7 Am7 | Em7 A7 |
     | Dm7       | G7      | Cmaj7   | Gm7 C7  |
+  `,
+  // Chorus melody from the 1929 Mills Music first edition (US public domain;
+  // scan: archive.org/details/stardust00carm, pages 4-5). Adapted for a
+  // single one-chorus pass: the 1.5-beat pickup before bar 1 (B4:0.5 C5:0.5
+  // C#5:0.5) is omitted — a one-pass chart has no pickup bar — and cross-bar
+  // ties are written as merged durations (bars 11-12, 25-26, 29-30, 31-32),
+  // so some "bars" below carry more than 4 beats. Total: 128 beats.
+  melody: `
+    | D5 C5 A4 F4 | D4 F4 A4 E5 | E5:4 | D5:0.5 C5:0.5 Ab4:0.5 F4:0.5 D4:1.5 D5:0.5 |
+    | C5 G4 C5:2 | B4:0.5 E5:0.5 B4:0.5 G4:0.5 E4:2 | ~:0.5 A4:0.5 C5:0.5 A4:0.5 F4:0.5 G4:0.5 E4:0.5 F4:0.5 | D4:2.5 E4:0.5 D4:1 |
+    | G4 G4 G4:2 | ~:1 D4:0.5 E4:0.5 G4:0.5 D4:0.5 D#4:0.5 G4:0.5 | E4:2 A4:5 | E5:1 |
+    | E5:0.5 D5:0.5 C5:0.5 A4:0.5 E4 F#4 | B4:0.5 D4:0.5 Db4:0.5 C4:0.5 C4:0.5 A4:1 D4:0.5 | G4 G4 A4:0.5 D5:0.5 D4:0.5 A4:0.5 | G4:3 C5:1 |
+    | D5 C5 A4 F4 | D4 F4 A4 E5 | E5:4 | D5:0.5 C5:0.5 Ab4:0.5 F4:0.5 D4:1.5 D5:0.5 |
+    | C5 G4 C5:2 | B4:0.5 E5:0.5 B4:0.5 G4:0.5 E4:2 | ~:0.5 A4:0.5 C5:0.5 A4:0.5 F4:0.5 G4:0.5 E4:0.5 F4:0.5 | D4:2.5 E4:1 D4:0.5 |
+    | G4 F#4 F4:5 | C4:0.5 D4:0.5 | E4 G4 C5 E5 | B4:3 C5:1 |
+    | D5:0.5 C5:0.5 A4:0.5 F4:0.5 A4:2.5 | G4:0.5 A4:0.5 F4:0.5 G4:0.5 E4:0.5 F4:0.5 D4:0.5 | C4:8 |
   `,
 });
 
