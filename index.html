@@ -517,13 +517,21 @@
             >
               View all scale arpeggios ↗
             </button>
-            <div class="card-footer__exports">
-              <button type="button" id="exportPngButton">
-                Export PNG
+            <div class="card-footer__exports export-menu">
+              <button
+                type="button"
+                id="exportMenuButton"
+                class="secondary-button"
+                aria-haspopup="true"
+                aria-expanded="false"
+              >
+                Export ▾
               </button>
-              <button type="button" id="exportPdfButton">
-                Export PDF
-              </button>
+              <div class="export-menu__list" id="exportMenuList" hidden>
+                <button type="button" id="exportPngButton">PNG image</button>
+                <button type="button" id="exportPdfButton">PDF</button>
+                <button type="button" id="exportExerciseButton">Exercise file (.json)</button>
+              </div>
             </div>
           </footer>
         </article>
@@ -544,10 +552,10 @@
           ☆ Pin current exercise
         </button>
         <button type="button" id="exportPinnedButton" class="secondary-button">
-          Save pinned to file
+          Export all pinned
         </button>
         <button type="button" id="importPinnedButton" class="secondary-button">
-          Load from file
+          Import from file
         </button>
         <input type="file" id="importPinnedInput" accept="application/json,.json" hidden />
         <span class="hist-toolbar__hint" id="histToolbarHint">
