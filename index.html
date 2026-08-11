@@ -25,6 +25,9 @@
   <!-- cagedShapes.js -->
   <script src="cagedShapes.js"></script>
 
+  <!-- Piano keyboard renderer (piano mode) -->
+  <script src="pianoKeyboard.js"></script>
+
   <!-- html2canvas for export -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
@@ -67,6 +70,26 @@
       <section class="controls-panel" aria-label="Exercise settings">
         <form id="exerciseForm" class="controls-form" novalidate>
           <div class="form-section">
+            <div class="mode-toggle mode-toggle--instrument" role="group" aria-label="Instrument">
+              <button
+                type="button"
+                id="instrumentGuitar"
+                class="mode-toggle__button is-active"
+                aria-pressed="true"
+              >
+                Guitar
+              </button>
+              <button
+                type="button"
+                id="instrumentPiano"
+                class="mode-toggle__button"
+                aria-pressed="false"
+              >
+                Piano
+              </button>
+            </div>
+            <input type="hidden" id="instrument" name="instrument" value="guitar" />
+
             <h2 class="section-title">Exercise Generator</h2>
 
             <div class="mode-toggle" role="group" aria-label="Exercise mode">
@@ -212,9 +235,21 @@
             </div>
 
             <div class="mode-panel-section">
-              <h3 class="section-subtitle">Scale Shape</h3>
+              <h3 class="section-subtitle guitar-only">Scale Shape</h3>
+              <h3 class="section-subtitle piano-only">Register</h3>
 
-              <div class="form-row">
+              <div class="form-field piano-only">
+                <label for="pianoRange">Octave range</label>
+                <select id="pianoRange" name="pianoRange">
+                  <option value="C2-C4">Low — C2 to C4</option>
+                  <option value="C3-C5" selected>Mid-low — C3 to C5</option>
+                  <option value="C4-C6">Mid-high — C4 to C6</option>
+                  <option value="C5-C7">High — C5 to C7</option>
+                  <option value="C3-C6">Wide — C3 to C6</option>
+                </select>
+              </div>
+
+              <div class="form-row guitar-only">
                 <div class="form-field">
                   <label for="scaleSystem">Scale system</label>
                   <select
@@ -335,7 +370,7 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                   <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
-                <label class="toggle-label toggle-label--under" for="stayInPosition">
+                <label class="toggle-label toggle-label--under guitar-only" for="stayInPosition">
                   <input type="checkbox" id="stayInPosition" />
                   Stay in neck position
                 </label>
@@ -390,13 +425,18 @@
                   <option value="guitar-3">Guitar (Sample 3)</option>
                   <option value="guitar-4">Guitar (Sample 4)</option>
                   <option value="guitar-5">Guitar (Sample 5)</option> -->
-                  <option value="gm_blues_guitar">Blues Guitar (warm overdrive)</option>
-                  <option value="gm_electric_guitar_clean">Electric Guitar (Clean)</option>
-                  <option value="gm_electric_guitar_jazz" selected>Electric Guitar (Jazz)</option>
-                  <option value="gm_electric_guitar_muted">Electric Guitar (Muted)</option>
-                  <option value="gm_acoustic_guitar_nylon">Acoustic Guitar (Nylon)</option>
-                  <option value="gm_acoustic_guitar_steel">Acoustic Guitar (Steel)</option>
-                  <option value="gm_distortion_guitar">Distortion Guitar</option>
+                  <optgroup label="Guitar">
+                    <option value="gm_blues_guitar">Blues Guitar (warm overdrive)</option>
+                    <option value="gm_electric_guitar_clean">Electric Guitar (Clean)</option>
+                    <option value="gm_electric_guitar_jazz" selected>Electric Guitar (Jazz)</option>
+                    <option value="gm_electric_guitar_muted">Electric Guitar (Muted)</option>
+                    <option value="gm_acoustic_guitar_nylon">Acoustic Guitar (Nylon)</option>
+                    <option value="gm_acoustic_guitar_steel">Acoustic Guitar (Steel)</option>
+                    <option value="gm_distortion_guitar">Distortion Guitar</option>
+                  </optgroup>
+                  <optgroup label="Piano">
+                    <option value="gm_acoustic_grand_piano">Acoustic Grand Piano</option>
+                  </optgroup>
                   <!-- Novelty / rarely used sounds — kept for reference,
                        re-enable by uncommenting (configs still exist in
                        STRUDEL_SOUND_CONFIG in flow.js):

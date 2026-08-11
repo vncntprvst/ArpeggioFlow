@@ -69,6 +69,56 @@ function getSelectedExerciseMode() {
   return exerciseModeState.mode;
 }
 
+// ─── Instrument (guitar / piano) ─────────────────────────────────────────────
+// The exercise engine is instrument-blind: notes are sounding-pitch names all
+// the way through. Everything that draws or highlights an instrument goes
+// through this registry, so a feature added to the shared engine works on both
+// instruments without touching either view.
+
+function getActiveInstrument() {
+  return document.getElementById('instrument')?.value === 'piano' ? 'piano' : 'guitar';
+}
+
+const INSTRUMENT_VIEWS = {
+  guitar: {
+    shapeControlId: 'shape',
+    // Guitar is a transposing instrument: written an octave above sounding.
+    vexflowOctaveShift: 1,
+    renderScaleDiagram: (shapeContext) => renderScaleDiagram(shapeContext),
+    renderChordDiagrams: (measureData, shapeContext) =>
+      renderArpeggioDiagrams(measureData, shapeContext),
+    highlightChord: (measure) => updateFretboardForChord(measure),
+    highlightNote: (segment, note, mode, lookahead, beats) =>
+      updateFretboardForNote(segment, note, mode, lookahead, beats),
+    applyPause: () => applyGuitarPauseStep(),
+    resetHighlight: () => resetFretboardHighlight(),
+    previewPositionForNote: (shapeContext, note) =>
+      findBoxPositionForNote(shapeContext, note),
+    renderNextLoopPreview: (container, positions) =>
+      renderNextLoopPreview(container, positions),
+  },
+  piano: {
+    shapeControlId: 'pianoRange',
+    vexflowOctaveShift: 0,
+    renderScaleDiagram: (shapeContext) => renderPianoScaleDiagram(shapeContext),
+    renderChordDiagrams: (measureData, shapeContext) =>
+      renderPianoChordDiagrams(measureData, shapeContext),
+    highlightChord: (measure) => updatePianoForChord(measure),
+    highlightNote: (segment, note, mode, lookahead, beats) =>
+      updatePianoForNote(segment, note, mode, lookahead, beats),
+    applyPause: () => applyPianoPauseStep(),
+    resetHighlight: () => resetPianoHighlight(),
+    previewPositionForNote: (shapeContext, note) =>
+      findPianoPositionForNote(shapeContext, note),
+    renderNextLoopPreview: (container, positions) =>
+      renderPianoNextLoopPreview(container, positions),
+  },
+};
+
+function getInstrumentView() {
+  return INSTRUMENT_VIEWS[getActiveInstrument()];
+}
+
 function getSelectedSongId() {
   return document.getElementById('songSelect')?.value || '';
 }
@@ -375,6 +425,11 @@ const STRUDEL_SOUND_CONFIG = {
     label: 'Overdriven Guitar',
     sample: 'gm_overdriven_guitar',
   },
+  gm_acoustic_grand_piano: {
+    type: 'soundfont',
+    label: 'Acoustic Grand Piano',
+    sample: 'gm_acoustic_grand_piano',
+  },
   default: { type: 'synth', label: 'Synth (Default)' },
 };
 // Drum kit for the backing rhythm. @strudel/web's prebake only registers the
@@ -490,7 +545,8 @@ const GM_SOUNDFONT_FONTS = {
   // "Robben Ford - Playing the Blues" examples. Pair it with the Room or
   // Slapback ambience below for the note tails.
   gm_blues_guitar: ['0290_JCLive_sf2_file'],
-  // Comping voice for the backing-chords layer, not offered as a lead sound.
+  // Comping voice for the backing-chords layer, and the lead sound in
+  // piano mode.
   gm_acoustic_grand_piano: ['0000_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
@@ -830,27 +886,27 @@ const FRETBOARD_LOOKAHEAD_OPACITIES = [0.9, 0.62, 0.38];
 // Rings: all black (same in static and playback views)
 const SCALE_DEGREE_RING_DEGREES = new Set([1, 3, 5, 7]);
 
-function addRingToDot(dotEl, dotCircle) {
+function addRingToDot(dotEl, dotCircle, radius = FRETBOARD_DOT_RING_RADIUS) {
   const ring = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
   ring.setAttribute('cx', dotCircle.getAttribute('cx'));
   ring.setAttribute('cy', dotCircle.getAttribute('cy'));
-  ring.setAttribute('r', FRETBOARD_DOT_RING_RADIUS);
+  ring.setAttribute('r', radius);
   ring.setAttribute('fill', 'none');
   ring.setAttribute('stroke', '#000000');
   ring.setAttribute('stroke-width', '2.5');
   ring.setAttribute('class', 'dot-ring');
-  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
+  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text, .piano-marker-text'));
 }
 
 /** Small "R"/"3"/"5"/"7" tag at the top-right of a ringed dot. */
-function addDegreeLabelToDot(dotEl, dotCircle, degreeNum) {
+function addDegreeLabelToDot(dotEl, dotCircle, degreeNum, radius = FRETBOARD_DOT_RING_RADIUS) {
   const label = document.createElementNS(FRETBOARD_SVG_NS, 'text');
   // cx/cy can be percentage strings (fretboard.js positions dots that way),
   // so copy them verbatim and offset with dx/dy instead of computing pixels.
   label.setAttribute('x', dotCircle.getAttribute('cx'));
   label.setAttribute('y', dotCircle.getAttribute('cy'));
-  label.setAttribute('dx', FRETBOARD_DOT_RING_RADIUS - 3);
-  label.setAttribute('dy', -(FRETBOARD_DOT_RING_RADIUS - 3));
+  label.setAttribute('dx', radius - 3);
+  label.setAttribute('dy', -(radius - 3));
   label.setAttribute('class', 'dot-degree-label');
   label.textContent = degreeNum === 1 ? 'R' : String(degreeNum);
   dotEl.appendChild(label);
@@ -866,14 +922,14 @@ function getDurationGlyph(beats) {
 }
 
 /** Note-value glyph to the right of a dot, level with its centre. */
-function addDurationLabelToDot(dotEl, dotCircle, beats) {
+function addDurationLabelToDot(dotEl, dotCircle, beats, radius = FRETBOARD_DOT_RING_RADIUS) {
   const glyph = getDurationGlyph(beats);
   if (!glyph) return;
   const label = document.createElementNS(FRETBOARD_SVG_NS, 'text');
   // cx/cy can be percentage strings, so offset with dx/dy like the degree tag.
   label.setAttribute('x', dotCircle.getAttribute('cx'));
   label.setAttribute('y', dotCircle.getAttribute('cy'));
-  label.setAttribute('dx', FRETBOARD_DOT_RING_RADIUS + 5);
+  label.setAttribute('dx', radius + 5);
   label.setAttribute('dy', 4);
   label.setAttribute('class', 'dot-duration');
   label.textContent = glyph;
@@ -969,16 +1025,16 @@ function updateFretboardForChord(measure) {
   });
 }
 
-function addPlayedNotesRing(dotEl, dotCircle) {
+function addPlayedNotesRing(dotEl, dotCircle, radius = FRETBOARD_DOT_RING_RADIUS) {
   const ring = document.createElementNS(FRETBOARD_SVG_NS, 'circle');
   ring.setAttribute('cx', dotCircle.getAttribute('cx'));
   ring.setAttribute('cy', dotCircle.getAttribute('cy'));
-  ring.setAttribute('r', FRETBOARD_DOT_RING_RADIUS + 4); // slightly outside the black ring
+  ring.setAttribute('r', radius + 4); // slightly outside the black ring
   ring.setAttribute('fill', 'none');
   ring.setAttribute('stroke', '#e03030');
   ring.setAttribute('stroke-width', '2.5');
   ring.setAttribute('class', 'dot-ring dot-played-ring');
-  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text'));
+  dotEl.insertBefore(ring, dotEl.querySelector('.dot-text, .piano-marker-text'));
 }
 
 /**
@@ -1178,6 +1234,179 @@ function resetFretboardHighlight() {
   renderFretboardBoxLabel(null, null);
 }
 
+// ─── Piano keyboard highlighting ─────────────────────────────────────────────
+// Twins of the fretboard highlight functions above, working on the markers the
+// piano keyboard renders. Strictly simpler than guitar: a midi lands on at most
+// one key, so there is no chroma-position fan-out.
+
+const PIANO_RING_RADIUS = (window.pianoKeyboard?.MARKER_RADIUS ?? 13) + 1.5;
+
+function getPianoMarkerDegree(markerEl) {
+  const match = /piano-degree-(\d+)/.exec(markerEl.getAttribute('class') || '');
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/** Restore static scale-degree coloring (CSS controls fills; rings + opacity here). */
+function applyPianoScaleDegreeColoring(container) {
+  container.querySelectorAll('.piano-marker').forEach((markerEl) => {
+    const circle = markerEl.querySelector('.piano-marker-circle');
+    if (!circle) return;
+    markerEl.style.opacity = '1';
+    circle.style.removeProperty('fill');
+    markerEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
+    const degree = getPianoMarkerDegree(markerEl);
+    if (SCALE_DEGREE_RING_DEGREES.has(degree)) {
+      addRingToDot(markerEl, circle, PIANO_RING_RADIUS);
+      addDegreeLabelToDot(markerEl, circle, degree, PIANO_RING_RADIUS);
+    }
+  });
+}
+
+/** Chord mode: recolour the scale markers relative to the current chord. */
+function updatePianoForChord(measure) {
+  const container = document.getElementById('fretboard-container');
+  if (!container || !measure) return;
+  clearPianoNextLoopPreview(container);
+
+  const { rootNote, quality } = measure;
+  const chordData = Tonal.Chord.get(`${rootNote}${quality}`);
+  const chromaToIntervalNum = {};
+  if (chordData && chordData.notes && chordData.intervals) {
+    chordData.notes.forEach((note, i) => {
+      chromaToIntervalNum[Tonal.Note.chroma(note)] = parseInt(chordData.intervals[i], 10);
+    });
+  }
+  const playedMidiSet = new Set(
+    (measure.generatedNotes || []).map((n) => Tonal.Note.midi(n)).filter(Number.isFinite)
+  );
+
+  container.querySelectorAll('.piano-marker').forEach((markerEl) => {
+    const circle = markerEl.querySelector('.piano-marker-circle');
+    if (!circle) return;
+    markerEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
+
+    const midi = parseInt(markerEl.dataset.midi, 10);
+    const intervalNum = chromaToIntervalNum[((midi % 12) + 12) % 12];
+
+    if (intervalNum === undefined) {
+      markerEl.style.opacity = '0.2';
+      circle.style.removeProperty('fill');
+      return;
+    }
+
+    markerEl.style.opacity = '1';
+    const fill = intervalNum === 1 ? FRETBOARD_COLOR_ROOT : FRETBOARD_COLOR_INBOX;
+    circle.style.setProperty('fill', fill, 'important');
+
+    if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
+      addRingToDot(markerEl, circle, PIANO_RING_RADIUS);
+      addDegreeLabelToDot(markerEl, circle, intervalNum, PIANO_RING_RADIUS);
+    }
+    if (playedMidiSet.has(midi)) {
+      addPlayedNotesRing(markerEl, circle, PIANO_RING_RADIUS);
+    }
+  });
+}
+
+/** Per-note mode: light the sounding key, preview the next few, fade the rest. */
+function updatePianoForNote(segment, note, mode, lookahead, beats) {
+  const container = document.getElementById('fretboard-container');
+  if (!container || !segment) return;
+  const targetMidi = Tonal.Note.midi(note);
+  const chordChromas = getChordToneChromas(segment.rootNote, segment.quality);
+  const previews = lookahead?.byMidi || new Map();
+  clearPianoNextLoopPreview(container);
+
+  container.querySelectorAll('.piano-marker').forEach((markerEl) => {
+    const circle = markerEl.querySelector('.piano-marker-circle');
+    if (!circle) return;
+    markerEl.querySelectorAll('.dot-ring, .dot-degree-label, .dot-duration').forEach((r) => r.remove());
+
+    const midi = parseInt(markerEl.dataset.midi, 10);
+
+    if (midi === targetMidi) {
+      markerEl.style.opacity = '1';
+      circle.style.setProperty('fill', FRETBOARD_COLOR_PLAYING, 'important');
+      addPlayedNotesRing(markerEl, circle, PIANO_RING_RADIUS);
+      addDurationLabelToDot(markerEl, circle, beats, PIANO_RING_RADIUS);
+      return;
+    }
+
+    const preview = previews.get(midi);
+    if (preview) {
+      markerEl.style.opacity = String(FRETBOARD_LOOKAHEAD_OPACITIES[preview.rank - 1]);
+      circle.style.setProperty(
+        'fill',
+        preview.nextChord ? FRETBOARD_COLOR_UPCOMING_NEXT_CHORD : FRETBOARD_COLOR_UPCOMING,
+        'important'
+      );
+      addDurationLabelToDot(markerEl, circle, preview.beats, PIANO_RING_RADIUS);
+      return;
+    }
+
+    const isChordTone = chordChromas.has(((midi % 12) + 12) % 12);
+    const keepFaint = mode === 'note-scale' || isChordTone;
+    markerEl.style.opacity = keepFaint ? '0.35' : '0.08';
+    circle.style.removeProperty('fill');
+  });
+
+  renderPianoNextLoopPreview(container, lookahead?.positions || []);
+}
+
+/** Piano "positions" are just midis: the keyboard shows every pitch it spans. */
+function findPianoPositionForNote(shapeContext, note) {
+  const midi = Tonal.Note.midi(note);
+  return Number.isFinite(midi) ? { midi } : null;
+}
+
+/** Clear the previous step's next-loop preview (markers + recoloured keys). */
+function clearPianoNextLoopPreview(container) {
+  container.querySelectorAll('.piano-marker--next-loop').forEach((el) => el.remove());
+  container.querySelectorAll('.piano-marker.dot-next-loop').forEach((markerEl) => {
+    markerEl.classList.remove('dot-next-loop');
+    markerEl.style.opacity = '1';
+    markerEl.querySelector('.piano-marker-circle')?.style.removeProperty('fill');
+    markerEl.querySelectorAll('.dot-duration').forEach((label) => label.remove());
+  });
+}
+
+function renderPianoNextLoopPreview(container, positions) {
+  clearPianoNextLoopPreview(container);
+  positions.forEach((position) => {
+    const opacity = FRETBOARD_LOOKAHEAD_OPACITIES[position.rank - 1];
+    let markerEl = window.pianoKeyboard.markerAt(container, position.midi);
+    if (!markerEl) {
+      // In the incoming exercise but not on this diagram's scale: draw a
+      // temporary marker. Midis outside the drawn register are skipped — a
+      // register shift previews only the overlap; the box label still
+      // announces the target.
+      markerEl = window.pianoKeyboard.addMarker(container, {
+        midi: position.midi,
+        label: Tonal.Note.pitchClass(position.note) || '',
+        className: 'piano-marker--next-loop',
+        opacity,
+      });
+      if (!markerEl) return;
+    } else {
+      markerEl.classList.add('dot-next-loop');
+      markerEl.style.opacity = String(opacity);
+    }
+    const circle = markerEl.querySelector('.piano-marker-circle');
+    if (circle) {
+      circle.style.setProperty('fill', FRETBOARD_COLOR_UPCOMING_NEXT_LOOP, 'important');
+      addDurationLabelToDot(markerEl, circle, position.beats, PIANO_RING_RADIUS);
+    }
+  });
+}
+
+function resetPianoHighlight() {
+  const container = document.getElementById('fretboard-container');
+  if (!container) return;
+  clearPianoNextLoopPreview(container);
+  applyPianoScaleDegreeColoring(container);
+  renderFretboardBoxLabel(null, null);
+}
+
 function updateArpeggioDiagramHighlight(chordName) {
   const container = document.getElementById('arpeggio-diagrams');
   if (!container) return;
@@ -1234,13 +1463,14 @@ function buildVisualSteps(mode) {
 
 function applyVisualStep(step, mode, steps, index) {
   if (!isVisualPlaybackEnabled() || !step) return;
+  const view = getInstrumentView();
   if (step.pause) {
-    applyPauseStep();
+    view.applyPause();
     return;
   }
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
   if (step.note !== undefined) {
-    updateFretboardForNote(
+    view.highlightNote(
       step.segment,
       step.note,
       mode,
@@ -1248,14 +1478,14 @@ function applyVisualStep(step, mode, steps, index) {
       step.beats
     );
   } else {
-    updateFretboardForChord(step.segment);
+    view.highlightChord(step.segment);
     // Chord mode has no per-note lookahead, so the incoming box lights up for
     // the last chord of the loop instead — the same cue, one chord wide.
     const isLastChord = steps.slice(index + 1).every((later) => later.pause);
     if (isLastChord) {
       const fretboardDiv = document.getElementById('fretboard-container');
       if (fretboardDiv) {
-        renderNextLoopPreview(fretboardDiv, getNextLoopPreviewPositions());
+        view.renderNextLoopPreview(fretboardDiv, getNextLoopPreviewPositions());
       }
     }
   }
@@ -1281,7 +1511,7 @@ function getNextLoopPreviewPositions() {
  * highlight clears. If a shift is pending, the incoming box keeps its preview
  * so there is something to aim at while waiting.
  */
-function applyPauseStep() {
+function applyGuitarPauseStep() {
   const fretboardDiv = document.getElementById('fretboard-container');
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
@@ -1289,6 +1519,19 @@ function applyPauseStep() {
     clearNextLoopPreview(fretboardDiv);
     applyScaleDegreeColoring(fretboardDiv);
     renderNextLoopPreview(fretboardDiv, getNextLoopPreviewPositions());
+  }
+  renderFretboardBoxLabel(null, nextExercisePreview);
+}
+
+/** The piano twin of the rest-bar step. */
+function applyPianoPauseStep() {
+  const container = document.getElementById('fretboard-container');
+  clearArpeggioDiagramHighlight();
+  hideHighlightRect();
+  if (container) {
+    clearPianoNextLoopPreview(container);
+    applyPianoScaleDegreeColoring(container);
+    renderPianoNextLoopPreview(container, getNextLoopPreviewPositions());
   }
   renderFretboardBoxLabel(null, nextExercisePreview);
 }
@@ -1328,7 +1571,7 @@ function clearVisualTimer() {
 
 function stopVisualPlayback() {
   clearVisualTimer();
-  resetFretboardHighlight();
+  getInstrumentView().resetHighlight();
   clearArpeggioDiagramHighlight();
   hideHighlightRect();
   playbackState.isPlaying = false;
@@ -1397,11 +1640,13 @@ function isStayInPositionEnabled() {
   return document.getElementById('stayInPosition')?.checked ?? false;
 }
 
-/** The toggle only means anything for the key-changing shifts. */
+/** The toggle only means anything for the key-changing shifts, on guitar. */
 function updateStayInPositionAvailability() {
   const toggle = document.getElementById('stayInPosition');
   if (!toggle) return;
-  const applies = getSelectedContinuousShift() in CONTINUOUS_SHIFT_KEY_DELTAS;
+  const applies =
+    getSelectedContinuousShift() in CONTINUOUS_SHIFT_KEY_DELTAS &&
+    getActiveInstrument() === 'guitar';
   toggle.disabled = !applies;
   toggle.closest('.toggle-label')?.classList.toggle('is-disabled', !applies);
 }
@@ -1464,12 +1709,14 @@ function peekContinuousShiftTarget(mode) {
     }
     return target;
   }
+  // On guitar these walk the shape list (up/down the neck); on piano they walk
+  // the register list — same machinery, the instrument names the control.
   if (mode === 'shape-up') {
-    const shape = peekSelectValue('shape', 1);
+    const shape = peekSelectValue(getInstrumentView().shapeControlId, 1);
     return shape ? { shape } : null;
   }
   if (mode === 'shape-down') {
-    const shape = peekSelectValue('shape', -1);
+    const shape = peekSelectValue(getInstrumentView().shapeControlId, -1);
     return shape ? { shape } : null;
   }
   return null;
@@ -1486,7 +1733,9 @@ function applyContinuousShift(mode) {
   if (!target) return false;
   let applied = false;
   if (target.key) applied = setSelectValue('key', target.key) || applied;
-  if (target.shape) applied = setSelectValue('shape', target.shape) || applied;
+  if (target.shape) {
+    applied = setSelectValue(getInstrumentView().shapeControlId, target.shape) || applied;
+  }
   return applied;
 }
 
@@ -1555,7 +1804,7 @@ function collectPreviewSteps(measures, cagedShape) {
         steps.push({
           note,
           beats: slotSize === 2 ? 0.5 : 1,
-          position: findBoxPositionForNote(cagedShape, note),
+          position: getInstrumentView().previewPositionForNote(cagedShape, note),
         });
         if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
       }
@@ -1577,28 +1826,46 @@ function clearNextExercisePreview() {
 
 let currentPinnedId = null;
 
+/** Which instrument a snapshot was recorded on; old files predate the field. */
+function snapshotInstrument(entry) {
+  return entry?.settings?.instrument === 'piano' ? 'piano' : 'guitar';
+}
+
+/** The rotation only cycles snapshots of the active instrument: restoring the
+ * other instrument's settings mid-playback would flip every renderer at once. */
+function pinnedRotationEntries() {
+  return pinnedExercises.filter(
+    (entry) => snapshotInstrument(entry) === getActiveInstrument()
+  );
+}
+
 function nextPinnedSnapshot() {
-  if (!pinnedExercises.length) return null;
+  const rotation = pinnedRotationEntries();
+  if (!rotation.length) return null;
   // Starting the cycle on an exercise that happens to be pinned (pressing Play
   // right after starring it) should carry on from that entry, not repeat it.
   if (!currentPinnedId) {
     const current = captureExerciseSnapshot();
     const match =
       current &&
-      pinnedExercises.find(
+      rotation.find(
         (entry) => snapshotSignature(entry) === snapshotSignature(current)
       );
     if (match) {
       currentPinnedId = match.id;
     }
   }
-  const index = pinnedExercises.findIndex((entry) => entry.id === currentPinnedId);
-  return pinnedExercises[(index + 1) % pinnedExercises.length];
+  const index = rotation.findIndex((entry) => entry.id === currentPinnedId);
+  return rotation[(index + 1) % rotation.length];
 }
 
-/** The CAGED box a snapshot will be played in, for its preview and label. */
+/** The shape context a snapshot will be played in, for its preview and label:
+ * a CAGED box on guitar, a register descriptor on piano. */
 function getShapeForSettings(settings) {
-  if (!settings?.shape) return null;
+  const isPianoSnapshot = settings?.instrument === 'piano';
+  if (!settings || (isPianoSnapshot ? !settings.pianoRange : !settings.shape)) {
+    return null;
+  }
   const keyValue =
     settings.exerciseMode === EXERCISE_MODES.SONG
       ? (() => {
@@ -1610,6 +1877,9 @@ function getShapeForSettings(settings) {
         ? `${settings.key}m`
         : settings.key;
   if (!keyValue) return null;
+  if (isPianoSnapshot) {
+    return preparePianoContext(keyValue, settings.pianoRange).cagedShape;
+  }
   const keyContext = getKeyContext(keyValue);
   const cagedShape = getCAGEDShape(settings.shape, keyContext.cagedKey);
   if (!cagedShape) return null;
@@ -2014,10 +2284,13 @@ const PINNED_STORAGE_KEY = 'arpeggioFlow.pinnedExercises';
 // Restored in this order, so progression lands before bars (a progression
 // change resets the bar count).
 const SNAPSHOT_CONTROL_IDS = [
+  // First so a restore lands the instrument before shape/pianoRange are read.
+  'instrument',
   'scaleSystem',
   'key',
   'scaleType',
   'shape',
+  'pianoRange',
   'progression',
   'customProgression',
   'bars',
@@ -2131,6 +2404,10 @@ function applyControlValues(values, extraIds = []) {
       writeControlValue(element, values[id]);
     }
   });
+  // Snapshots and settings written before piano mode existed have no
+  // instrument field: they are guitar exercises, and the explicit default is
+  // what keeps them loading as such from piano mode.
+  setInstrument(values.instrument || 'guitar', { skipSave: true });
   if (values.exerciseMode) {
     setExerciseMode(values.exerciseMode);
   }
@@ -2140,12 +2417,16 @@ function applyControlValues(values, extraIds = []) {
 }
 
 function describeSnapshotSettings(values) {
+  const shapeLabel =
+    values.instrument === 'piano'
+      ? `Piano ${window.pianoKeyboard.parsePianoRange(values.pianoRange).label}`
+      : `Shape ${values.shape}`;
   if (values.exerciseMode === EXERCISE_MODES.SONG) {
     const song = getSongById(values.songSelect);
-    return song ? `${song.title} · Shape ${values.shape}` : `Song · Shape ${values.shape}`;
+    return song ? `${song.title} · ${shapeLabel}` : `Song · ${shapeLabel}`;
   }
   const quality = values.scaleType === 'minor' ? 'minor' : 'major';
-  return `${values.key} ${quality} · Shape ${values.shape} · ${values.progression}`;
+  return `${values.key} ${quality} · ${shapeLabel} · ${values.progression}`;
 }
 
 function describeSnapshotVoices(values) {
@@ -2245,15 +2526,23 @@ async function loadExerciseSnapshot(snapshot) {
  */
 function ensurePinnedRotationStart() {
   if (getSelectedContinuousShift() !== 'cycle-pinned' || !pinnedExercises.length) return;
+  const rotation = pinnedRotationEntries();
+  if (!rotation.length) {
+    setPlaybackBanner(
+      `No pinned exercises for the ${getActiveInstrument()} — the cycle only plays snapshots of the active instrument.`,
+      'warning'
+    );
+    return;
+  }
   const current = captureExerciseSnapshot();
   const signature = current ? snapshotSignature(current) : null;
   const match =
-    signature && pinnedExercises.find((entry) => snapshotSignature(entry) === signature);
+    signature && rotation.find((entry) => snapshotSignature(entry) === signature);
   if (match) {
     currentPinnedId = match.id;
     return;
   }
-  showExerciseSnapshot(pinnedExercises[0]);
+  showExerciseSnapshot(rotation[0]);
   renderExerciseHistory();
 }
 
@@ -3457,22 +3746,119 @@ function setExerciseMode(mode) {
   updateExportTitle();
 }
 
+// The shape-walking shift options read differently per instrument: the same
+// machinery moves along the neck on guitar and between registers on piano.
+const CONTINUOUS_SHIFT_SHAPE_LABELS = {
+  guitar: {
+    'shape-up': 'Adjacent shape (up the neck)',
+    'shape-down': 'Adjacent shape (down the neck)',
+  },
+  piano: {
+    'shape-up': 'Adjacent register (higher)',
+    'shape-down': 'Adjacent register (lower)',
+  },
+};
+
+const INSTRUMENT_DEFAULT_SOUNDS = {
+  guitar: 'gm_electric_guitar_jazz',
+  piano: 'gm_acoustic_grand_piano',
+};
+
+/** Swap the melody sound only when the current pick belongs to the other
+ * instrument's optgroup; ungrouped picks ("None") are left alone. */
+function updateInstrumentSoundSelection(instrument) {
+  const select = document.getElementById('strudelSound');
+  const group = select?.selectedOptions?.[0]
+    ?.closest('optgroup')
+    ?.label?.toLowerCase();
+  if (!select || !group || group === instrument) return;
+  const fallback = INSTRUMENT_DEFAULT_SOUNDS[instrument];
+  if (fallback) select.value = fallback;
+}
+
+/** Apply the instrument to the form and chrome. Does not touch the rendered
+ * exercise — restores regenerate right after, and the toggle buttons go
+ * through switchInstrument() for that. */
+function setInstrument(instrument, { skipSave = false } = {}) {
+  const target = instrument === 'piano' ? 'piano' : 'guitar';
+  const input = document.getElementById('instrument');
+  if (input) input.value = target;
+  const isPiano = target === 'piano';
+  const guitarButton = document.getElementById('instrumentGuitar');
+  const pianoButton = document.getElementById('instrumentPiano');
+  if (guitarButton) {
+    guitarButton.classList.toggle('is-active', !isPiano);
+    guitarButton.setAttribute('aria-pressed', (!isPiano).toString());
+  }
+  if (pianoButton) {
+    pianoButton.classList.toggle('is-active', isPiano);
+    pianoButton.setAttribute('aria-pressed', isPiano.toString());
+  }
+  document.body.classList.toggle('instrument-piano', isPiano);
+  const shiftSelect = document.getElementById('continuousShift');
+  if (shiftSelect) {
+    const labels = CONTINUOUS_SHIFT_SHAPE_LABELS[target];
+    [...shiftSelect.options].forEach((option) => {
+      if (labels[option.value]) option.textContent = labels[option.value];
+    });
+  }
+  updateInstrumentSoundSelection(target);
+  updateStayInPositionAvailability();
+  updateExportTitle();
+  if (!skipSave) saveUserDefaults();
+}
+
+/** The toggle buttons: land the instrument, then re-roll or clear the sheet. */
+async function switchInstrument(instrument) {
+  if (getActiveInstrument() === instrument) return;
+  if (playbackState.isPlaying || playbackState.isPaused) {
+    await stopPlayback();
+  }
+  setInstrument(instrument);
+  // The register (or shape) changes the pitch pool, so the notes must be
+  // re-rolled — re-skinning the old ones could show pitches the new
+  // instrument's constraint would never generate.
+  const hasExercise = Boolean(lastExerciseState?.measureData?.length);
+  const shapeValue = document.getElementById(getInstrumentView().shapeControlId)?.value;
+  if (hasExercise && shapeValue) {
+    regenerateExercise();
+    return;
+  }
+  // Nothing to re-roll (or no shape picked yet): clear the other instrument's
+  // leftovers so a guitar diagram never sits next to piano settings.
+  ['fretboard-container', 'fretboard-labels', 'notation', 'arpeggio-diagrams'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
+  currentScaleLabel = '';
+  lastExerciseState = null;
+  updatePlaybackStateFromExercise(null);
+}
+
 function updateExportTitle() {
   const titleEl = document.getElementById('export-title');
   if (!titleEl) {
     return;
   }
-  const shapeSelect = document.getElementById('shape');
-  const shapeLabel =
-    shapeSelect?.selectedOptions?.[0]?.textContent || shapeSelect?.value || '';
+  const isPiano = getActiveInstrument() === 'piano';
+  let shapeCaption;
+  if (isPiano) {
+    const rangeValue = document.getElementById('pianoRange')?.value;
+    shapeCaption = `Piano: ${window.pianoKeyboard.parsePianoRange(rangeValue).label}`;
+  } else {
+    const shapeSelect = document.getElementById('shape');
+    const shapeLabel =
+      shapeSelect?.selectedOptions?.[0]?.textContent || shapeSelect?.value || '';
+    shapeCaption = `Shape: ${shapeLabel}`;
+  }
   const mode = getSelectedExerciseMode();
   if (mode === EXERCISE_MODES.SONG) {
     const song = getSelectedSong();
     if (song) {
       const songKeyLabel = `${song.key} ${song.scaleType}`;
-      titleEl.textContent = `Song: ${song.title} | Key: ${songKeyLabel} | Shape: ${shapeLabel}`;
+      titleEl.textContent = `Song: ${song.title} | Key: ${songKeyLabel} | ${shapeCaption}`;
     } else {
-      titleEl.textContent = `Song exercise | Shape: ${shapeLabel}`;
+      titleEl.textContent = `Song exercise | ${shapeCaption}`;
     }
     return;
   }
@@ -3484,7 +3870,7 @@ function updateExportTitle() {
     : progressionSelect?.selectedOptions?.[0]?.textContent ||
       progressionSelect?.value ||
       '';
-  titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | Shape: ${shapeLabel}`;
+  titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | ${shapeCaption}`;
 }
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
@@ -3544,8 +3930,21 @@ function fretPositionsToNotes(scaleFrets, tuningNotes) {
 function toVexFlowFormat(note) {
   const pc = Tonal.Note.pitchClass(note);
   const octave = Tonal.Note.octave(note);
-  // Add 1 octave for guitar transposition: sounding pitch → written pitch
-  return `${pc.toLowerCase()}/${octave + 1}`;
+  // Guitar transposes (+1 octave, sounding pitch → written pitch); piano is
+  // written at sounding pitch. Reads the active instrument at render time,
+  // which is safe because settings are always applied before an exercise is
+  // (re)rendered — a caller that renders before applying settings would
+  // mis-transpose.
+  return `${pc.toLowerCase()}/${octave + getInstrumentView().vexflowOctaveShift}`;
+}
+
+/** Piano low registers read better in bass clef; guitar is always treble. */
+function getNotationClef() {
+  if (getActiveInstrument() !== 'piano') return 'treble';
+  const range = window.pianoKeyboard.parsePianoRange(
+    document.getElementById('pianoRange')?.value
+  );
+  return (range.minMidi + range.maxMidi) / 2 < 60 ? 'bass' : 'treble';
 }
 // Note: This file depends on noteFlow.js for pure note flow functions.
 // Ensure noteFlow.js is loaded before this file in index.html.
@@ -3815,6 +4214,116 @@ function getArpeggioDiagramContainer() {
   return document.getElementById('arpeggio-diagrams');
 }
 
+// ─── Piano keyboard rendering ────────────────────────────────────────────────
+// Piano twins of renderScaleDiagram / renderArpeggioDiagrams. The keyboard is
+// drawn by pianoKeyboard.js; the theory (which keys, what label, what color
+// class) is decided here, mirroring how fretboard.js draws and flow.js colors.
+
+/** Scale markers for a register: one per in-scale key, spelled from the scale
+ * (so Db stays Db), classed by 1-based scale degree for CSS coloring. */
+function buildPianoScaleMarkers(shapeContext) {
+  const scaleData = Tonal.Scale.get(`${shapeContext.key} ${shapeContext.scaleType}`);
+  const chromaToDegree = new Map();
+  const chromaToName = new Map();
+  (scaleData.notes || []).forEach((note, index) => {
+    const chroma = Tonal.Note.chroma(note);
+    chromaToDegree.set(chroma, index + 1);
+    chromaToName.set(chroma, note);
+  });
+  const markers = [];
+  for (let midi = shapeContext.minMidi; midi <= shapeContext.maxMidi; midi += 1) {
+    const degree = chromaToDegree.get(midi % 12);
+    if (!degree) continue;
+    markers.push({
+      midi,
+      label: chromaToName.get(midi % 12),
+      className: `piano-degree-${degree}`,
+    });
+  }
+  return markers;
+}
+
+function renderPianoScaleDiagram(shapeContext) {
+  const container = document.getElementById('fretboard-container');
+  if (!container) return;
+  container.style.width = '100%';
+  container.style.maxWidth = '900px';
+  container.style.margin = '0 auto';
+  window.pianoKeyboard.render(container, {
+    minMidi: shapeContext.minMidi,
+    maxMidi: shapeContext.maxMidi,
+    markers: buildPianoScaleMarkers(shapeContext),
+  });
+  applyPianoScaleDegreeColoring(container);
+  // No fret geometry on a keyboard: the caption falls back to centring itself.
+  currentFretboardPositions = null;
+  currentScaleLabel = `${shapeContext.key} ${shapeContext.scaleType} · ${shapeContext.shape}`;
+  currentChordLabel = null;
+  currentNextLabel = null;
+  // Empty the host so the unchanged-label guard cannot keep a stale caption
+  // (e.g. the guitar one) after an instrument or register switch.
+  const labelHost = document.getElementById('fretboard-labels');
+  if (labelHost) labelHost.innerHTML = '';
+  renderFretboardBoxLabel(null, null);
+}
+
+/** Per-chord mini keyboards: one octave, chord tones by chroma with R/3/5/7
+ * tags. Emits the same wrapper markup as the guitar chord boxes, so playback
+ * highlighting and the existing CSS work unchanged. */
+function renderPianoChordDiagrams(measureData, shapeContext) {
+  const container = getArpeggioDiagramContainer();
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  if (!measureData?.length || !window.pianoKeyboard) {
+    return;
+  }
+
+  const seenChords = new Set();
+  measureData.forEach((measure) => {
+    if (seenChords.has(measure.chordName)) {
+      return;
+    }
+    seenChords.add(measure.chordName);
+    const chordData = Tonal.Chord.get(`${measure.rootNote}${measure.quality}`);
+    if (!chordData?.notes?.length || !chordData.intervals) {
+      return;
+    }
+
+    const diagram = document.createElement('div');
+    diagram.className = 'arpeggio-diagram arpeggio-diagram--piano';
+    diagram.dataset.chord = measure.chordName;
+    const label = document.createElement('div');
+    label.className = 'arpeggio-diagram__label';
+    label.textContent = measure.chordName;
+    const box = document.createElement('div');
+    box.className = 'arpeggio-diagram__box';
+    diagram.appendChild(label);
+    diagram.appendChild(box);
+    container.appendChild(diagram);
+
+    const markers = chordData.notes.map((note, i) => {
+      const intervalNum = parseInt(chordData.intervals[i], 10);
+      return {
+        midi: 60 + Tonal.Note.chroma(note),
+        label: intervalNum === 1 ? 'R' : String(intervalNum),
+        className: intervalNum === 1 ? 'piano-chord-root' : 'piano-chord-tone',
+      };
+    });
+    window.pianoKeyboard.render(box, {
+      minMidi: 60,
+      maxMidi: 71, // C..B — one octave, chroma only
+      markers,
+      showOctaveLabels: false,
+    });
+  });
+
+  // Reveal the "View all scale arpeggios" button (it lives in the card footer)
+  const scaleDegreeButton = document.getElementById('scaleDegreeModalBtn');
+  if (scaleDegreeButton) scaleDegreeButton.style.display = '';
+}
+
 // ─── Scale-degree modal ───────────────────────────────────────────────────────
 
 const SCALE_DEGREE_INFO = [
@@ -3859,6 +4368,12 @@ function openScaleDegreeModal() {
   // Use cagedShape.shape (e.g. "G Shape") directly — no extra "shape" suffix
   titleEl.textContent = `Scale Arpeggios — ${cagedShape.key} ${cagedShape.scaleType} (${cagedShape.shape || ''})`.replace(/\s*\(\s*\)\s*$/, '');
   body.innerHTML = '';
+
+  if (cagedShape.instrument === 'piano') {
+    renderPianoScaleDegreeRows(body, cagedShape);
+    modal.showModal();
+    return;
+  }
 
   // Build a lookup of which fret positions are inside the CAGED box
   const boxPositionsKey = {};
@@ -3982,6 +4497,71 @@ function openScaleDegreeModal() {
   modal.showModal();
 }
 
+/** Piano rows for the scale-degree modal: one register-wide keyboard per
+ * degree, chord tones lit exactly like the guitar rows. */
+function renderPianoScaleDegreeRows(body, shapeContext) {
+  const scaleData = Tonal.Scale.get(`${shapeContext.key} ${shapeContext.scaleType}`);
+  const scaleNotes = scaleData.notes;
+  const qualities = shapeContext.scaleType === 'minor'
+    ? SCALE_DEGREE_QUALITIES_MINOR
+    : SCALE_DEGREE_QUALITIES_MAJOR;
+
+  SCALE_DEGREE_INFO.forEach(({ degree, label }) => {
+    if (degree > scaleNotes.length) return;
+
+    const degreeNote = scaleNotes[degree - 1];
+    const quality    = qualities[degree - 1];
+
+    const chordData = Tonal.Chord.get(`${degreeNote}${quality}`);
+    const chromaToIntervalNum = {};
+    if (chordData && chordData.notes && chordData.intervals) {
+      chordData.notes.forEach((note, i) => {
+        chromaToIntervalNum[Tonal.Note.chroma(note)] = parseInt(chordData.intervals[i], 10);
+      });
+    }
+
+    const row = document.createElement('div');
+    row.className = 'sdm-row';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'sdm-label';
+    labelEl.innerHTML = `${label}<span class="sdm-label__degree">${degreeNote}${quality}</span>`;
+
+    const kbContainer = document.createElement('div');
+    kbContainer.className = 'sdm-fretboard sdm-piano';
+
+    row.appendChild(labelEl);
+    row.appendChild(kbContainer);
+    body.appendChild(row);
+
+    window.pianoKeyboard.render(kbContainer, {
+      minMidi: shapeContext.minMidi,
+      maxMidi: shapeContext.maxMidi,
+      markers: buildPianoScaleMarkers(shapeContext),
+      showOctaveLabels: degree === 1,
+    });
+
+    // Chord root → green + ring, other chord tones → blue + ring, rest dimmed
+    kbContainer.querySelectorAll('.piano-marker').forEach((markerEl) => {
+      const circle = markerEl.querySelector('.piano-marker-circle');
+      if (!circle) return;
+      const midi = parseInt(markerEl.dataset.midi, 10);
+      const intervalNum = chromaToIntervalNum[((midi % 12) + 12) % 12];
+      if (intervalNum !== undefined) {
+        markerEl.style.opacity = '1';
+        const fill = intervalNum === 1 ? FRETBOARD_COLOR_ROOT : FRETBOARD_COLOR_INBOX;
+        circle.style.setProperty('fill', fill, 'important');
+        if (SCALE_DEGREE_RING_DEGREES.has(intervalNum)) {
+          addRingToDot(markerEl, circle, PIANO_RING_RADIUS);
+        }
+      } else {
+        markerEl.style.opacity = '0.18';
+        circle.style.removeProperty('fill');
+      }
+    });
+  });
+}
+
 
 function getDiagramBasePosition(cagedShape) {
   const frets = cagedShape.scale_frets
@@ -4049,10 +4629,19 @@ function formatChordSymbol(chordSymbol) {
   return formatChordName(parsed.rootNote, parsed.quality);
 }
 
+/** The instrument's full sounding range; the shape/register then narrows it
+ * via scaleMidiSet, exactly like the CAGED box narrows the guitar's neck. */
+function getInstrumentPitchRange() {
+  if (getActiveInstrument() === 'piano') {
+    return { minPitch: 21, maxPitch: 108 }; // A0..C8
+  }
+  return getGuitarPitchRange();
+}
+
 function buildChordNotesInRange(chordNoteNames) {
   const safeNotes = Array.isArray(chordNoteNames) ? chordNoteNames : [];
-  const { minPitch, maxPitch } = getGuitarPitchRange();
-  const octaves = [2, 3, 4, 5, 6];
+  const { minPitch, maxPitch } = getInstrumentPitchRange();
+  const octaves = [1, 2, 3, 4, 5, 6, 7];
   const chordNotes = [];
   octaves.forEach((oct) => {
     safeNotes.forEach((note) => {
@@ -4085,7 +4674,43 @@ function getVexChordRenderSettings(basePosition) {
   };
 }
 
+/** Piano twin of prepareExerciseContext: the register is the "shape". Returns
+ * the same bundle, with a register descriptor in the cagedShape slot — no
+ * scale_frets, so every guitar-only consumer that guards on them stays inert. */
+function preparePianoContext(keyValue, rangeValue) {
+  const keyContext = getKeyContext(keyValue);
+  const range = window.pianoKeyboard.parsePianoRange(rangeValue);
+  const scaleData = Tonal.Scale.get(`${keyContext.tonic} ${keyContext.scaleType}`);
+  const scalePitchClasses = scaleData.notes || [];
+  const scaleChromaSet = new Set(
+    scalePitchClasses.map((note) => Tonal.Note.chroma(note))
+  );
+  const scaleMidiSet = new Set();
+  for (let midi = range.minMidi; midi <= range.maxMidi; midi += 1) {
+    if (scaleChromaSet.has(midi % 12)) {
+      scaleMidiSet.add(midi);
+    }
+  }
+  return {
+    keyContext,
+    cagedShape: {
+      instrument: 'piano',
+      key: keyContext.tonic,
+      scaleType: keyContext.scaleType,
+      shape: range.label,
+      minMidi: range.minMidi,
+      maxMidi: range.maxMidi,
+    },
+    scalePitchClasses,
+    scaleChromaSet,
+    scaleMidiSet,
+  };
+}
+
 function prepareExerciseContext(keyValue, shape) {
+  if (getActiveInstrument() === 'piano') {
+    return preparePianoContext(keyValue, shape);
+  }
   const keyContext = getKeyContext(keyValue);
   const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
   if (!cagedShape) {
@@ -4415,7 +5040,9 @@ function getChordToneStartCandidates(measure, degree) {
  */
 function buildExerciseMeasures(options = {}) {
   const mode = options.mode || EXERCISE_MODES.RANDOM;
-  const shape = options.shape || document.getElementById('shape')?.value;
+  const shape =
+    options.shape ||
+    document.getElementById(getInstrumentView().shapeControlId)?.value;
   const song = options.song || null;
   const isSongMode = mode === EXERCISE_MODES.SONG;
   let key = '';
@@ -4647,6 +5274,7 @@ function generateExercise(options = {}) {
   const maxMeasuresPerLine = 4;
 
   // Now build the VexFlow notes for rendering, one stave per bar
+  const notationClef = getNotationClef();
   const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
   const barGroups = [];
   measureData.forEach((segment) => {
@@ -4666,7 +5294,7 @@ function generateExercise(options = {}) {
         for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
           staveNotes.push(
             new StaveNote({
-              clef: 'treble',
+              clef: notationClef,
               keys: [toVexFlowFormat(generated[noteIdx])],
               duration: slotSize === 2 ? '8' : 'q',
             })
@@ -4741,7 +5369,7 @@ function generateExercise(options = {}) {
       const stave = new Stave(xStart, yStart, staveWidth);
       if (index === 0) {
         stave
-          .addClef('treble')
+          .addClef(notationClef)
           .addKeySignature(keyContext.vexflowKeySignature)
           .addTimeSignature('4/4');
       }
@@ -4783,7 +5411,7 @@ function generateExercise(options = {}) {
     });
   });
 
-  renderArpeggioDiagrams(measureData, cagedShape);
+  getInstrumentView().renderChordDiagrams(measureData, cagedShape);
 
   // Store for the scale-degrees modal
   lastExerciseState = { cagedShape, measureData };
@@ -4842,16 +5470,17 @@ function headDurationFor(beats) {
 function makeHeadNote(VF, note, beats) {
   const spec = headDurationFor(beats);
   if (!spec) return null;
+  const clef = getNotationClef();
   let staveNote;
   if (note) {
     staveNote = new VF.StaveNote({
-      clef: 'treble',
+      clef,
       keys: [toVexFlowFormat(note)],
       duration: spec.duration,
     });
   } else {
     staveNote = new VF.StaveNote({
-      clef: 'treble',
+      clef,
       keys: ['b/4'],
       duration: `${spec.duration}r`,
     });
@@ -4929,7 +5558,7 @@ function buildHeadSlashBarNotes(VF) {
     try {
       staveNote = new VF.StaveNote({ keys: ['b/4'], duration: 'qs' });
     } catch (error) {
-      staveNote = new VF.StaveNote({ clef: 'treble', keys: ['b/4'], duration: 'qr' });
+      staveNote = new VF.StaveNote({ clef: getNotationClef(), keys: ['b/4'], duration: 'qr' });
     }
     notes.push(staveNote);
   }
@@ -5078,7 +5707,7 @@ function renderHeadSheet(song) {
       const stave = new Stave(xStart, yStart, staveWidth);
       if (index === 0) {
         stave
-          .addClef('treble')
+          .addClef(getNotationClef())
           .addKeySignature(keyContext.vexflowKeySignature)
           .addTimeSignature('4/4');
       }
@@ -5176,29 +5805,36 @@ function regenerateExercise(options = {}) {
       : getSelectedKeyValue();
   updateKeyDebug(keyValue);
 
-  const shape = document.getElementById('shape').value;
+  const view = getInstrumentView();
+  const shape = document.getElementById(view.shapeControlId)?.value;
   if (!shape) {
     alert('Please select a chord shape.');
     return;
   }
 
-  const keyContext = getKeyContext(keyValue);
-  const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
-  if (!cagedShape) {
-    alert('Please select a chord shape.');
-    return;
+  let shapeContext;
+  if (getActiveInstrument() === 'guitar') {
+    const keyContext = getKeyContext(keyValue);
+    const cagedShape = getCAGEDShape(shape, keyContext.cagedKey);
+    if (!cagedShape) {
+      alert('Please select a chord shape.');
+      return;
+    }
+    if (keyContext.isMinor) {
+      cagedShape.key = keyContext.tonic;
+      cagedShape.scaleType = keyContext.scaleType;
+    }
+    shapeContext = cagedShape;
+  } else {
+    shapeContext = preparePianoContext(keyValue, shape).cagedShape;
   }
-  if (keyContext.isMinor) {
-    cagedShape.key = keyContext.tonic;
-    cagedShape.scaleType = keyContext.scaleType;
-  }
-  debugLog('cagedShape:', cagedShape);
+  debugLog('shapeContext:', shapeContext);
 
   // Clear previous chords and diagrams
   document.getElementById('fretboard-container').innerHTML = '';
 
-  // Render the scale diagram using Fretboard.js
-  renderScaleDiagram(cagedShape);
+  // Render the instrument diagram (fretboard or keyboard)
+  view.renderScaleDiagram(shapeContext);
 
   // Generate the musical exercise
   const exerciseData = generateExercise({
@@ -5245,7 +5881,10 @@ function buildExportFileName(extension) {
       sanitizeFilePart(bars),
     ]);
   }
-  const shape = document.getElementById('shape')?.value || '';
+  if (getActiveInstrument() === 'piano') {
+    parts.push('piano');
+  }
+  const shape = document.getElementById(getInstrumentView().shapeControlId)?.value || '';
   if (shape) {
     parts.push(sanitizeFilePart(shape));
   }
@@ -5488,6 +6127,16 @@ document.addEventListener('DOMContentLoaded', function () {
         setExerciseMode(EXERCISE_MODES.SONG);
       });
     }
+
+    document.getElementById('instrumentGuitar')?.addEventListener('click', () => {
+      switchInstrument('guitar');
+    });
+    document.getElementById('instrumentPiano')?.addEventListener('click', () => {
+      switchInstrument('piano');
+    });
+    document.getElementById('pianoRange')?.addEventListener('change', () => {
+      updateExportTitle();
+    });
 
     const playbackEngineSelect = document.getElementById('playbackEngine');
     if (playbackEngineSelect) {
