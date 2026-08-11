@@ -1846,6 +1846,8 @@ async function restartPlaybackLayers() {
 let playbackSessionToken = 0;
 
 async function startPlayback() {
+  // Cycle mode: make sure what plays first is part of the rotation.
+  ensurePinnedRotationStart();
   stopVisualPlayback(); // clears any previous highlight, and the playing flag
   // Claim the transport before awaiting Strudel, so a click during the load is
   // read as "stop" instead of starting a second, overlapping playback.
@@ -2146,17 +2148,53 @@ function matchReplayMeasures(replay, measureData) {
   return fits ? replay : null;
 }
 
-async function loadExerciseSnapshot(snapshot) {
+/** Put a saved exercise on screen — settings, chart and its exact notes. */
+function showExerciseSnapshot(snapshot, { warnOnMismatch = false } = {}) {
   if (!snapshot) return;
-  if (playbackState.isPlaying) {
-    await stopPlayback();
-  }
   applyControlValues(snapshot.settings);
   // Loading a pinned entry also sets where the rotation carries on from.
   currentPinnedId = isPinned(snapshot.id) ? snapshot.id : null;
-  regenerateExercise({ replay: snapshot.measures, warnOnReplayMismatch: true });
+  regenerateExercise({ replay: snapshot.measures, warnOnReplayMismatch: warnOnMismatch });
+}
+
+async function loadExerciseSnapshot(snapshot) {
+  if (!snapshot) return;
+  if (playbackState.isPlaying || playbackState.isPaused) {
+    await stopPlayback();
+  }
+  showExerciseSnapshot(snapshot, { warnOnMismatch: true });
   renderExerciseHistory();
   document.getElementById('exerciseHistoryModal')?.close();
+}
+
+/**
+ * Cycle mode plays the rotation, not whatever happened to be on screen: if the
+ * current exercise is not one of the pinned ones, start on the first pinned
+ * entry instead of running the stale one for a loop first.
+ */
+function ensurePinnedRotationStart() {
+  if (getSelectedContinuousShift() !== 'cycle-pinned' || !pinnedExercises.length) return;
+  const current = captureExerciseSnapshot();
+  const signature = current ? snapshotSignature(current) : null;
+  const match =
+    signature && pinnedExercises.find((entry) => snapshotSignature(entry) === signature);
+  if (match) {
+    currentPinnedId = match.id;
+    return;
+  }
+  showExerciseSnapshot(pinnedExercises[0]);
+  renderExerciseHistory();
+}
+
+/** Move a pinned entry up or down the rotation. */
+function movePinnedExercise(id, delta) {
+  const index = pinnedExercises.findIndex((entry) => entry.id === id);
+  const target = index + delta;
+  if (index === -1 || target < 0 || target >= pinnedExercises.length) return;
+  const [entry] = pinnedExercises.splice(index, 1);
+  pinnedExercises.splice(target, 0, entry);
+  writePinnedExercises();
+  renderExerciseHistory();
 }
 
 function isPinned(id) {
@@ -2198,23 +2236,20 @@ function setHistoryHint(message) {
   }
 }
 
-function exportPinnedExercises() {
-  if (!pinnedExercises.length) {
-    setHistoryHint('Nothing pinned yet — star an exercise first.');
-    return;
-  }
+/** Write exercises to a .json file the Import button can read back. */
+function downloadExercisesFile(exercises, filenameStem) {
   const payload = {
     app: 'arpeggio-flow',
-    kind: 'pinned-exercises',
+    kind: 'exercises',
     version: PINNED_FILE_VERSION,
     savedAt: new Date().toISOString(),
-    exercises: pinnedExercises,
+    exercises,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `arpeggio-flow-pinned-${new Date().toISOString().slice(0, 10)}.json`;
+  link.download = `${filenameStem}-${new Date().toISOString().slice(0, 10)}.json`;
   // Safari only downloads from an anchor that is in the document, and revoking
   // the blob URL in the same tick cancels the download — hence the timeout.
   link.style.display = 'none';
@@ -2224,7 +2259,26 @@ function exportPinnedExercises() {
     link.remove();
     URL.revokeObjectURL(url);
   }, 1000);
-  setHistoryHint(`Saved ${pinnedExercises.length} pinned exercise(s) to a file.`);
+}
+
+function exportPinnedExercises() {
+  if (!pinnedExercises.length) {
+    setHistoryHint('Nothing pinned yet — star an exercise first.');
+    return;
+  }
+  downloadExercisesFile(pinnedExercises, 'arpeggio-flow-pinned');
+  setHistoryHint(`Exported ${pinnedExercises.length} pinned exercise(s).`);
+}
+
+/** The exercise on screen, as a file that Import (or another device) accepts. */
+function exportCurrentExercise() {
+  const snapshot = captureExerciseSnapshot();
+  if (!snapshot) {
+    setPlaybackBanner('Generate an exercise before exporting it.', 'warning');
+    return;
+  }
+  downloadExercisesFile([snapshot], 'arpeggio-flow-exercise');
+  setPlaybackBanner(`Exported “${snapshot.label}” as a file.`, 'info');
 }
 
 /** Accepts the exported wrapper or a bare array of exercises. */
@@ -2279,8 +2333,16 @@ async function importPinnedExercises(file) {
   updateHistoryButton();
   renderExerciseHistory();
   const skipped = incoming.length - added.length;
+  // Loading is enough on its own: with nothing on screen yet (a fresh visit),
+  // put the first loaded exercise up so Play is usable straight away.
+  let shown = '';
+  if (!playbackState.measuresData.length && pinnedExercises.length) {
+    showExerciseSnapshot(pinnedExercises[0]);
+    renderExerciseHistory();
+    shown = ` Showing “${pinnedExercises[0].label}”.`;
+  }
   setHistoryHint(
-    `Loaded ${added.length} exercise(s)${skipped ? `, ${skipped} already pinned` : ''}.`
+    `Loaded ${added.length} exercise(s)${skipped ? `, ${skipped} already pinned` : ''}.${shown}`
   );
 }
 
@@ -2344,6 +2406,22 @@ function buildHistoryRow(snapshot, { pinnedList, order }) {
   actions.append(pinButton);
 
   if (pinnedList) {
+    const index = pinnedExercises.findIndex((entry) => entry.id === snapshot.id);
+    [
+      { label: '▲', delta: -1, title: 'Move up in the cycle' },
+      { label: '▼', delta: 1, title: 'Move down in the cycle' },
+    ].forEach(({ label, delta, title }) => {
+      const moveButton = document.createElement('button');
+      moveButton.type = 'button';
+      moveButton.className = 'hist-icon-button';
+      moveButton.textContent = label;
+      moveButton.title = title;
+      moveButton.setAttribute('aria-label', title);
+      moveButton.disabled = index + delta < 0 || index + delta >= pinnedExercises.length;
+      moveButton.addEventListener('click', () => movePinnedExercise(snapshot.id, delta));
+      actions.append(moveButton);
+    });
+
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
     deleteButton.className = 'hist-icon-button';
@@ -2914,7 +2992,41 @@ async function playStrudelExercise(notes) {
     }
     pattern.play();
   }
+  const context = getStrudelAudioContext();
+  if (context && context.state !== 'running') {
+    // Nothing will be heard until a gesture wakes the context back up.
+    setPlaybackBanner('The browser suspended audio — tap Play again to re-enable it.', 'warning');
+    return;
+  }
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${describePlaybackVoices()}).`, 'info');
+}
+
+/** The AudioContext Strudel plays through, once it exists. */
+function getStrudelAudioContext() {
+  const getter = strudelApi?.getAudioContext || window.getAudioContext;
+  if (typeof getter !== 'function') return null;
+  try {
+    return getter();
+  } catch (error) {
+    debugLog('No audio context available:', error);
+    return null;
+  }
+}
+
+/**
+ * iOS suspends the audio context whenever the page goes to the background, and
+ * Strudel only ever resumes it once — initAudioOnFirstClick removes its own
+ * listener after the first click. Everything afterwards then drives a dead
+ * context: Play does nothing, and neither does toggling Audio or changing the
+ * sound. Resuming must happen synchronously inside a user gesture, so this runs
+ * on pointerdown, before any await.
+ */
+function resumeAudioContextIfSuspended() {
+  const context = getStrudelAudioContext();
+  if (!context || context.state === 'running') return false;
+  context.resume?.().catch((error) => debugLog('Audio context resume failed:', error));
+  debugLog('Audio context was suspended; resume requested.');
+  return true;
 }
 
 async function stopStrudelExercise() {
@@ -4915,6 +5027,12 @@ document.addEventListener('DOMContentLoaded', function () {
 
     window.addEventListener('resize', repositionFretboardBoxLabel);
 
+    // Any tap re-arms audio if the browser suspended it (see the function).
+    document.addEventListener('pointerdown', resumeAudioContextIfSuspended, true);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) resumeAudioContextIfSuspended();
+    });
+
     // Remember the form as it is left. The inline window.onload handler in the
     // page rebuilds the shape list, so the restore waits for 'load' to run
     // after it — otherwise the restored shape is overwritten.
@@ -4984,19 +5102,35 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     });
 
-    const exportPngButton = document.getElementById('exportPngButton');
-    if (exportPngButton) {
-      exportPngButton.addEventListener('click', () => {
-        exportExerciseAsPng();
+    // One Export button in the footer, with the three formats behind it.
+    const exportMenuButton = document.getElementById('exportMenuButton');
+    const exportMenuList = document.getElementById('exportMenuList');
+    const setExportMenuOpen = (open) => {
+      if (!exportMenuList || !exportMenuButton) return;
+      exportMenuList.hidden = !open;
+      exportMenuButton.setAttribute('aria-expanded', String(open));
+    };
+    exportMenuButton?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setExportMenuOpen(exportMenuList?.hidden !== false);
+    });
+    document.addEventListener('click', (event) => {
+      if (!exportMenuList || exportMenuList.hidden) return;
+      if (!event.target.closest('.export-menu')) setExportMenuOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setExportMenuOpen(false);
+    });
+    [
+      ['exportPngButton', exportExerciseAsPng],
+      ['exportPdfButton', exportExerciseAsPdf],
+      ['exportExerciseButton', exportCurrentExercise],
+    ].forEach(([id, action]) => {
+      document.getElementById(id)?.addEventListener('click', () => {
+        setExportMenuOpen(false);
+        action();
       });
-    }
-
-    const exportPdfButton = document.getElementById('exportPdfButton');
-    if (exportPdfButton) {
-      exportPdfButton.addEventListener('click', () => {
-        exportExerciseAsPdf();
-      });
-    }
+    });
 
     // Scale-degree modal: open button
     const scaleDegreeModalBtn = document.getElementById('scaleDegreeModalBtn');
