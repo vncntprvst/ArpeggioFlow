@@ -1850,6 +1850,10 @@ let playbackSessionToken = 0;
 // shift), then bring up the visual clock, history and shift timer that were
 // held back while the head played.
 let introTimerId = null;
+// True once the head has fully played and handed off to the exercise. Pause
+// keeps it (Resume goes straight to the exercise instead of sitting through
+// the whole head again); Stop resets it (a fresh Play replays the head).
+let headPlayedThisSession = false;
 
 function clearIntroTimer() {
   if (introTimerId !== null) {
@@ -1876,6 +1880,7 @@ function scheduleIntroHandoff(token, introBeats) {
     if (restartsClock) {
       await playStrudelExercise(playbackState.notes);
     }
+    headPlayedThisSession = true;
     clearHeadVisual();
     if (isVisualPlaybackEnabled()) {
       startVisualPlayback();
@@ -1901,7 +1906,8 @@ async function startPlayback() {
   if (isAudioPlaybackEnabled() && playbackState.engine === 'strudel') {
     // "Play the head first": one chorus of comped chords (+ melody when the
     // song has one), then the exercise takes over at the loop boundary.
-    if (shouldPlayHeadFirst()) {
+    // After a pause, Resume skips the head it already played.
+    if (shouldPlayHeadFirst() && !headPlayedThisSession) {
       const introBeats = await playSongIntro();
       if (token !== playbackSessionToken) {
         if (!playbackState.isPlaying) {
@@ -1940,6 +1946,7 @@ async function startPlayback() {
 
 async function stopPlayback() {
   playbackSessionToken += 1; // abandon any start still waiting on Strudel
+  headPlayedThisSession = false; // a fresh Play replays the head
   clearIntroTimer();
   clearHeadVisual();
   clearContinuousShiftTimer();
@@ -5076,17 +5083,26 @@ function renderHeadSheet(song) {
 
       // Chord symbols at their beats (2-chord bars annotate beat 0 and 2)
       const chordBeats = distributeBeatsPerBar(bar.barChords.length);
+      const floatingChords = [];
       let chordStart = 0;
       bar.barChords.slice(0, chordBeats.length).forEach((chordSymbol, chordIndex) => {
-        const target =
-          bar.noteMeta.findIndex((meta) => meta.startBeat >= chordStart - 1e-6) ?? 0;
-        const noteForChord = bar.notes[target === -1 ? bar.notes.length - 1 : target];
-        if (noteForChord) {
+        const target = bar.noteMeta.findIndex(
+          (meta) => meta.startBeat >= chordStart - 1e-6
+        );
+        if (target !== -1) {
           const annotation = new Annotation(formatChordSymbol(chordSymbol))
             .setFont('Arial', 12, 'normal')
             .setVerticalJustification(Annotation.VerticalJustify.TOP)
             .setYShift(10);
-          noteForChord.addModifier(annotation, 0);
+          bar.notes[target].addModifier(annotation, 0);
+        } else {
+          // A held note spans this chord's beat — nothing to attach to, so
+          // the symbol is drawn at its beat position once the bar is laid out
+          // (otherwise both chords stack on the same note).
+          floatingChords.push({
+            text: formatChordSymbol(chordSymbol),
+            beat: chordStart,
+          });
         }
         chordStart += chordBeats[chordIndex];
       });
@@ -5100,6 +5116,25 @@ function renderHeadSheet(song) {
       new Formatter().joinVoices([voice]).format([voice], Math.max(120, staveWidth - reserve));
       voice.draw(context, stave);
       beams.forEach((beam) => beam.setContext(context).draw());
+
+      // Chords whose beat had no note to carry them: draw at the beat's
+      // proportional x, on the same text line as the attached annotations
+      floatingChords.forEach(({ text, beat }) => {
+        const startX = stave.getNoteStartX();
+        const endX =
+          typeof stave.getNoteEndX === 'function'
+            ? stave.getNoteEndX()
+            : stave.getX() + stave.getWidth();
+        const x = startX + ((endX - startX) * beat) / BEATS_PER_CYCLE;
+        const y =
+          typeof stave.getYForTopText === 'function'
+            ? stave.getYForTopText(1)
+            : yStart;
+        context.save();
+        context.setFont('Arial', 12, 'normal');
+        context.fillText(text, x, y);
+        context.restore();
+      });
 
       // Ties inside the bar, plus any tie left hanging from the previous bar
       bar.ties.forEach(({ from, to, fromPreviousBar }) => {
