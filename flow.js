@@ -541,6 +541,27 @@ const BACKING_CHORD_CONFIG = {
     hits: (beats) =>
       Array.from({ length: beats }, (unused, beat) => ({ beat, clip: 0.9 })),
   },
+  // The waltz-style left hand (bass note, then chords) squared to the app's
+  // 4/4 grid: `bass: true` hits play the root alone, an octave below the
+  // chord voicing.
+  'piano-bass-chords': {
+    label: 'Piano (bass & chords)',
+    sound: 'gm_acoustic_grand_piano',
+    gain: 0.34,
+    hits: (beats) =>
+      Array.from({ length: beats }, (unused, beat) =>
+        beat === 0 ? { beat, clip: 1, bass: true } : { beat, clip: 0.9 }
+      ),
+  },
+  'piano-stride': {
+    label: 'Piano (stride: bass on 1 & 3)',
+    sound: 'gm_acoustic_grand_piano',
+    gain: 0.34,
+    hits: (beats) =>
+      Array.from({ length: beats }, (unused, beat) =>
+        beat % 2 === 0 ? { beat, clip: 1, bass: true } : { beat, clip: 0.9 }
+      ),
+  },
 };
 
 const GM_SOUNDFONT_FONTS = {
@@ -3168,7 +3189,8 @@ function buildBackingChordVoicing(rootNote, quality, lowMidi = BACKING_CHORD_LOW
   const chordData = Tonal.Chord.get(`${rootNote}${quality || ''}`);
   const pitchClasses = (chordData?.notes || []).slice(0, BACKING_CHORD_MAX_TONES);
   if (!pitchClasses.length) return null;
-  const tokens = [];
+  // Note names, not strudel tokens: the notation layer reads this voicing too.
+  const notes = [];
   let previousMidi = lowMidi - 1;
   pitchClasses.forEach((pitchClass) => {
     let octave = Math.floor(previousMidi / 12) - 1;
@@ -3179,10 +3201,23 @@ function buildBackingChordVoicing(rootNote, quality, lowMidi = BACKING_CHORD_LOW
     }
     if (!Number.isFinite(midi)) return;
     previousMidi = midi;
-    const token = toStrudelNote(`${pitchClass}${octave}`);
-    if (token) tokens.push(token);
+    notes.push(`${pitchClass}${octave}`);
   });
-  return tokens.length ? tokens : null;
+  return notes.length ? notes : null;
+}
+
+/** The bass hit of a bass-&-chords preset: the root alone, placed in the
+ * octave just below the chord voicing. */
+function buildBackingBassNote(rootNote, lowMidi = BACKING_CHORD_LOW_MIDI) {
+  const pitchClass = Tonal.Note.pitchClass(rootNote);
+  if (!pitchClass) return null;
+  for (let octave = 0; octave <= 7; octave += 1) {
+    const midi = Tonal.Note.midi(`${pitchClass}${octave}`);
+    if (Number.isFinite(midi) && midi >= lowMidi - 12 && midi < lowMidi) {
+      return `${pitchClass}${octave}`;
+    }
+  }
+  return null;
 }
 
 /**
@@ -3204,18 +3239,30 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
   }
   const noteTokens = [];
   const clipTokens = [];
+  const compLowMidi = getBackingChordLowMidi();
   segments.forEach((segment) => {
     const beats = segment.beats || 4;
-    const voicing = buildBackingChordVoicing(
+    const voicingNotes = buildBackingChordVoicing(
       segment.rootNote,
       segment.quality,
-      getBackingChordLowMidi()
+      compLowMidi
+    );
+    const voicing = (voicingNotes || []).map(toStrudelNote).filter(Boolean);
+    const bassToken = toStrudelNote(
+      buildBackingBassNote(segment.rootNote, compLowMidi) || ''
     );
     const hits = new Map((config.hits(beats) || []).map((hit) => [hit.beat, hit]));
     for (let beat = 0; beat < beats; beat += 1) {
-      const hit = voicing ? hits.get(beat) : null;
-      noteTokens.push(hit ? `[${voicing.join(',')}]` : '~');
-      clipTokens.push(hit ? `${hit.clip}` : '1');
+      const hit = voicing.length ? hits.get(beat) : null;
+      if (!hit) {
+        noteTokens.push('~');
+        clipTokens.push('1');
+        continue;
+      }
+      // A bass hit is the root alone; when it cannot be placed (or the preset
+      // has no bass hits) the full voicing plays as before.
+      noteTokens.push(hit.bass && bassToken ? bassToken : `[${voicing.join(',')}]`);
+      clipTokens.push(`${hit.clip}`);
     }
   });
   // The comp rests through the trailing bars; only the backing rhythm keeps
@@ -3838,7 +3885,8 @@ function setInstrument(instrument, { skipSave = false } = {}) {
   // One header button showing the current instrument; clicking flips it.
   const toggleButton = document.getElementById('instrumentToggle');
   if (toggleButton) {
-    toggleButton.textContent = isPiano ? '🎹 Piano' : '🎸 Guitar';
+    toggleButton.textContent = isPiano ? 'Piano' : 'Guitar';
+    // toggleButton.textContent = isPiano ? '🎹 Piano' : '🎸 Guitar';
     toggleButton.title = isPiano ? 'Switch to guitar' : 'Switch to piano';
     toggleButton.setAttribute(
       'aria-label',
@@ -5295,6 +5343,104 @@ function buildExerciseMeasures(options = {}) {
   };
 }
 
+/**
+ * The accompaniment staff spec, or null when there is nothing to notate.
+ * Piano mode with a backing-chords preset on gets a grand staff: the practice
+ * line on one staff, the resting hand's comp written on the other — the
+ * Chopin-waltz layout (melody over bass-and-chords), squared to 4/4.
+ */
+function getNotatedAccompaniment() {
+  if (getActiveInstrument() !== 'piano') return null;
+  const config = getBackingChordConfig(getSelectedBackingChords());
+  if (config.type === 'off' || typeof config.hits !== 'function') return null;
+  const lowMidi = getBackingChordLowMidi();
+  return {
+    config,
+    lowMidi,
+    clef: lowMidi < 60 ? 'bass' : 'treble',
+    // Practicing the left hand puts the comp (the right hand) above the line.
+    above: getSelectedPianoHand() === 'left',
+  };
+}
+
+/**
+ * One bar of the accompaniment staff, from the same preset the audio layer
+ * plays: bass hits as single low roots, chord hits as stacks, each written to
+ * last until the next hit (gaps become rests) so the bar always sums to 4.
+ */
+function buildAccompanimentBarNotes(VF, segments, accomp) {
+  const notes = [];
+  const restKey = accomp.clef === 'bass' ? 'd/3' : 'b/4';
+  const attachDots = (staveNote, dots) => {
+    for (let dot = 0; dot < dots; dot += 1) {
+      if (VF.Dot?.buildAndAttach) {
+        VF.Dot.buildAndAttach([staveNote], { all: true });
+      } else if (typeof staveNote.addDot === 'function') {
+        staveNote.addDot(0);
+      }
+    }
+  };
+  const pushRest = (beats) => {
+    decomposeRestBeats(beats).forEach((value) => {
+      const spec = headDurationFor(value);
+      if (!spec) return;
+      notes.push(
+        new VF.StaveNote({
+          clef: accomp.clef,
+          keys: [restKey],
+          duration: `${spec.duration}r`,
+        })
+      );
+    });
+  };
+  segments.forEach((segment) => {
+    const beats = segment.beats || 4;
+    const voicing = buildBackingChordVoicing(
+      segment.rootNote,
+      segment.quality,
+      accomp.lowMidi
+    );
+    const bassNote = buildBackingBassNote(segment.rootNote, accomp.lowMidi);
+    const hits = (accomp.config.hits(beats) || [])
+      .filter((hit) => hit.beat >= 0 && hit.beat < beats)
+      .sort((a, b) => a.beat - b.beat);
+    if (!voicing || !hits.length) {
+      pushRest(beats);
+      return;
+    }
+    let cursor = 0;
+    hits.forEach((hit, idx) => {
+      if (hit.beat > cursor) {
+        pushRest(hit.beat - cursor);
+      }
+      const until = idx + 1 < hits.length ? hits[idx + 1].beat : beats;
+      const duration = until - hit.beat;
+      const spec = headDurationFor(duration);
+      if (!spec) {
+        pushRest(duration);
+        cursor = until;
+        return;
+      }
+      const keys =
+        hit.bass && bassNote
+          ? [toVexFlowFormat(bassNote)]
+          : voicing.map(toVexFlowFormat);
+      const staveNote = new VF.StaveNote({
+        clef: accomp.clef,
+        keys,
+        duration: spec.duration,
+      });
+      attachDots(staveNote, spec.dots);
+      notes.push(staveNote);
+      cursor = until;
+    });
+    if (cursor < beats) {
+      pushRest(beats - cursor);
+    }
+  });
+  return notes;
+}
+
 function generateExercise(options = {}) {
   const built = buildExerciseMeasures(options);
   if (built.error !== undefined) {
@@ -5329,6 +5475,7 @@ function generateExercise(options = {}) {
 
   // Now build the VexFlow notes for rendering, one stave per bar
   const notationClef = getNotationClef();
+  const accomp = getNotatedAccompaniment();
   const generatedNotes = measureData.flatMap((measure) => measure.generatedNotes || []);
   const barGroups = [];
   measureData.forEach((segment) => {
@@ -5339,6 +5486,7 @@ function generateExercise(options = {}) {
   });
   const measures = barGroups.map((bar) => ({
     segments: bar.segments,
+    accompNotes: accomp ? buildAccompanimentBarNotes(VF, bar.segments, accomp) : null,
     notes: bar.segments.flatMap((segment) => {
       const generated = segment.generatedNotes || [];
       const slots = segment.slots || generated.map(() => 1);
@@ -5387,7 +5535,9 @@ function generateExercise(options = {}) {
 
   // Vertical budget per line: a stave is ~80px plus its chord annotations, so
   // 170 left ~70px of empty air under every line and 60 above the first.
-  const staveHeight = 120;
+  // A grand staff (piano accompaniment) adds a second stave 90px below.
+  const accompStaveOffset = 90;
+  const staveHeight = accomp ? 120 + accompStaveOffset : 120;
   const topPadding = 28;
   const bottomPadding = 16;
   const height =
@@ -5413,14 +5563,16 @@ function generateExercise(options = {}) {
     let xStart = Math.max(20, Math.floor((width - line.width) / 2));
     let yStart = topPadding + lineIndex * staveHeight;
 
-    line.measures.forEach(({ index, width: staveWidth }) => {
+    line.measures.forEach(({ index, width: staveWidth }, lineMeasureIdx) => {
       const measure = measures[index];
 
       if (index === 0) {
         debugLog(`First measure width for key ${key}:`, staveWidth);
       }
 
-      const stave = new Stave(xStart, yStart, staveWidth);
+      // Grand staff: whichever part sits higher gets the upper stave.
+      const practiceY = accomp?.above ? yStart + accompStaveOffset : yStart;
+      const stave = new Stave(xStart, practiceY, staveWidth);
       if (index === 0) {
         stave
           .addClef(notationClef)
@@ -5428,7 +5580,37 @@ function generateExercise(options = {}) {
           .addTimeSignature('4/4');
       }
       stave.setContext(context).draw();
-      stavePositions[index] = { x: xStart, y: yStart, width: staveWidth, height: 80 };
+
+      let accompStave = null;
+      if (accomp) {
+        const accompY = accomp.above ? yStart : yStart + accompStaveOffset;
+        accompStave = new Stave(xStart, accompY, staveWidth);
+        if (index === 0) {
+          accompStave
+            .addClef(accomp.clef)
+            .addKeySignature(keyContext.vexflowKeySignature)
+            .addTimeSignature('4/4');
+        }
+        accompStave.setContext(context).draw();
+        if (lineMeasureIdx === 0 && VF.StaveConnector) {
+          const topStave = accomp.above ? accompStave : stave;
+          const bottomStave = accomp.above ? stave : accompStave;
+          new VF.StaveConnector(topStave, bottomStave)
+            .setType(VF.StaveConnector.type.BRACE)
+            .setContext(context)
+            .draw();
+          new VF.StaveConnector(topStave, bottomStave)
+            .setType(VF.StaveConnector.type.SINGLE_LEFT)
+            .setContext(context)
+            .draw();
+        }
+      }
+      stavePositions[index] = {
+        x: xStart,
+        y: yStart,
+        width: staveWidth,
+        height: accomp ? 80 + accompStaveOffset : 80,
+      };
 
       // One chord annotation per segment, at the segment's first note
       let annotationNoteIndex = 0;
@@ -5448,6 +5630,12 @@ function generateExercise(options = {}) {
       const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
         measure.notes
       );
+      let accompVoice = null;
+      if (accompStave && measure.accompNotes?.length) {
+        accompVoice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
+          measure.accompNotes
+        );
+      }
       // Dense (eighth-note) bars: the first measure needs extra right padding
       // so the last note clears the barline after clef/key/time take their
       // share; later measures instead spread their notes into more of the bar.
@@ -5455,10 +5643,19 @@ function generateExercise(options = {}) {
       const reserve =
         index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
       const availableWidth = stave.width - reserve;
-      new Formatter()
-        .joinVoices([voice])
-        .format([voice], Math.max(120, availableWidth));
+      // One formatter across both staves so the hands' beats line up.
+      const formatter = new Formatter().joinVoices([voice]);
+      if (accompVoice) {
+        formatter.joinVoices([accompVoice]);
+      }
+      formatter.format(
+        accompVoice ? [voice, accompVoice] : [voice],
+        Math.max(120, availableWidth)
+      );
       voice.draw(context, stave);
+      if (accompVoice) {
+        accompVoice.draw(context, accompStave);
+      }
       beams.forEach((beam) => beam.setContext(context).draw());
 
       xStart += stave.width;
@@ -6268,6 +6465,15 @@ document.addEventListener('DOMContentLoaded', function () {
         }
         refreshPlaybackBanner();
       });
+    });
+
+    // In piano mode the backing style is also written on the accompaniment
+    // staff, so the sheet re-renders — replaying the same notes, not rolling
+    // new ones.
+    document.getElementById('backingChords')?.addEventListener('change', () => {
+      if (getActiveInstrument() === 'piano' && lastExerciseState?.measureData?.length) {
+        regenerateExercise({ replay: toReplayMeasures(lastExerciseState.measureData) });
+      }
     });
 
     playbackUi.playButtons.forEach((button) => {
