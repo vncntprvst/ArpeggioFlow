@@ -424,3 +424,100 @@ describe('Strudel playback adapters', () => {
     expect(window.setCpm).toHaveBeenCalledWith(30);
   });
 });
+
+// Test the meter-aware bar slots and the rest-aware beat pattern
+describe('Bar slots, meters and rests', () => {
+  let buildBarSlots;
+  let distributeBeatsPerBar;
+  let slotNoteCount;
+  let countSlotNotes;
+  let addRestsToSlots;
+  let buildStrudelBeatPattern;
+
+  beforeAll(() => {
+    const flowJsContent = fs.readFileSync('flow.js', 'utf8');
+    const extract = (name) => {
+      const match = flowJsContent.match(
+        new RegExp(`function ${name}\\([\\s\\S]*?\\n\\}`)
+      );
+      if (!match) {
+        throw new Error(`Could not extract ${name} from flow.js`);
+      }
+      eval(`global.${name} = ${match[0]}`);
+      return global[name];
+    };
+    extract('toStrudelNote'); // dependency of buildStrudelBeatPattern
+    buildBarSlots = extract('buildBarSlots');
+    distributeBeatsPerBar = extract('distributeBeatsPerBar');
+    slotNoteCount = extract('slotNoteCount');
+    countSlotNotes = extract('countSlotNotes');
+    addRestsToSlots = extract('addRestsToSlots');
+    buildStrudelBeatPattern = extract('buildStrudelBeatPattern');
+  });
+
+  test('distributeBeatsPerBar splits a 4/4 bar as before', () => {
+    expect(distributeBeatsPerBar(1, 4)).toEqual([4]);
+    expect(distributeBeatsPerBar(2, 4)).toEqual([2, 2]);
+    expect(distributeBeatsPerBar(3, 4)).toEqual([2, 1, 1]);
+    expect(distributeBeatsPerBar(4, 4)).toEqual([1, 1, 1, 1]);
+  });
+
+  test('distributeBeatsPerBar handles 3/4 and 2/4 bars', () => {
+    expect(distributeBeatsPerBar(1, 3)).toEqual([3]);
+    expect(distributeBeatsPerBar(2, 3)).toEqual([2, 1]);
+    expect(distributeBeatsPerBar(3, 3)).toEqual([1, 1, 1]);
+    expect(distributeBeatsPerBar(5, 3)).toEqual([1, 1, 1]); // truncated
+    expect(distributeBeatsPerBar(1, 2)).toEqual([2]);
+    expect(distributeBeatsPerBar(2, 2)).toEqual([1, 1]);
+  });
+
+  test('buildBarSlots fills the bar for its meter', () => {
+    expect(buildBarSlots(4, 4)).toEqual([1, 1, 1, 1]);
+    expect(buildBarSlots(8, 4)).toEqual([2, 2, 2, 2]);
+    expect(buildBarSlots(3, 3)).toEqual([1, 1, 1]);
+    expect(buildBarSlots(6, 3)).toEqual([2, 2, 2]);
+    const five = buildBarSlots(5, 3);
+    expect(five).toHaveLength(3);
+    expect(countSlotNotes(five)).toBe(5);
+  });
+
+  test('buildBarSlots clamps out-of-range counts to the meter', () => {
+    expect(countSlotNotes(buildBarSlots(99, 3))).toBe(6);
+    expect(countSlotNotes(buildBarSlots(0, 3))).toBe(3);
+  });
+
+  test('slotNoteCount counts notes per slot kind', () => {
+    expect(slotNoteCount(1)).toBe(1);
+    expect(slotNoteCount(2)).toBe(2);
+    expect(slotNoteCount(0)).toBe(0);
+    expect(slotNoteCount('r8')).toBe(1);
+    expect(slotNoteCount('8r')).toBe(1);
+    expect(countSlotNotes([1, 2, 0, 'r8'])).toBe(4);
+  });
+
+  test('addRestsToSlots keeps the downbeat and the slot count', () => {
+    for (let run = 0; run < 200; run += 1) {
+      const slots = addRestsToSlots([1, 2, 1, 2]);
+      expect(slots).toHaveLength(4);
+      expect(slots[0]).toBe(1); // a chord's first beat never rests
+      slots.forEach((slot) => {
+        expect([1, 2, 0, 'r8', '8r']).toContain(slot);
+      });
+      expect(countSlotNotes(slots)).toBeGreaterThanOrEqual(4);
+    }
+  });
+
+  test('addRestsToSlots leaves one-beat segments alone', () => {
+    expect(addRestsToSlots([1])).toEqual([1]);
+    expect(addRestsToSlots([2])).toEqual([2]);
+  });
+
+  test('buildStrudelBeatPattern renders rests as ~ tokens', () => {
+    expect(buildStrudelBeatPattern([['C4'], ['D4', 'E4']])).toBe('c4 [d4 e4]');
+    expect(buildStrudelBeatPattern([[null]])).toBe('~');
+    expect(buildStrudelBeatPattern([['C4', null]])).toBe('[c4 ~]');
+    expect(buildStrudelBeatPattern([[null, 'D4']])).toBe('[~ d4]');
+    expect(buildStrudelBeatPattern([[]])).toBe('~');
+    expect(buildStrudelBeatPattern([['C4'], [null], ['E4']])).toBe('c4 ~ e4');
+  });
+});

@@ -314,6 +314,19 @@
                     <option value="8">8 — eighth notes</option>
                     <option value="random">Random (4–8 per bar)</option>
                   </select>
+                  <label class="toggle-label toggle-label--under" for="addRests">
+                    <input type="checkbox" id="addRests" />
+                    Add rests
+                  </label>
+                </div>
+
+                <div class="form-field">
+                  <label for="timeSignature">Time signature</label>
+                  <select id="timeSignature" name="timeSignature">
+                    <option value="4" selected>4/4</option>
+                    <option value="3">3/4</option>
+                    <option value="2">2/4</option>
+                  </select>
                 </div>
 
                 <div class="form-field">
@@ -646,7 +659,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260811"></script>
+  <script type="module" src="flow.js?v=20260812"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>

@@ -175,7 +175,7 @@ function getSelectedLoopPauseBars() {
 }
 
 function getLoopPauseBeats() {
-  return getSelectedLoopPauseBars() * BEATS_PER_CYCLE;
+  return getSelectedLoopPauseBars() * getBeatsPerBar();
 }
 
 function getSelectedBackingChords() {
@@ -1469,6 +1469,21 @@ function buildVisualSteps(mode) {
       : generated.map(() => 1);
     let noteIdx = 0;
     slots.forEach((slotSize) => {
+      if (slotSize === 0) {
+        steps.push({ segment, rest: true, beats: 1 });
+        return;
+      }
+      if (slotSize === 'r8' || slotSize === '8r') {
+        if (noteIdx >= generated.length) {
+          steps.push({ segment, rest: true, beats: 1 });
+          return;
+        }
+        const noteStep = { segment, note: generated[noteIdx], beats: 0.5 };
+        noteIdx += 1;
+        const restStep = { segment, rest: true, beats: 0.5 };
+        steps.push(...(slotSize === 'r8' ? [restStep, noteStep] : [noteStep, restStep]));
+        return;
+      }
       for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
         steps.push({
           segment,
@@ -1482,7 +1497,7 @@ function buildVisualSteps(mode) {
   // incoming box stays lit — the pause is exactly when you move to it.
   const pauseBars = getSelectedLoopPauseBars();
   for (let bar = 0; bar < pauseBars; bar += 1) {
-    steps.push({ pause: true, beats: BEATS_PER_CYCLE });
+    steps.push({ pause: true, beats: getBeatsPerBar() });
   }
   return steps;
 }
@@ -1495,7 +1510,11 @@ function applyVisualStep(step, mode, steps, index) {
     return;
   }
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
-  if (step.note !== undefined) {
+  if (step.rest) {
+    // A written rest: the chord's context stays lit, nothing reads as
+    // "sounding now" — same visual as chord mode, one beat long.
+    view.highlightChord(step.segment);
+  } else if (step.note !== undefined) {
     view.highlightNote(
       step.segment,
       step.note,
@@ -1825,11 +1844,14 @@ function collectPreviewSteps(measures, cagedShape) {
     const slots = measure.slots.length ? measure.slots : measure.notes.map(() => 1);
     let noteIdx = 0;
     for (const slotSize of slots) {
-      for (let k = 0; k < slotSize && noteIdx < measure.notes.length; k += 1, noteIdx += 1) {
+      // Rest slots contribute no preview step, but the half-rest slots
+      // ('r8'/'8r') still consume their one note.
+      const noteCount = slotNoteCount(slotSize);
+      for (let k = 0; k < noteCount && noteIdx < measure.notes.length; k += 1, noteIdx += 1) {
         const note = measure.notes[noteIdx];
         steps.push({
           note,
-          beats: slotSize === 2 ? 0.5 : 1,
+          beats: slotSize === 1 ? 1 : 0.5,
           position: getInstrumentView().previewPositionForNote(cagedShape, note),
         });
         if (steps.length >= FRETBOARD_LOOKAHEAD_OPACITIES.length) return steps;
@@ -2322,7 +2344,11 @@ const SNAPSHOT_CONTROL_IDS = [
   'customProgression',
   'bars',
   'trueChorusLength',
+  // Meter before notesPerMeasure: the notes-per-bar option list is rebuilt
+  // for the meter before the stored count is written into it.
+  'timeSignature',
   'notesPerMeasure',
+  'addRests',
   'startDegree',
   'turnaroundMode',
   'songSelect',
@@ -2422,6 +2448,18 @@ function applyControlValues(values, extraIds = []) {
     scaleSystem.value = values.scaleSystem;
     scaleSystem.dispatchEvent(new Event('change'));
   }
+  // Meter first: snapshots and settings from before the time-signature
+  // control are 4/4 exercises, and the notes-per-bar list must be rebuilt for
+  // the meter before the stored count lands in it.
+  const timeSignature = document.getElementById('timeSignature');
+  if (timeSignature) {
+    timeSignature.value = values.timeSignature || '4';
+    updateNotesPerBarOptions();
+  }
+  const addRests = document.getElementById('addRests');
+  if (addRests) {
+    addRests.checked = Boolean(values.addRests);
+  }
   [...SNAPSHOT_CONTROL_IDS, ...extraIds].forEach((id) => {
     if (id === 'scaleSystem' || values[id] === undefined) return;
     const element = document.getElementById(id);
@@ -2431,6 +2469,7 @@ function applyControlValues(values, extraIds = []) {
       writeControlValue(element, values[id]);
     }
   });
+  normalizeNotesPerBarSelection();
   // Snapshots and settings written before piano mode existed have no
   // instrument field: they are guitar exercises, and the explicit default is
   // what keeps them loading as such from piano mode.
@@ -2453,7 +2492,11 @@ function describeSnapshotSettings(values) {
     return song ? `${song.title} · ${shapeLabel}` : `Song · ${shapeLabel}`;
   }
   const quality = values.scaleType === 'minor' ? 'minor' : 'major';
-  return `${values.key} ${quality} · ${shapeLabel} · ${values.progression}`;
+  const meter =
+    values.timeSignature && values.timeSignature !== '4'
+      ? ` · ${values.timeSignature}/4`
+      : '';
+  return `${values.key} ${quality} · ${shapeLabel} · ${values.progression}${meter}`;
 }
 
 function describeSnapshotVoices(values) {
@@ -2521,7 +2564,7 @@ function matchReplayMeasures(replay, measureData) {
       Array.isArray(entry.notes) &&
       entry.notes.length > 0 &&
       entry.slots.length === (measure.slots || []).length &&
-      entry.slots.reduce((sum, slot) => sum + slot, 0) === entry.notes.length
+      countSlotNotes(entry.slots) === entry.notes.length
     );
   });
   return fits ? replay : null;
@@ -2946,17 +2989,15 @@ function buildStrudelNotePattern(notes) {
 }
 
 // Build a mini-notation pattern where each top-level token is one beat:
-// a quarter note is "c4", a pair of eighths "[c4 d4]".
+// a quarter note is "c4", a pair of eighths "[c4 d4]". Rests (nulls) become
+// "~" so every beat keeps its place on the grid.
 function buildStrudelBeatPattern(beatSlots) {
   return beatSlots
     .map((slotNotes) => {
-      const tokens = (slotNotes || [])
-        .map(toStrudelNote)
-        .filter((token) => token && token.length > 0);
-      if (!tokens.length) return null;
+      const entries = slotNotes && slotNotes.length ? slotNotes : [null];
+      const tokens = entries.map((note) => toStrudelNote(note) || '~');
       return tokens.length === 1 ? tokens[0] : `[${tokens.join(' ')}]`;
     })
-    .filter(Boolean)
     .join(' ');
 }
 
@@ -2965,8 +3006,10 @@ function buildStrudelBeatPattern(beatSlots) {
  * According to Strudel docs (https://strudel.cc/understand/cycles/):
  * setcpm(bpm / bpc) where bpc = beats per cycle
  * 
- * This app uses bpc=4, treating each cycle as a full measure in 4/4 time.
- * Therefore: cycles per minute = bpm / 4
+ * This app uses bpc=4 as a fixed calibration unit: cycles per minute =
+ * bpm / 4, whatever the written meter. The bar length is a separate,
+ * user-picked value — see getBeatsPerBar() — and all the pattern math is
+ * driven by total beat counts, so a 3/4 bar is simply three beat tokens.
  */
 
 const BEATS_PER_CYCLE = 4;
@@ -3042,8 +3085,8 @@ function getMeasures(beatCount) {
 /**
  * One entry per beat of the loop: its 0-based position inside its measure and
  * that measure's beat count, so rhythms can put the kick on 1 and 3 whatever
- * the measure lengths are. Falls back to a 4/4 grid if the measure data does
- * not add up to the beat count.
+ * the measure lengths are. Falls back to a flat grid of the current meter if
+ * the measure data does not add up to the beat count.
  */
 function getBeatMeta(beatCount) {
   const segments = playbackState.measuresData || [];
@@ -3057,16 +3100,18 @@ function getBeatMeta(beatCount) {
       }
     });
   } else {
+    const beatsPerBar = getBeatsPerBar();
     for (let index = 0; index < beatCount; index += 1) {
-      meta.push({ beat: index % BEATS_PER_CYCLE, beats: BEATS_PER_CYCLE });
+      meta.push({ beat: index % beatsPerBar, beats: beatsPerBar });
     }
   }
   // Trailing rest bars, if any: part of the loop's grid, so every layer and
   // the visual clock see the same length.
+  const pauseBarBeats = getBeatsPerBar();
   for (let index = 0; index < getLoopPauseBeats(); index += 1) {
     meta.push({
-      beat: index % BEATS_PER_CYCLE,
-      beats: BEATS_PER_CYCLE,
+      beat: index % pauseBarBeats,
+      beats: pauseBarBeats,
       isPause: true,
     });
   }
@@ -3820,6 +3865,15 @@ function setExerciseMode(mode) {
   if (isSongMode) {
     applySongDefaults(getSelectedSong());
   }
+  // Songs are written 4/4 charts; the meter control only drives random mode.
+  const timeSignatureSelect = document.getElementById('timeSignature');
+  if (timeSignatureSelect) {
+    timeSignatureSelect.disabled = isSongMode;
+    timeSignatureSelect.title = isSongMode
+      ? 'Songs are played as written, in 4/4.'
+      : '';
+  }
+  updateNotesPerBarOptions();
   updateExportTitle();
 }
 
@@ -3972,7 +4026,9 @@ function updateExportTitle() {
     : progressionSelect?.selectedOptions?.[0]?.textContent ||
       progressionSelect?.value ||
       '';
-  titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | ${shapeCaption}`;
+  const beatsPerBar = getBeatsPerBar();
+  const meterCaption = beatsPerBar !== 4 ? ` | ${beatsPerBar}/4` : '';
+  titleEl.textContent = `Key: ${key} | Progression: ${progressionLabel} | ${shapeCaption}${meterCaption}`;
 }
 // Define the tuning
 const tuning = ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'];
@@ -4866,43 +4922,151 @@ function isTrueChorusLengthEnabled() {
   return !!(checkbox && checkbox.checked);
 }
 
-// Split a bar's 4 beats among its chords (bars with more than 4 chords are
-// truncated to the first 4).
-function distributeBeatsPerBar(chordCount) {
-  if (chordCount <= 1) return [4];
-  if (chordCount === 2) return [2, 2];
-  if (chordCount === 3) return [2, 1, 1];
-  return [1, 1, 1, 1];
+/**
+ * Beats in one written bar — the time signature's top number (the beat is
+ * always a quarter note). Songs are written 4/4 charts, so song mode pins it.
+ * Distinct from BEATS_PER_CYCLE, the fixed Strudel calibration unit.
+ */
+function getBeatsPerBar() {
+  if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) return 4;
+  const value = parseInt(document.getElementById('timeSignature')?.value, 10);
+  return Number.isFinite(value) && value >= 2 && value <= 4 ? value : 4;
 }
 
-// Selected notes-per-bar option: 4-8, or 'random' (rolled per bar)
+// Split a bar's beats among its chords (bars with more chords than beats are
+// truncated). The remainder lands on the earlier chords: 4/4 with three
+// chords → [2, 1, 1], 3/4 with two → [2, 1].
+function distributeBeatsPerBar(chordCount, beatsPerBar = 4) {
+  const count = Math.max(1, Math.min(chordCount, beatsPerBar));
+  const base = Math.floor(beatsPerBar / count);
+  const remainder = beatsPerBar - base * count;
+  return Array.from({ length: count }, (unused, index) =>
+    base + (index < remainder ? 1 : 0)
+  );
+}
+
+// Selected notes-per-bar option, clamped to the meter's playable range
+// (beatsPerBar..2*beatsPerBar), or 'random' (rolled per bar)
 function getSelectedNotesPerBar() {
   const select = document.getElementById('notesPerMeasure');
-  if (!select || !select.value) return 4;
+  const beatsPerBar = getBeatsPerBar();
+  if (!select || !select.value) return beatsPerBar;
   if (select.value === 'random') return 'random';
   const n = parseInt(select.value, 10);
-  return Number.isFinite(n) && n >= 4 && n <= 8 ? n : 4;
+  if (!Number.isFinite(n)) return beatsPerBar;
+  return Math.max(beatsPerBar, Math.min(2 * beatsPerBar, n));
 }
 
 function isMidMeasureTurnaroundEnabled() {
   return document.getElementById('turnaroundMode')?.value === 'mid';
 }
 
-// A bar is 4 beat slots; each slot holds one quarter note (1) or a beamed
-// pair of eighths (2). n notes per bar → (n - 4) slots become eighth pairs,
-// placed on random beats for variety.
-function buildBarSlots(notesPerBar) {
-  const n = Math.max(4, Math.min(8, notesPerBar));
-  const slots = [1, 1, 1, 1];
-  const beatOrder = [0, 1, 2, 3];
+function isAddRestsEnabled() {
+  return !!document.getElementById('addRests')?.checked;
+}
+
+// A bar is one slot per beat; each slot holds one quarter note (1) or a
+// beamed pair of eighths (2). n notes per bar → (n - beatsPerBar) slots
+// become eighth pairs, placed on random beats for variety. With rests on,
+// some slots become 0 (quarter rest), 'r8' (eighth rest then eighth note) or
+// '8r' (eighth note then eighth rest) — see addRestsToSlots.
+function buildBarSlots(notesPerBar, beatsPerBar = 4) {
+  const n = Math.max(beatsPerBar, Math.min(2 * beatsPerBar, notesPerBar));
+  const slots = Array(beatsPerBar).fill(1);
+  const beatOrder = Array.from({ length: beatsPerBar }, (unused, index) => index);
   for (let i = beatOrder.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [beatOrder[i], beatOrder[j]] = [beatOrder[j], beatOrder[i]];
   }
-  for (let i = 0; i < n - 4; i++) {
+  for (let i = 0; i < n - beatsPerBar; i++) {
     slots[beatOrder[i]] = 2;
   }
   return slots;
+}
+
+/** Notes a slot contributes (a rest slot keeps its beat but drops notes). */
+function slotNoteCount(slot) {
+  if (slot === 'r8' || slot === '8r') return 1;
+  return typeof slot === 'number' ? slot : 0;
+}
+
+function countSlotNotes(slots) {
+  return (slots || []).reduce((sum, slot) => sum + slotNoteCount(slot), 0);
+}
+
+/**
+ * Swap a few of a segment's slots for rests. The first beat never rests (the
+ * chord change must be heard, and the chord symbol hangs on that note), so
+ * one-beat segments pass through. Quarters become quarter rests; eighth pairs
+ * keep one of their notes, resting the other half of the beat.
+ */
+function addRestsToSlots(slots) {
+  const candidates = [];
+  for (let index = 1; index < slots.length; index += 1) {
+    candidates.push(index);
+  }
+  if (!candidates.length) return slots;
+  const result = [...slots];
+  let restCount = 0;
+  if (Math.random() < (candidates.length >= 3 ? 0.75 : 0.5)) {
+    restCount = 1 + (candidates.length >= 2 && Math.random() < 0.3 ? 1 : 0);
+  }
+  for (let n = 0; n < restCount; n += 1) {
+    const pick = candidates.splice(
+      Math.floor(Math.random() * candidates.length),
+      1
+    )[0];
+    result[pick] =
+      result[pick] === 2 ? (Math.random() < 0.5 ? 'r8' : '8r') : 0;
+  }
+  return result;
+}
+
+/**
+ * The notes-per-bar list is meter-dependent: a 3/4 bar holds 3–6 notes. The
+ * option values are literal note counts, so switching meters carries the
+ * density over (how many beats are eighth pairs) rather than the raw count.
+ */
+function updateNotesPerBarOptions() {
+  const select = document.getElementById('notesPerMeasure');
+  if (!select) return;
+  const beatsPerBar = getBeatsPerBar();
+  const previous = select.value;
+  const previousBeats = parseInt(select.dataset.beatsPerBar || '4', 10) || 4;
+  if (beatsPerBar === previousBeats && select.selectedIndex !== -1) return;
+  const pairWords = ['one', 'two', 'three', 'four'];
+  select.innerHTML = '';
+  for (let n = beatsPerBar; n <= 2 * beatsPerBar; n += 1) {
+    const pairs = n - beatsPerBar;
+    const option = document.createElement('option');
+    option.value = String(n);
+    option.textContent =
+      pairs === 0
+        ? `${n} — quarter notes`
+        : pairs === beatsPerBar
+          ? `${n} — eighth notes`
+          : `${n} — ${pairWords[pairs - 1]} pair${pairs > 1 ? 's' : ''} of 8ths`;
+    select.append(option);
+  }
+  const randomOption = document.createElement('option');
+  randomOption.value = 'random';
+  randomOption.textContent = `Random (${beatsPerBar}–${2 * beatsPerBar} per bar)`;
+  select.append(randomOption);
+  if (previous === 'random') {
+    select.value = 'random';
+  } else {
+    const pairs = Math.max(0, (parseInt(previous, 10) || previousBeats) - previousBeats);
+    select.value = String(beatsPerBar + Math.min(beatsPerBar, pairs));
+  }
+  select.dataset.beatsPerBar = String(beatsPerBar);
+}
+
+/** Snap the notes-per-bar select onto a real option after a raw restore. */
+function normalizeNotesPerBarSelection() {
+  const select = document.getElementById('notesPerMeasure');
+  if (select && select.selectedIndex === -1) {
+    select.value = String(getBeatsPerBar());
+  }
 }
 
 function getChordNotesForRomanSymbol(
@@ -5212,9 +5376,11 @@ function buildExerciseMeasures(options = {}) {
   // note or eighth pair each); chords sharing a bar (true chorus length)
   // split the bar's slots between them.
   const notesPerBarSetting = getSelectedNotesPerBar();
+  const beatsPerBar = getBeatsPerBar();
+  const addRests = isAddRestsEnabled();
   const measureData = [];
   chordBars.forEach((barChords, barIndex) => {
-    const segmentBeats = distributeBeatsPerBar(barChords.length);
+    const segmentBeats = distributeBeatsPerBar(barChords.length, beatsPerBar);
     if (barChords.length > segmentBeats.length) {
       debugLog(
         `Bar ${barIndex + 1} has ${barChords.length} chords; keeping the first ${segmentBeats.length}.`
@@ -5222,13 +5388,14 @@ function buildExerciseMeasures(options = {}) {
     }
     const notesPerBar =
       notesPerBarSetting === 'random'
-        ? 4 + Math.floor(Math.random() * 5)
+        ? beatsPerBar + Math.floor(Math.random() * (beatsPerBar + 1))
         : notesPerBarSetting;
-    const barSlots = buildBarSlots(notesPerBar);
+    const barSlots = buildBarSlots(notesPerBar, beatsPerBar);
     let slotCursor = 0;
     segmentBeats.forEach((beats, chordIdx) => {
       const chordSymbol = barChords[chordIdx];
-      const slots = barSlots.slice(slotCursor, slotCursor + beats);
+      const sliced = barSlots.slice(slotCursor, slotCursor + beats);
+      const slots = addRests ? addRestsToSlots(sliced) : sliced;
       slotCursor += beats;
       const { chordNotes, rootNote, quality } = chordResolver(chordSymbol);
       const chordName = isSongMode
@@ -5246,7 +5413,7 @@ function buildExerciseMeasures(options = {}) {
         chordNotes,
         slots,
         beats,
-        notesPerMeasure: slots.reduce((sum, slotSize) => sum + slotSize, 0),
+        notesPerMeasure: countSlotNotes(slots),
         generatedNotes: null, // Will be filled in
         direction: null, // Will be filled in
       });
@@ -5275,7 +5442,7 @@ function buildExerciseMeasures(options = {}) {
     const replayed = replayMeasures?.[measureIdx];
     if (replayed) {
       measure.slots = [...replayed.slots];
-      measure.notesPerMeasure = replayed.slots.reduce((sum, slot) => sum + slot, 0);
+      measure.notesPerMeasure = countSlotNotes(replayed.slots);
       measure.generatedNotes = [...replayed.notes];
       measure.direction = replayed.direction ?? true;
       prevNote = replayed.notes[replayed.notes.length - 1] || prevNote;
@@ -5484,28 +5651,78 @@ function generateExercise(options = {}) {
     }
     barGroups[segment.barIndex].segments.push(segment);
   });
-  const measures = barGroups.map((bar) => ({
-    segments: bar.segments,
-    accompNotes: accomp ? buildAccompanimentBarNotes(VF, bar.segments, accomp) : null,
-    notes: bar.segments.flatMap((segment) => {
+  const beatsPerBar = getBeatsPerBar();
+  const restKey = notationClef === 'bass' ? 'd/3' : 'b/4';
+  const makeRest = (duration) =>
+    new StaveNote({ clef: notationClef, keys: [restKey], duration: `${duration}r` });
+  const measures = barGroups.map((bar) => {
+    const notes = [];
+    const segmentStarts = [];
+    let barBeat = 0;
+    bar.segments.forEach((segment) => {
+      segmentStarts.push(notes.length);
       const generated = segment.generatedNotes || [];
       const slots = segment.slots || generated.map(() => 1);
-      const staveNotes = [];
       let noteIdx = 0;
-      slots.forEach((slotSize) => {
-        for (let k = 0; k < slotSize && noteIdx < generated.length; k++, noteIdx++) {
-          staveNotes.push(
-            new StaveNote({
-              clef: notationClef,
-              keys: [toVexFlowFormat(generated[noteIdx])],
-              duration: slotSize === 2 ? '8' : 'q',
-            })
-          );
+      // Adjacent quarter rests merge into a half rest when the pair starts
+      // on a strong beat (1 or 3 of a 4/4 bar); elsewhere the printed
+      // convention keeps them as two quarter rests.
+      let pendingRests = 0;
+      let pendingStart = 0;
+      const flushRests = () => {
+        while (pendingRests > 0) {
+          if (pendingRests >= 2 && beatsPerBar === 4 && pendingStart % 2 === 0) {
+            notes.push(makeRest('h'));
+            pendingRests -= 2;
+            pendingStart += 2;
+          } else {
+            notes.push(makeRest('q'));
+            pendingRests -= 1;
+            pendingStart += 1;
+          }
         }
+      };
+      const pushNote = (duration) => {
+        if (noteIdx >= generated.length) return;
+        notes.push(
+          new StaveNote({
+            clef: notationClef,
+            keys: [toVexFlowFormat(generated[noteIdx])],
+            duration,
+          })
+        );
+        noteIdx += 1;
+      };
+      slots.forEach((slotSize) => {
+        if (slotSize === 0) {
+          if (pendingRests === 0) pendingStart = barBeat;
+          pendingRests += 1;
+          barBeat += 1;
+          return;
+        }
+        flushRests();
+        if (slotSize === 'r8') {
+          notes.push(makeRest('8'));
+          pushNote('8');
+        } else if (slotSize === '8r') {
+          pushNote('8');
+          notes.push(makeRest('8'));
+        } else {
+          for (let k = 0; k < slotSize; k += 1) {
+            pushNote(slotSize === 2 ? '8' : 'q');
+          }
+        }
+        barBeat += 1;
       });
-      return staveNotes;
-    }),
-  }));
+      flushRests();
+    });
+    return {
+      segments: bar.segments,
+      segmentStarts,
+      accompNotes: accomp ? buildAccompanimentBarNotes(VF, bar.segments, accomp) : null,
+      notes,
+    };
+  });
 
   const measureWidths = measures.map((measure, idx) =>
     calculateMeasureWidth(
@@ -5577,7 +5794,7 @@ function generateExercise(options = {}) {
         stave
           .addClef(notationClef)
           .addKeySignature(keyContext.vexflowKeySignature)
-          .addTimeSignature('4/4');
+          .addTimeSignature(`${beatsPerBar}/4`);
       }
       stave.setContext(context).draw();
 
@@ -5589,7 +5806,7 @@ function generateExercise(options = {}) {
           accompStave
             .addClef(accomp.clef)
             .addKeySignature(keyContext.vexflowKeySignature)
-            .addTimeSignature('4/4');
+            .addTimeSignature(`${beatsPerBar}/4`);
         }
         accompStave.setContext(context).draw();
         if (lineMeasureIdx === 0 && VF.StaveConnector) {
@@ -5612,34 +5829,38 @@ function generateExercise(options = {}) {
         height: accomp ? 80 + accompStaveOffset : 80,
       };
 
-      // One chord annotation per segment, at the segment's first note
-      let annotationNoteIndex = 0;
-      measure.segments.forEach((segment) => {
+      // One chord annotation per segment, at the segment's first note (a
+      // segment's opening beat never rests, so this is always a real note)
+      measure.segments.forEach((segment, segmentIdx) => {
         const chordAnnotation = new Annotation(segment.chordName)
           .setFont('Arial', 12, 'normal')
           .setVerticalJustification(Annotation.VerticalJustify.TOP)
           .setYShift(10);
-        if (measure.notes[annotationNoteIndex]) {
-          measure.notes[annotationNoteIndex].addModifier(chordAnnotation, 0);
+        const target = measure.notes[measure.segmentStarts[segmentIdx]];
+        if (target) {
+          target.addModifier(chordAnnotation, 0);
         }
-        annotationNoteIndex += (segment.generatedNotes || []).length;
       });
 
       // Beam eighth-note pairs (grouped per beat) like a printed chart
       const beams = Beam.generateBeams(measure.notes);
-      const voice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
+      const barBeats = measure.segments.reduce(
+        (sum, segment) => sum + (segment.beats || 4),
+        0
+      );
+      const voice = new Voice({ num_beats: barBeats, beat_value: 4 }).addTickables(
         measure.notes
       );
       let accompVoice = null;
       if (accompStave && measure.accompNotes?.length) {
-        accompVoice = new Voice({ num_beats: 4, beat_value: 4 }).addTickables(
+        accompVoice = new Voice({ num_beats: barBeats, beat_value: 4 }).addTickables(
           measure.accompNotes
         );
       }
       // Dense (eighth-note) bars: the first measure needs extra right padding
       // so the last note clears the barline after clef/key/time take their
       // share; later measures instead spread their notes into more of the bar.
-      const extraNotes = Math.max(0, measure.notes.length - 4);
+      const extraNotes = Math.max(0, measure.notes.length - barBeats);
       const reserve =
         index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
       const availableWidth = stave.width - reserve;
@@ -5680,13 +5901,24 @@ function generateExercise(options = {}) {
     beats: segment.beats || (segment.slots || []).length || 4,
   }));
 
-  // One entry per beat for audio: a quarter note is [note], eighths [n1, n2]
+  // One entry per beat for audio: a quarter note is [note], eighths [n1, n2],
+  // and rests hold their grid position as nulls (rendered as "~" tokens).
   const beatSlots = [];
   measureData.forEach((segment) => {
     const generated = segment.generatedNotes || [];
     const slots = segment.slots || generated.map(() => 1);
     let noteIdx = 0;
     slots.forEach((slotSize) => {
+      if (slotSize === 0) {
+        beatSlots.push([null]);
+        return;
+      }
+      if (slotSize === 'r8' || slotSize === '8r') {
+        const note = generated[noteIdx] ?? null;
+        noteIdx += 1;
+        beatSlots.push(slotSize === 'r8' ? [null, note] : [note, null]);
+        return;
+      }
       beatSlots.push(generated.slice(noteIdx, noteIdx + slotSize));
       noteIdx += slotSize;
     });
@@ -6135,6 +6367,9 @@ function buildExportFileName(extension) {
   if (getActiveInstrument() === 'piano') {
     parts.push('piano');
   }
+  if (getBeatsPerBar() !== 4) {
+    parts.push(`${getBeatsPerBar()}4`);
+  }
   const shape = document.getElementById(getInstrumentView().shapeControlId)?.value || '';
   if (shape) {
     parts.push(sanitizeFilePart(shape));
@@ -6382,6 +6617,12 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('instrumentToggle')?.addEventListener('click', () => {
       switchInstrument(getActiveInstrument() === 'piano' ? 'guitar' : 'piano');
     });
+    // The meter defines how many notes fit in a bar, so its option list
+    // follows the select (the exercise itself changes on the next Generate).
+    document.getElementById('timeSignature')?.addEventListener('change', () => {
+      updateNotesPerBarOptions();
+      updateExportTitle();
+    });
     document.getElementById('pianoRange')?.addEventListener('change', () => {
       updateExportTitle();
     });
@@ -6525,6 +6766,7 @@ document.addEventListener('DOMContentLoaded', function () {
       );
     });
     updateStayInPositionAvailability();
+    updateNotesPerBarOptions();
     ['modeRandom', 'modeSong'].forEach((id) => {
       document.getElementById(id)?.addEventListener('click', saveUserDefaults);
     });
