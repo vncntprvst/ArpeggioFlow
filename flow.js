@@ -2284,7 +2284,10 @@ async function stopPlayback() {
  * Pause holds the picture: the highlight freezes on the note you stopped on,
  * so you can look at where you are. The scheduler cannot be resumed mid-cycle
  * without drifting off the grid, so Resume starts the loop again from the top —
- * the banner says as much.
+ * the banner says as much. The next-shift preview is part of the held picture:
+ * clearing it here would collapse the caption row's reserved height and slide
+ * the transport up into the still-drawn caption (Resume recomputes it anyway
+ * via scheduleContinuousShift).
  */
 async function pausePlayback() {
   if (!playbackState.isPlaying) return;
@@ -2292,7 +2295,6 @@ async function pausePlayback() {
   clearIntroTimer();
   clearHeadVisual();
   clearContinuousShiftTimer();
-  clearNextExercisePreview();
   clearVisualTimer(); // freeze, rather than reset like stopVisualPlayback()
   if (playbackState.engine === 'strudel') {
     await stopStrudelExercise();
@@ -5857,13 +5859,19 @@ function generateExercise(options = {}) {
           measure.accompNotes
         );
       }
-      // Dense (eighth-note) bars: the first measure needs extra right padding
-      // so the last note clears the barline after clef/key/time take their
-      // share; later measures instead spread their notes into more of the bar.
+      // The formatter lays notes out from the stave's note-start x, so
+      // measure the clef/key/time overhead off the drawn stave rather than
+      // guessing it (a wide key signature plus a dense bar used to push the
+      // first bar's last note over the barline). What remains after a small
+      // right padding — smaller in dense bars, which need the room — is the
+      // real formatting width.
       const extraNotes = Math.max(0, measure.notes.length - barBeats);
-      const reserve =
-        index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
-      const availableWidth = stave.width - reserve;
+      const modifierWidth = Math.max(
+        stave.getNoteStartX() - stave.getX(),
+        accompStave ? accompStave.getNoteStartX() - accompStave.getX() : 0
+      );
+      const endPadding = 50 - Math.min(20, extraNotes * 5);
+      const availableWidth = stave.width - modifierWidth - endPadding;
       // One formatter across both staves so the hands' beats line up.
       const formatter = new Formatter().joinVoices([voice]);
       if (accompVoice) {
@@ -6227,9 +6235,14 @@ function renderHeadSheet(song) {
       const voice = new Voice({ num_beats: 4, beat_value: 4 })
         .setMode(Voice.Mode.SOFT)
         .addTickables(bar.notes);
+      // Same measured layout as the exercise sheet: clef/key/time overhead
+      // comes off the drawn stave, not a guess.
       const extraNotes = Math.max(0, bar.notes.length - 4);
-      const reserve = index === 0 ? 100 + extraNotes * 8 : 50 - Math.min(20, extraNotes * 5);
-      new Formatter().joinVoices([voice]).format([voice], Math.max(120, staveWidth - reserve));
+      const endPadding = 50 - Math.min(20, extraNotes * 5);
+      const headModifierWidth = stave.getNoteStartX() - stave.getX();
+      new Formatter()
+        .joinVoices([voice])
+        .format([voice], Math.max(120, staveWidth - headModifierWidth - endPadding));
       voice.draw(context, stave);
       beams.forEach((beam) => beam.setContext(context).draw());
 
