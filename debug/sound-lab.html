@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Arpeggio Flow — Sound Lab</title>
+<!--
+  A bench for choosing the app's instrument sounds without touching flow.js.
+
+  It loads Strudel and the soundfont bank exactly the way the app does, so what
+  you hear here is what the app will play. Pick a GM program, audition every
+  bank that ships a font for it, and turn the envelope/filter/reverb knobs while
+  the loop keeps running. When it sounds right, copy the snippet at the bottom
+  into flow.js.
+
+  Standalone on purpose: double-click the file, no server and no build step.
+  The one thing it duplicates from flow.js is the table of sounds the app
+  currently uses (APP_SOUNDS below) — keep it in step by hand when the app's
+  GM_SOUNDFONT_FONTS changes.
+-->
+<script src="https://unpkg.com/@strudel/web@1.2.6"></script>
+<style>
+  :root {
+    --line: #d1d5db;
+    --muted: #6b7280;
+    --accent: #2563eb;
+    --bg-soft: #f9fafb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 16px;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    color: #111827;
+    background: #ffffff;
+  }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 0 0 8px; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .tagline { color: var(--muted); font-size: 13px; margin: 0; }
+  button {
+    font: inherit;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: #fff;
+    cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { color: #fff; opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  select, input[type="number"], input[type="text"] {
+    font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: #fff;
+  }
+  #phrase { max-width: 330px; }
+  .status { font-size: 13px; color: var(--muted); }
+  .status.is-error { color: #b91c1c; }
+  .layout { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(340px, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .row label { font-size: 13px; color: var(--muted); }
+  .font-list { max-height: 340px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; }
+  .font-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-bottom: 1px solid #f3f4f6; font-size: 13px;
+  }
+  .font-row:last-child { border-bottom: none; }
+  .font-row.is-a { background: #eff6ff; }
+  .font-row.is-b { background: #fef3c7; }
+  .font-row__name { flex: 1; font-family: ui-monospace, Consolas, monospace; }
+  .font-row__bank { font-weight: 600; }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: #e5e7eb; color: #374151; }
+  .badge--app { background: #dcfce7; color: #166534; }
+  .slot { display: flex; gap: 8px; align-items: center; font-size: 13px; margin-bottom: 6px; }
+  .slot__tag { width: 18px; height: 18px; border-radius: 4px; display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .slot__tag--a { background: #dbeafe; color: #1e40af; }
+  .slot__tag--b { background: #fef3c7; color: #92400e; }
+  .slot__font { font-family: ui-monospace, Consolas, monospace; flex: 1; }
+  .knob { display: grid; grid-template-columns: 90px 1fr 56px; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 13px; }
+  .knob input[type="range"] { width: 100%; }
+  .knob output { font-family: ui-monospace, Consolas, monospace; text-align: right; color: var(--muted); }
+  pre {
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; font-size: 12px; overflow-x: auto; margin: 0;
+  }
+  .hint { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Sound Lab</h1>
+  <button id="startButton" class="primary">Start audio</button>
+  <span class="status" id="status">Click “Start audio” — the browser only lets sound begin from a click.</span>
+</header>
+<p class="tagline">
+  Same Strudel build, same soundfont bank, same trigger code as the app: what you hear here is what it will play.
+</p>
+
+<div class="layout">
+  <!-- ── Left: pick the font ─────────────────────────────────────────────── -->
+  <section class="panel">
+    <h2>1 · Font</h2>
+    <div class="row">
+      <label for="appSound">App sound</label>
+      <select id="appSound"></select>
+    </div>
+    <div class="row">
+      <label for="program">GM program</label>
+      <select id="program"></select>
+    </div>
+    <div class="row">
+      <span class="status">Click a row to audition it in the selected slot.</span>
+    </div>
+    <div class="font-list" id="fontList"></div>
+
+    <h2 style="margin-top:12px">Slots</h2>
+    <div class="slot">
+      <span class="slot__tag slot__tag--a">A</span>
+      <span class="slot__font" id="slotAFont">—</span>
+      <button data-select-slot="A">select</button>
+    </div>
+    <div class="slot">
+      <span class="slot__tag slot__tag--b">B</span>
+      <span class="slot__font" id="slotBFont">—</span>
+      <button data-select-slot="B">select</button>
+    </div>
+    <div class="row">
+      <button id="swapButton">A / B toggle <kbd>space</kbd></button>
+      <label><input type="checkbox" id="layerBoth" /> layer A + B</label>
+    </div>
+    <p class="hint">
+      Rows load into whichever slot is selected. The toggle switches slots without
+      stopping the loop, which is the only honest way to compare two fonts.
+    </p>
+  </section>
+
+  <!-- ── Right: play it ──────────────────────────────────────────────────── -->
+  <section class="panel">
+    <h2>2 · Phrase</h2>
+    <div class="row">
+      <select id="phrase">
+        <option value="arp">Arpeggio (quarters) — the exercise</option>
+        <option value="arp8">Arpeggio (eighths) — fast lines</option>
+        <option value="single">One note per bar — hear the envelope</option>
+        <option value="chord">Held chord — the backing comp</option>
+        <option value="both">Lead + comp — A leads, B comps, the balance</option>
+        <option value="sweep">Register sweep — four octaves, one per bar</option>
+      </select>
+      <label for="tempo">BPM</label>
+      <input type="number" id="tempo" value="100" min="40" max="260" step="5" style="width:72px" />
+      <label for="octave">Octave</label>
+      <input type="number" id="octave" value="0" min="-2" max="2" step="1" style="width:56px" />
+    </div>
+    <div class="row">
+      <button id="playButton" class="primary" disabled>Play</button>
+      <button id="stopButton" disabled>Stop</button>
+      <span class="status" id="playStatus"></span>
+    </div>
+
+    <h2 style="margin-top:12px">3 · Shape the sound</h2>
+    <div id="knobs"></div>
+    <div class="row" style="margin-top:8px">
+      <button id="resetKnobs">Reset to app defaults</button>
+      <label><input type="checkbox" id="liveUpdate" checked /> apply while playing</label>
+    </div>
+    <p class="hint">
+      <strong>clip</strong> is note length (1 = the full beat); <strong>lpf</strong> rolls off the
+      top — the quickest cure for a brittle, cheap-keyboard edge. <strong>release</strong> is what
+      stops a note being cut off dead when a rest follows.
+    </p>
+  </section>
+</div>
+
+<section class="panel" style="margin-top:16px">
+  <h2>4 · Take it back to flow.js</h2>
+  <pre id="snippet">—</pre>
+  <p class="hint">
+    The font line goes in <code>GM_SOUNDFONT_FONTS</code>. Envelope and effect values go where that
+    voice is built: <code>buildBackingChordsPattern()</code> for the comp
+    (<code>BACKING_CHORD_ENVELOPE</code>), <code>AMBIENCE_CONFIG</code> for the shared room/tail, or
+    the lead pattern for a per-sound envelope.
+  </p>
+</section>
+
+<script type="module">
+const SOUNDFONTS_ESM_URL = 'https://esm.sh/@strudel/soundfonts@1.2.6?bundle';
+const SOUNDFONT_BASE_URL = 'https://felixroos.github.io/webaudiofontdata/sound';
+const BEATS_PER_CYCLE = 4; // one cycle is one 4/4 bar, as in the app
+
+// Mirrors GM_SOUNDFONT_FONTS in flow.js: what the app plays today. The program
+// number is read off the font name (the first three digits), so adding a row
+// only needs the label and the font.
+const APP_SOUNDS = [
+  { label: 'Electric Guitar (Jazz) — app default', gm: 'gm_electric_guitar_jazz', font: '0260_FluidR3_GM_sf2_file' },
+  { label: 'Blues Guitar (warm overdrive)', gm: 'gm_blues_guitar', font: '0290_JCLive_sf2_file' },
+  { label: 'Acoustic Grand Piano — piano mode + comp', gm: 'gm_acoustic_grand_piano', font: '0000_FluidR3_GM_sf2_file' },
+  { label: 'Acoustic Guitar (Nylon)', gm: 'gm_acoustic_guitar_nylon', font: '0240_FluidR3_GM_sf2_file' },
+  { label: 'Acoustic Guitar (Steel)', gm: 'gm_acoustic_guitar_steel', font: '0250_FluidR3_GM_sf2_file' },
+  { label: 'Electric Guitar (Clean)', gm: 'gm_electric_guitar_clean', font: '0270_FluidR3_GM_sf2_file' },
+  { label: 'Electric Guitar (Muted)', gm: 'gm_electric_guitar_muted', font: '0281_FluidR3_GM_sf2_file' },
+  { label: 'Overdriven Guitar', gm: 'gm_overdriven_guitar', font: '0290_FluidR3_GM_sf2_file' },
+  { label: 'Distortion Guitar', gm: 'gm_distortion_guitar', font: '0300_FluidR3_GM_sf2_file' },
+  { label: 'Guitar Harmonics', gm: 'gm_guitar_harmonics', font: '0310_FluidR3_GM_sf2_file' },
+];
+
+// Defaults are the app's own: the Room ambience plus the comp envelope, so the
+// bench starts from what the app sounds like right now.
+const KNOBS = [
+  { id: 'attack', label: 'attack', min: 0, max: 0.5, step: 0.005, value: 0.01 },
+  { id: 'decay', label: 'decay', min: 0, max: 1.5, step: 0.01, value: 0.3 },
+  { id: 'sustain', label: 'sustain', min: 0, max: 1, step: 0.01, value: 0.75 },
+  { id: 'release', label: 'release', min: 0, max: 3, step: 0.01, value: 0.35 },
+  { id: 'clip', label: 'clip (length)', min: 0.1, max: 4, step: 0.05, value: 1.25 },
+  { id: 'gain', label: 'gain', min: 0, max: 1.5, step: 0.01, value: 0.8 },
+  { id: 'lpf', label: 'lpf (Hz)', min: 200, max: 20000, step: 100, value: 20000 },
+  { id: 'room', label: 'room', min: 0, max: 1, step: 0.01, value: 0.3 },
+  { id: 'roomsize', label: 'roomsize', min: 0.5, max: 10, step: 0.5, value: 2 },
+];
+
+const state = {
+  ready: false,
+  playing: false,
+  program: 26,
+  slots: { A: null, B: null },
+  activeSlot: 'A',
+  knobs: Object.fromEntries(KNOBS.map((knob) => [knob.id, knob.value])),
+  fonts: [],
+  instrumentNames: [],
+};
+
+const el = (id) => document.getElementById(id);
+const setStatus = (text, isError = false) => {
+  el('status').textContent = text;
+  el('status').classList.toggle('is-error', isError);
+};
+
+// ─── Audio ───────────────────────────────────────────────────────────────────
+
+/** The app's own soundfont trigger, verbatim: same envelope, same tail, so a
+ * sound judged here behaves identically once it is in flow.js. Each slot gets
+ * its own registered sound name reading a live font, so swapping fonts never
+ * re-registers anything. */
+function registerSlotSound(name, getFont, getFontBufferSource) {
+  window.registerSound(
+    name,
+    async (startTime, event, done) => {
+      const [attack, decay, sustain, release] = window.getADSRValues([
+        event.attack,
+        event.decay,
+        event.sustain,
+        event.release,
+      ]);
+      const { duration } = event;
+      const audioContext = window.getAudioContext();
+      const bufferSource = await getFontBufferSource(getFont(), event, audioContext);
+      bufferSource.start(startTime);
+      const gainNode = audioContext.createGain();
+      const outputNode = bufferSource.connect(gainNode);
+      const stopTime = startTime + duration;
+      window.getParamADSR(
+        outputNode.gain, attack, decay, sustain, release, 0, 0.3, startTime, stopTime, 'linear'
+      );
+      const vibrato = window.getVibratoOscillator(bufferSource.detune, event, startTime);
+      window.getPitchEnvelope(bufferSource.detune, event, startTime, stopTime);
+      bufferSource.stop(stopTime + release + 0.01);
+      bufferSource.onended = () => {
+        bufferSource.disconnect();
+        vibrato?.stop();
+        outputNode.disconnect();
+        done();
+      };
+      return { node: outputNode, stop: () => {} };
+    },
+    { type: 'soundfont', prebake: true, fonts: [getFont()] }
+  );
+}
+
+async function startAudio() {
+  el('startButton').disabled = true;
+  setStatus('Loading Strudel and the soundfont bank…');
+  try {
+    window.initStrudel();
+    const module = await import(SOUNDFONTS_ESM_URL);
+    module.setSoundfontUrl?.(SOUNDFONT_BASE_URL);
+    state.fonts = module.soundfontList.instruments.slice();
+    state.instrumentNames = module.soundfontList.instrumentNames.slice();
+    registerSlotSound('labA', () => state.slots.A, module.getFontBufferSource);
+    registerSlotSound('labB', () => state.slots.B, module.getFontBufferSource);
+    state.ready = true;
+    buildProgramList();
+    applyAppSound(APP_SOUNDS[0]);
+    el('playButton').disabled = false;
+    el('stopButton').disabled = false;
+    setStatus(`Ready — ${state.fonts.length} font files across 128 GM programs.`);
+  } catch (error) {
+    el('startButton').disabled = false;
+    setStatus(`Could not start: ${error?.message || error}`, true);
+  }
+}
+
+// ─── Phrases ─────────────────────────────────────────────────────────────────
+// One cycle is one bar. Cmaj7 throughout: enough colour to judge a sound, few
+// enough notes to hear each one.
+
+function phraseFor(kind, octave) {
+  const lead = 4 + octave;
+  const comp = 3 + octave;
+  const chord = `[c${comp},e${comp},b${comp}]`;
+  switch (kind) {
+    case 'single':
+      return { lead: `c${lead} ~ ~ ~` };
+    case 'arp8':
+      return { lead: `[c${lead} e${lead}] [g${lead} b${lead}] [c${lead + 1} b${lead}] [g${lead} e${lead}]` };
+    case 'chord':
+      return { comp: `${chord} ~ ~ ~` };
+    case 'both':
+      return { lead: `c${lead} e${lead} g${lead} b${lead}`, comp: `${chord} ~ ~ ~` };
+    case 'sweep':
+      return {
+        lead: [2, 3, 4, 5]
+          .map((base) => {
+            const o = base + octave;
+            return `[c${o} e${o} g${o} b${o}]`;
+          })
+          .join(' '),
+        alternate: true,
+      };
+    default:
+      return { lead: `c${lead} e${lead} g${lead} b${lead}` };
+  }
+}
+
+/** Everything the knobs control, applied to one voice. */
+function decorate(pattern, soundName) {
+  const knobs = state.knobs;
+  let result = pattern.s(soundName);
+  const apply = (name, value) => {
+    if (typeof result[name] === 'function') {
+      result = result[name](value);
+    }
+  };
+  apply('clip', knobs.clip);
+  apply('attack', knobs.attack);
+  apply('decay', knobs.decay);
+  apply('sustain', knobs.sustain);
+  apply('release', knobs.release);
+  apply('gain', knobs.gain);
+  if (knobs.lpf < 19000) {
+    apply('lpf', knobs.lpf);
+  }
+  if (knobs.room > 0) {
+    apply('room', knobs.room);
+    apply('roomsize', knobs.roomsize);
+  }
+  return result;
+}
+
+function buildPattern() {
+  const kind = el('phrase').value;
+  const octave = parseInt(el('octave').value, 10) || 0;
+  const spec = phraseFor(kind, octave);
+  const voices = [];
+  // The sweep writes its four octaves as one cycle; slowing it by four puts
+  // one octave in each bar.
+  const voice = (tokens) => (spec.alternate ? window.note(tokens).slow(4) : window.note(tokens));
+  const active = state.activeSlot === 'A' ? 'labA' : 'labB';
+  const other = active === 'labA' ? 'labB' : 'labA';
+  // Two parts at once is the app's real case (a lead over a comp), so the
+  // slots stop being a comparison and become the two instruments: A leads,
+  // B comps. Everywhere else the active slot plays and the toggle compares.
+  const duet = Boolean(spec.lead && spec.comp);
+  if (spec.lead) {
+    voices.push(decorate(voice(spec.lead), duet ? 'labA' : active));
+    if (!duet && el('layerBoth').checked && state.slots[other === 'labA' ? 'A' : 'B']) {
+      voices.push(decorate(voice(spec.lead), other));
+    }
+  }
+  if (spec.comp) {
+    voices.push(decorate(window.note(spec.comp), duet ? 'labB' : active));
+  }
+  const stacked = voices.length > 1 ? window.stack(...voices) : voices[0];
+  const bpm = parseInt(el('tempo').value, 10) || 100;
+  return stacked.cpm(bpm / BEATS_PER_CYCLE);
+}
+
+function play() {
+  if (!state.ready) return;
+  const duet = el('phrase').value === 'both';
+  const needed = duet ? ['A', 'B'] : [state.activeSlot];
+  if (needed.some((slot) => !state.slots[slot])) {
+    el('playStatus').textContent = `Pick a font for slot ${needed.join(' and ')} first.`;
+    return;
+  }
+  buildPattern().play();
+  state.playing = true;
+  el('playStatus').textContent = duet
+    ? `Playing A ${state.slots.A} over B ${state.slots.B}`
+    : `Playing slot ${state.activeSlot}: ${state.slots[state.activeSlot]}`;
+}
+
+function stop() {
+  window.hush?.();
+  state.playing = false;
+  el('playStatus').textContent = 'Stopped.';
+}
+
+/** Rebuild in place: the running clock keeps its position, so a knob move is
+ * heard on the next note instead of restarting the loop. */
+function refresh() {
+  if (state.playing && el('liveUpdate').checked) {
+    play();
+  }
+  renderSnippet();
+}
+
+// ─── Font browser ────────────────────────────────────────────────────────────
+
+const programOf = (font) => parseInt(font.slice(0, 3), 10);
+const bankOf = (font) => font.replace(/^\d{4}_/, '').replace(/_sf2_file$/, '');
+const variationOf = (font) => font.slice(3, 4);
+
+function buildProgramList() {
+  const select = el('program');
+  select.innerHTML = '';
+  state.instrumentNames.forEach((name, program) => {
+    const option = document.createElement('option');
+    option.value = String(program);
+    option.textContent = `${String(program).padStart(3, '0')} — ${name}`;
+    select.appendChild(option);
+  });
+  const appSelect = el('appSound');
+  appSelect.innerHTML = '';
+  APP_SOUNDS.forEach((sound, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    option.textContent = sound.label;
+    appSelect.appendChild(option);
+  });
+}
+
+function renderFontList() {
+  const list = el('fontList');
+  const program = state.program;
+  const prefix = String(program).padStart(3, '0');
+  const fonts = state.fonts.filter((font) => font.startsWith(prefix));
+  const appFonts = new Set(APP_SOUNDS.map((sound) => sound.font));
+  list.innerHTML = '';
+  if (!fonts.length) {
+    list.innerHTML = '<div class="font-row"><span class="font-row__name">No font ships for this program.</span></div>';
+    return;
+  }
+  fonts.forEach((font) => {
+    const row = document.createElement('div');
+    row.className = 'font-row';
+    if (state.slots.A === font) row.classList.add('is-a');
+    if (state.slots.B === font) row.classList.add('is-b');
+    row.innerHTML = `
+      <span class="font-row__name"><span class="font-row__bank">${bankOf(font)}</span>
+        <span class="badge">var ${variationOf(font)}</span></span>
+      ${appFonts.has(font) ? '<span class="badge badge--app">in the app</span>' : ''}
+      <button type="button">▶ slot ${state.activeSlot}</button>`;
+    row.querySelector('button').addEventListener('click', () => {
+      state.slots[state.activeSlot] = font;
+      renderSlots();
+      renderFontList();
+      play();
+    });
+    list.appendChild(row);
+  });
+}
+
+function renderSlots() {
+  el('slotAFont').textContent = state.slots.A || '—';
+  el('slotBFont').textContent = state.slots.B || '—';
+  document.querySelectorAll('[data-select-slot]').forEach((button) => {
+    const isActive = button.dataset.selectSlot === state.activeSlot;
+    button.classList.toggle('primary', isActive);
+  });
+  renderSnippet();
+}
+
+function applyAppSound(sound) {
+  state.program = programOf(sound.font);
+  el('program').value = String(state.program);
+  state.slots.A = sound.font;
+  state.slots.B = state.slots.B || sound.font;
+  renderSlots();
+  renderFontList();
+}
+
+// ─── Knobs and the snippet ───────────────────────────────────────────────────
+
+function buildKnobs() {
+  const host = el('knobs');
+  host.innerHTML = '';
+  KNOBS.forEach((knob) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'knob';
+    wrapper.innerHTML = `
+      <label for="knob-${knob.id}">${knob.label}</label>
+      <input type="range" id="knob-${knob.id}" min="${knob.min}" max="${knob.max}"
+             step="${knob.step}" value="${knob.value}" />
+      <output id="out-${knob.id}">${knob.value}</output>`;
+    host.appendChild(wrapper);
+    wrapper.querySelector('input').addEventListener('input', (event) => {
+      state.knobs[knob.id] = parseFloat(event.target.value);
+      el(`out-${knob.id}`).textContent = event.target.value;
+      refresh();
+    });
+  });
+}
+
+function renderSnippet() {
+  const font = state.slots[state.activeSlot];
+  // The GM key follows the font's own program number, so browsing away from
+  // the app sound you started on still yields a line that means something.
+  const program = font ? programOf(font) : null;
+  const match = APP_SOUNDS.find((sound) => programOf(sound.font) === program);
+  const gm = match?.gm || `gm_program_${String(program ?? 0).padStart(3, '0')}`;
+  const knobs = state.knobs;
+  const lines = [
+    `// flow.js — GM_SOUNDFONT_FONTS${program === null ? '' : `  (program ${program}: ${state.instrumentNames[program] || '?'})`}`,
+    `${gm}: ['${font || '…'}'],`,
+    '',
+    '// envelope + effects for this voice',
+    `attack: ${knobs.attack}, decay: ${knobs.decay}, sustain: ${knobs.sustain}, release: ${knobs.release},`,
+    `clip: ${knobs.clip}, gain: ${knobs.gain},`,
+    knobs.lpf < 19000 ? `lpf: ${knobs.lpf},` : '// lpf: off',
+    knobs.room > 0 ? `room: ${knobs.room}, roomsize: ${knobs.roomsize},` : '// room: off',
+  ];
+  if (el('layerBoth').checked && state.slots.A && state.slots.B) {
+    lines.push('', `// layered: ${state.slots.A} + ${state.slots.B}`);
+    lines.push('// (the app plays one font per voice — layering needs a stack() in flow.js)');
+  }
+  el('snippet').textContent = lines.join('\n');
+}
+
+// ─── Wiring ──────────────────────────────────────────────────────────────────
+
+el('startButton').addEventListener('click', startAudio);
+el('playButton').addEventListener('click', play);
+el('stopButton').addEventListener('click', stop);
+el('phrase').addEventListener('change', refresh);
+el('tempo').addEventListener('change', refresh);
+el('octave').addEventListener('change', refresh);
+el('layerBoth').addEventListener('change', refresh);
+el('program').addEventListener('change', (event) => {
+  state.program = parseInt(event.target.value, 10);
+  renderFontList();
+});
+el('appSound').addEventListener('change', (event) => {
+  applyAppSound(APP_SOUNDS[parseInt(event.target.value, 10)]);
+  if (state.playing) play();
+});
+document.querySelectorAll('[data-select-slot]').forEach((button) => {
+  button.addEventListener('click', () => {
+    state.activeSlot = button.dataset.selectSlot;
+    renderSlots();
+    renderFontList();
+  });
+});
+el('swapButton').addEventListener('click', () => {
+  state.activeSlot = state.activeSlot === 'A' ? 'B' : 'A';
+  renderSlots();
+  renderFontList();
+  if (state.playing) play();
+});
+el('resetKnobs').addEventListener('click', () => {
+  KNOBS.forEach((knob) => {
+    state.knobs[knob.id] = knob.value;
+    const input = el(`knob-${knob.id}`);
+    if (input) {
+      input.value = String(knob.value);
+      el(`out-${knob.id}`).textContent = String(knob.value);
+    }
+  });
+  refresh();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.code === 'Space' && event.target.tagName !== 'INPUT') {
+    event.preventDefault();
+    el('swapButton').click();
+  }
+});
+
+buildKnobs();
+renderSnippet();
+</script>
+</body>
+</html>
