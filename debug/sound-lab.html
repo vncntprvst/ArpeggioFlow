@@ -188,8 +188,48 @@
 
 <script type="module">
 const SOUNDFONTS_ESM_URL = 'https://esm.sh/@strudel/soundfonts@1.2.6?bundle';
+// Same fallback the app uses: if the unpkg <script> tag was blocked (strict
+// tracking prevention, an ad-blocker, a network policy), import the ESM build.
+const STRUDEL_ESM_URL = 'https://esm.sh/@strudel/web@1.2.6?target=es2022';
 const SOUNDFONT_BASE_URL = 'https://felixroos.github.io/webaudiofontdata/sound';
 const BEATS_PER_CYCLE = 4; // one cycle is one 4/4 bar, as in the app
+
+// The 128 General MIDI program names are a fixed standard — keeping them here
+// lets both menus fill at load, with no network and before "Start audio".
+const GM_PROGRAM_NAMES = [
+  'Acoustic Grand Piano', 'Bright Acoustic Piano', 'Electric Grand Piano', 'Honky-tonk Piano',
+  'Electric Piano 1', 'Electric Piano 2', 'Harpsichord', 'Clavinet',
+  'Celesta', 'Glockenspiel', 'Music Box', 'Vibraphone',
+  'Marimba', 'Xylophone', 'Tubular Bells', 'Dulcimer',
+  'Drawbar Organ', 'Percussive Organ', 'Rock Organ', 'Church Organ',
+  'Reed Organ', 'Accordion', 'Harmonica', 'Tango Accordion',
+  'Acoustic Guitar (nylon)', 'Acoustic Guitar (steel)', 'Electric Guitar (jazz)', 'Electric Guitar (clean)',
+  'Electric Guitar (muted)', 'Overdriven Guitar', 'Distortion Guitar', 'Guitar Harmonics',
+  'Acoustic Bass', 'Electric Bass (finger)', 'Electric Bass (pick)', 'Fretless Bass',
+  'Slap Bass 1', 'Slap Bass 2', 'Synth Bass 1', 'Synth Bass 2',
+  'Violin', 'Viola', 'Cello', 'Contrabass',
+  'Tremolo Strings', 'Pizzicato Strings', 'Orchestral Harp', 'Timpani',
+  'String Ensemble 1', 'String Ensemble 2', 'Synth Strings 1', 'Synth Strings 2',
+  'Choir Aahs', 'Voice Oohs', 'Synth Voice', 'Orchestra Hit',
+  'Trumpet', 'Trombone', 'Tuba', 'Muted Trumpet',
+  'French Horn', 'Brass Section', 'Synth Brass 1', 'Synth Brass 2',
+  'Soprano Sax', 'Alto Sax', 'Tenor Sax', 'Baritone Sax',
+  'Oboe', 'English Horn', 'Bassoon', 'Clarinet',
+  'Piccolo', 'Flute', 'Recorder', 'Pan Flute',
+  'Blown Bottle', 'Shakuhachi', 'Whistle', 'Ocarina',
+  'Lead 1 (square)', 'Lead 2 (sawtooth)', 'Lead 3 (calliope)', 'Lead 4 (chiff)',
+  'Lead 5 (charang)', 'Lead 6 (voice)', 'Lead 7 (fifths)', 'Lead 8 (bass + lead)',
+  'Pad 1 (new age)', 'Pad 2 (warm)', 'Pad 3 (polysynth)', 'Pad 4 (choir)',
+  'Pad 5 (bowed)', 'Pad 6 (metallic)', 'Pad 7 (halo)', 'Pad 8 (sweep)',
+  'FX 1 (rain)', 'FX 2 (soundtrack)', 'FX 3 (crystal)', 'FX 4 (atmosphere)',
+  'FX 5 (brightness)', 'FX 6 (goblins)', 'FX 7 (echoes)', 'FX 8 (sci-fi)',
+  'Sitar', 'Banjo', 'Shamisen', 'Koto',
+  'Kalimba', 'Bag Pipe', 'Fiddle', 'Shanai',
+  'Tinkle Bell', 'Agogo', 'Steel Drums', 'Woodblock',
+  'Taiko Drum', 'Melodic Tom', 'Synth Drum', 'Reverse Cymbal',
+  'Guitar Fret Noise', 'Breath Noise', 'Seashore', 'Bird Tweet',
+  'Telephone Ring', 'Helicopter', 'Applause', 'Gunshot',
+];
 
 // Mirrors GM_SOUNDFONT_FONTS in flow.js: what the app plays today. The program
 // number is read off the font name (the first three digits), so adding a row
@@ -197,7 +237,7 @@ const BEATS_PER_CYCLE = 4; // one cycle is one 4/4 bar, as in the app
 const APP_SOUNDS = [
   { label: 'Electric Guitar (Jazz) — app default', gm: 'gm_electric_guitar_jazz', font: '0260_FluidR3_GM_sf2_file' },
   { label: 'Blues Guitar (warm overdrive)', gm: 'gm_blues_guitar', font: '0290_JCLive_sf2_file' },
-  { label: 'Acoustic Grand Piano — piano mode + comp', gm: 'gm_acoustic_grand_piano', font: '0000_FluidR3_GM_sf2_file' },
+  { label: 'Acoustic Grand Piano — piano mode + comp', gm: 'gm_acoustic_grand_piano', font: '0000_JCLive_sf2_file' },
   { label: 'Acoustic Guitar (Nylon)', gm: 'gm_acoustic_guitar_nylon', font: '0240_FluidR3_GM_sf2_file' },
   { label: 'Acoustic Guitar (Steel)', gm: 'gm_acoustic_guitar_steel', font: '0250_FluidR3_GM_sf2_file' },
   { label: 'Electric Guitar (Clean)', gm: 'gm_electric_guitar_clean', font: '0270_FluidR3_GM_sf2_file' },
@@ -229,8 +269,12 @@ const state = {
   activeSlot: 'A',
   knobs: Object.fromEntries(KNOBS.map((knob) => [knob.id, knob.value])),
   fonts: [],
-  instrumentNames: [],
+  instrumentNames: GM_PROGRAM_NAMES,
 };
+
+// Where the Strudel API lives: the window (unpkg script tag) or the ESM
+// module (fallback). Resolved by startAudio().
+let strudel = null;
 
 const el = (id) => document.getElementById(id);
 const setStatus = (text, isError = false) => {
@@ -245,27 +289,27 @@ const setStatus = (text, isError = false) => {
  * its own registered sound name reading a live font, so swapping fonts never
  * re-registers anything. */
 function registerSlotSound(name, getFont, getFontBufferSource) {
-  window.registerSound(
+  strudel.registerSound(
     name,
     async (startTime, event, done) => {
-      const [attack, decay, sustain, release] = window.getADSRValues([
+      const [attack, decay, sustain, release] = strudel.getADSRValues([
         event.attack,
         event.decay,
         event.sustain,
         event.release,
       ]);
       const { duration } = event;
-      const audioContext = window.getAudioContext();
+      const audioContext = strudel.getAudioContext();
       const bufferSource = await getFontBufferSource(getFont(), event, audioContext);
       bufferSource.start(startTime);
       const gainNode = audioContext.createGain();
       const outputNode = bufferSource.connect(gainNode);
       const stopTime = startTime + duration;
-      window.getParamADSR(
+      strudel.getParamADSR(
         outputNode.gain, attack, decay, sustain, release, 0, 0.3, startTime, stopTime, 'linear'
       );
-      const vibrato = window.getVibratoOscillator(bufferSource.detune, event, startTime);
-      window.getPitchEnvelope(bufferSource.detune, event, startTime, stopTime);
+      const vibrato = strudel.getVibratoOscillator(bufferSource.detune, event, startTime);
+      strudel.getPitchEnvelope(bufferSource.detune, event, startTime, stopTime);
       bufferSource.stop(stopTime + release + 0.01);
       bufferSource.onended = () => {
         bufferSource.disconnect();
@@ -279,20 +323,45 @@ function registerSlotSound(name, getFont, getFontBufferSource) {
   );
 }
 
+/** The unpkg script tag when it loaded; the esm.sh module when it did not. */
+async function loadStrudel() {
+  if (typeof window.initStrudel === 'function') {
+    return window;
+  }
+  try {
+    return await import(STRUDEL_ESM_URL);
+  } catch (error) {
+    throw new Error(
+      'Strudel did not load from unpkg.com (blocked by tracking prevention, ' +
+      `an ad-blocker, or the network?) and the esm.sh fallback failed too: ${error?.message || error}`
+    );
+  }
+}
+
 async function startAudio() {
   el('startButton').disabled = true;
   setStatus('Loading Strudel and the soundfont bank…');
   try {
-    window.initStrudel();
-    const module = await import(SOUNDFONTS_ESM_URL);
+    strudel = await loadStrudel();
+    strudel.initStrudel();
+    let module;
+    try {
+      module = await import(SOUNDFONTS_ESM_URL);
+    } catch (error) {
+      throw new Error(
+        `The soundfont bank did not load from esm.sh: ${error?.message || error}`
+      );
+    }
     module.setSoundfontUrl?.(SOUNDFONT_BASE_URL);
     state.fonts = module.soundfontList.instruments.slice();
-    state.instrumentNames = module.soundfontList.instrumentNames.slice();
+    if (module.soundfontList.instrumentNames?.length) {
+      state.instrumentNames = module.soundfontList.instrumentNames.slice();
+      buildProgramList();
+    }
     registerSlotSound('labA', () => state.slots.A, module.getFontBufferSource);
     registerSlotSound('labB', () => state.slots.B, module.getFontBufferSource);
     state.ready = true;
-    buildProgramList();
-    applyAppSound(APP_SOUNDS[0]);
+    renderFontList();
     el('playButton').disabled = false;
     el('stopButton').disabled = false;
     setStatus(`Ready — ${state.fonts.length} font files across 128 GM programs.`);
@@ -366,7 +435,7 @@ function buildPattern() {
   const voices = [];
   // The sweep writes its four octaves as one cycle; slowing it by four puts
   // one octave in each bar.
-  const voice = (tokens) => (spec.alternate ? window.note(tokens).slow(4) : window.note(tokens));
+  const voice = (tokens) => (spec.alternate ? strudel.note(tokens).slow(4) : strudel.note(tokens));
   const active = state.activeSlot === 'A' ? 'labA' : 'labB';
   const other = active === 'labA' ? 'labB' : 'labA';
   // Two parts at once is the app's real case (a lead over a comp), so the
@@ -380,9 +449,9 @@ function buildPattern() {
     }
   }
   if (spec.comp) {
-    voices.push(decorate(window.note(spec.comp), duet ? 'labB' : active));
+    voices.push(decorate(strudel.note(spec.comp), duet ? 'labB' : active));
   }
-  const stacked = voices.length > 1 ? window.stack(...voices) : voices[0];
+  const stacked = voices.length > 1 ? strudel.stack(...voices) : voices[0];
   const bpm = parseInt(el('tempo').value, 10) || 100;
   return stacked.cpm(bpm / BEATS_PER_CYCLE);
 }
@@ -403,7 +472,7 @@ function play() {
 }
 
 function stop() {
-  window.hush?.();
+  (strudel?.hush || window.hush)?.();
   state.playing = false;
   el('playStatus').textContent = 'Stopped.';
 }
@@ -432,6 +501,10 @@ function buildProgramList() {
     option.textContent = `${String(program).padStart(3, '0')} — ${name}`;
     select.appendChild(option);
   });
+  select.value = String(state.program);
+}
+
+function buildAppSoundList() {
   const appSelect = el('appSound');
   appSelect.innerHTML = '';
   APP_SOUNDS.forEach((sound, index) => {
@@ -449,6 +522,10 @@ function renderFontList() {
   const fonts = state.fonts.filter((font) => font.startsWith(prefix));
   const appFonts = new Set(APP_SOUNDS.map((sound) => sound.font));
   list.innerHTML = '';
+  if (!state.fonts.length) {
+    list.innerHTML = '<div class="font-row"><span class="font-row__name">Click “Start audio” to load the font bank.</span></div>';
+    return;
+  }
   if (!fonts.length) {
     list.innerHTML = '<div class="font-row"><span class="font-row__name">No font ships for this program.</span></div>';
     return;
@@ -587,6 +664,11 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
+// Menus fill at load — the app-sound table and the GM program names are local
+// data. Only the font browser and playback wait for "Start audio".
+buildAppSoundList();
+buildProgramList();
+applyAppSound(APP_SOUNDS[0]);
 buildKnobs();
 renderSnippet();
 </script>

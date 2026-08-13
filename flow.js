@@ -440,6 +440,18 @@ const STRUDEL_SOUND_CONFIG = {
     type: 'soundfont',
     label: 'Acoustic Grand Piano',
     sample: 'gm_acoustic_grand_piano',
+    // Sustain-pedal feel, tuned in debug/sound-lab.html: notes ring past
+    // their beat (clip 2.05) with a long tail and their own space. Applied
+    // to the lead after the ambience, so these win on overlapping keys.
+    envelope: {
+      attack: 0.015,
+      decay: 1.12,
+      sustain: 0.47,
+      release: 1.58,
+      clip: 2.05,
+      room: 0.45,
+      roomsize: 5,
+    },
   },
   default: { type: 'synth', label: 'Synth (Default)' },
 };
@@ -578,8 +590,9 @@ const GM_SOUNDFONT_FONTS = {
   // Slapback ambience below for the note tails.
   gm_blues_guitar: ['0290_JCLive_sf2_file'],
   // Comping voice for the backing-chords layer, and the lead sound in
-  // piano mode.
-  gm_acoustic_grand_piano: ['0000_FluidR3_GM_sf2_file'],
+  // piano mode. JCLive over FluidR3: rounder hammer, longer natural decay
+  // (auditioned in debug/sound-lab.html).
+  gm_acoustic_grand_piano: ['0000_JCLive_sf2_file'],
   gm_acoustic_guitar_nylon: ['0240_FluidR3_GM_sf2_file'],
   gm_acoustic_guitar_steel: ['0250_FluidR3_GM_sf2_file'],
   gm_distortion_guitar: ['0300_FluidR3_GM_sf2_file'],
@@ -3194,6 +3207,25 @@ async function buildRhythmPattern(api, beatMeta, measures) {
   return layers.reduce((combined, layer) => stackPatterns(api, combined, layer));
 }
 
+/**
+ * A voice's own envelope from STRUDEL_SOUND_CONFIG (tuned in
+ * debug/sound-lab.html). Runs after applyAmbience, so where the two set the
+ * same control (release, clip, room…) the voice's audited value wins; keys
+ * only the ambience sets (delay…) still come through the select.
+ */
+function applySoundEnvelope(pattern, soundConfig) {
+  if (!pattern || !soundConfig?.envelope) {
+    return pattern;
+  }
+  let result = pattern;
+  Object.entries(soundConfig.envelope).forEach(([control, value]) => {
+    if (typeof result[control] === 'function') {
+      result = result[control](value);
+    }
+  });
+  return result;
+}
+
 /** Apply the selected ambience controls to the melodic pattern. */
 function applyAmbience(pattern) {
   if (!pattern) {
@@ -3710,6 +3742,7 @@ async function playStrudelExercise(notes) {
   // Effects go on the notes only — a reverbed metronome is unusable as a
   // reference, and the drum samples already have their own room in them.
   pattern = applyAmbience(pattern);
+  pattern = applySoundEnvelope(pattern, soundConfig);
 
   // The backing rhythm rides on the same beat grid as the notes, so stacking
   // it here keeps one pattern for the scheduler (and one loop length for the
