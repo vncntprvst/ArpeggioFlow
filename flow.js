@@ -15,6 +15,12 @@
 
 import { SONGS, getSongById } from './songs/songs.js';
 
+// The app's own version, and the single place it is written down. It is
+// stamped into every exported file, shown in the page footer, and mirrored in
+// package.json; the git tag of a release should match it (`v1.1.0`).
+// Bump the minor when a release adds features, the patch for fixes.
+const APP_VERSION = '1.1.0';
+
 // Debug flag - set to true for verbose console logging
 const DEBUG = true;
 
@@ -2484,21 +2490,26 @@ function applyControlValues(values, extraIds = []) {
   updateExportTitle();
 }
 
+// Labels travel into the exported .json, so they are kept to plain ASCII: a
+// middle dot or an en dash in there survives the round trip but reads as
+// mojibake in any editor that guesses the file's encoding wrong.
+const LABEL_SEPARATOR = ' | ';
+
 function describeSnapshotSettings(values) {
   const shapeLabel =
     values.instrument === 'piano'
-      ? `Piano ${values.pianoHand === 'left' ? 'LH' : 'RH'} ${window.pianoKeyboard.parsePianoRange(values.pianoRange).label}`
+      ? `Piano ${values.pianoHand === 'left' ? 'LH' : 'RH'} ${values.pianoRange}`
       : `Shape ${values.shape}`;
   if (values.exerciseMode === EXERCISE_MODES.SONG) {
     const song = getSongById(values.songSelect);
-    return song ? `${song.title} · ${shapeLabel}` : `Song · ${shapeLabel}`;
+    return [song?.title || 'Song', shapeLabel].join(LABEL_SEPARATOR);
   }
   const quality = values.scaleType === 'minor' ? 'minor' : 'major';
-  const meter =
-    values.timeSignature && values.timeSignature !== '4'
-      ? ` · ${values.timeSignature}/4`
-      : '';
-  return `${values.key} ${quality} · ${shapeLabel} · ${values.progression}${meter}`;
+  const parts = [`${values.key} ${quality}`, shapeLabel, values.progression];
+  if (values.timeSignature && values.timeSignature !== '4') {
+    parts.push(`${values.timeSignature}/4`);
+  }
+  return parts.join(LABEL_SEPARATOR);
 }
 
 function describeSnapshotVoices(values) {
@@ -2524,16 +2535,18 @@ function captureExerciseSnapshot() {
     id: `ex-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
     savedAt: Date.now(),
     label: describeSnapshotSettings(settings),
-    detail: `${settings.tempoBpm || '?'} BPM · ${describeSnapshotVoices(settings)}`,
+    detail: `${settings.tempoBpm || '?'} BPM${LABEL_SEPARATOR}${describeSnapshotVoices(settings)}`,
     settings,
     measures,
   };
 }
 
-/** Same chart and same notes → same exercise, whatever the timestamps say. */
+/** Same chart and same notes → same exercise, whatever the timestamps say.
+ * The separator is normalised so exercises pinned before labels went ASCII
+ * still match the ones generated now. */
 function snapshotSignature(snapshot) {
   return [
-    snapshot.label,
+    snapshot.label.replace(/\s*[·|]\s*/g, LABEL_SEPARATOR),
     snapshot.measures.map((measure) => measure.notes.join(',')).join('|'),
   ].join('#');
 }
@@ -2659,7 +2672,10 @@ function removePinned(id) {
 // from) a plain JSON file — a backup, and the way to carry a practice set to
 // another device.
 
-const PINNED_FILE_VERSION = 1;
+// The shape of the file itself, bumped only when the layout of what is written
+// changes in a way an importer has to know about (the app version travels
+// alongside it, and says which build wrote the file).
+const EXERCISE_FILE_FORMAT = 1;
 
 function setHistoryHint(message) {
   const hint = document.getElementById('histToolbarHint');
@@ -2673,11 +2689,17 @@ function downloadExercisesFile(exercises, filenameStem) {
   const payload = {
     app: 'arpeggio-flow',
     kind: 'exercises',
-    version: PINNED_FILE_VERSION,
+    appVersion: APP_VERSION,
+    formatVersion: EXERCISE_FILE_FORMAT,
     savedAt: new Date().toISOString(),
     exercises,
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  // The charset matters: labels are plain ASCII, but without it a browser
+  // opening the saved file falls back to a legacy codepage and any accented
+  // song title comes out as mojibake.
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -2698,18 +2720,20 @@ function exportPinnedExercises() {
     setHistoryHint('Nothing pinned yet — star an exercise first.');
     return;
   }
-  downloadExercisesFile(pinnedExercises, 'arpeggio-flow-pinned');
+  downloadExercisesFile(pinnedExercises, `arpeggio-flow-pinned-${pinnedExercises.length}`);
   setHistoryHint(`Exported ${pinnedExercises.length} pinned exercise(s).`);
 }
 
-/** The exercise on screen, as a file that Import (or another device) accepts. */
+/** The exercise on screen, as a file that Import (or another device) accepts.
+ * Named like the PNG/PDF exports, so the three files of one exercise sort
+ * together: instrument, then key/progression (or song) and shape/register. */
 function exportCurrentExercise() {
   const snapshot = captureExerciseSnapshot();
   if (!snapshot) {
     setPlaybackBanner('Generate an exercise before exporting it.', 'warning');
     return;
   }
-  downloadExercisesFile([snapshot], 'arpeggio-flow-exercise');
+  downloadExercisesFile([snapshot], buildExportFileName(null));
   setPlaybackBanner(`Exported “${snapshot.label}” as a file.`, 'info');
 }
 
@@ -3206,12 +3230,20 @@ function willRestartStrudelLoop() {
 // Comping register: root from C3 up, so the voicing sits under the exercise
 // (which lives in guitar range) without crowding it.
 const BACKING_CHORD_LOW_MIDI = Tonal.Note.midi('C3');
-const BACKING_CHORD_MAX_TONES = 4;
+// Three notes, not four: a fourth tone under the exercise turns the comp into
+// a wall, and three is what a hand comping behind a soloist actually holds.
+const BACKING_CHORD_VOICE_COUNT = 3;
 
-/**
- * A close-position voicing for one chord, as Strudel note tokens. Chord tones
- * are stacked upwards from the root, so the shape never inverts mid-chart.
- */
+// The comp is background, so it is played with a soft attack and a long tail:
+// no percussive edge on the front, and no abrupt cut when a chord is followed
+// by a rest.
+const BACKING_CHORD_ENVELOPE = {
+  attack: 0.05,
+  decay: 0.3,
+  sustain: 0.75,
+  release: 0.9,
+};
+
 /**
  * Where the comp voicing starts. On guitar it always sits at C3, under the
  * exercise. On piano the comp is the resting hand, so it moves to the other
@@ -3232,11 +3264,45 @@ function getBackingChordLowMidi() {
   return Math.max(36, range.minMidi - 12);
 }
 
-function buildBackingChordVoicing(rootNote, quality, lowMidi = BACKING_CHORD_LOW_MIDI) {
-  const chordData = Tonal.Chord.get(`${rootNote}${quality || ''}`);
-  const pitchClasses = (chordData?.notes || []).slice(0, BACKING_CHORD_MAX_TONES);
-  if (!pitchClasses.length) return null;
-  // Note names, not strudel tokens: the notation layer reads this voicing too.
+/**
+ * The three chord tones a comping hand would actually hold: the root, the
+ * third (or the tone that stands in for it in a sus chord), and the colour
+ * tone on top — the seventh when there is one, else the sixth, else the fifth.
+ * Extensions above the seventh are dropped. Triads keep all three notes.
+ */
+function selectVoicingTones(chordData) {
+  const notes = chordData?.notes || [];
+  const intervals = chordData?.intervals || [];
+  if (notes.length <= BACKING_CHORD_VOICE_COUNT) return notes;
+  const byDegree = new Map();
+  intervals.forEach((interval, index) => {
+    const degree = parseInt(String(interval).replace(/\D/g, ''), 10);
+    if (Number.isFinite(degree) && !byDegree.has(degree) && notes[index]) {
+      byDegree.set(degree, notes[index]);
+    }
+  });
+  const chosen = [];
+  const take = (...degrees) => {
+    const found = degrees.find(
+      (degree) => byDegree.has(degree) && !chosen.includes(byDegree.get(degree))
+    );
+    if (found) chosen.push(byDegree.get(found));
+  };
+  take(1);
+  take(3, 4, 2);
+  take(7, 6, 5);
+  // Anything the degree map could not name (odd chord symbols) is filled in
+  // from the plain note list, so the voicing is never short.
+  notes.forEach((note) => {
+    if (chosen.length < BACKING_CHORD_VOICE_COUNT && !chosen.includes(note)) {
+      chosen.push(note);
+    }
+  });
+  return chosen.slice(0, BACKING_CHORD_VOICE_COUNT);
+}
+
+/** Stack pitch classes upwards, the first one at or above lowMidi. */
+function stackVoicing(pitchClasses, lowMidi) {
   const notes = [];
   let previousMidi = lowMidi - 1;
   pitchClasses.forEach((pitchClass) => {
@@ -3248,9 +3314,52 @@ function buildBackingChordVoicing(rootNote, quality, lowMidi = BACKING_CHORD_LOW
     }
     if (!Number.isFinite(midi)) return;
     previousMidi = midi;
-    notes.push(`${pitchClass}${octave}`);
+    // Note names, not strudel tokens: the notation layer reads this too, and
+    // it needs the chord's own spelling (Eb, not D#).
+    notes.push({ name: `${pitchClass}${octave}`, midi });
   });
-  return notes.length ? notes : null;
+  return notes;
+}
+
+/** How far the hand travels between two voicings, low note to low note. */
+function voicingDistance(candidate, previous) {
+  return candidate.reduce(
+    (sum, note, index) => sum + Math.abs(note.midi - (previous[index]?.midi ?? note.midi)),
+    0
+  );
+}
+
+/**
+ * A three-note voicing for one chord. `state` (optional, `{ previous }`) is
+ * carried along a chart: each chord is written in whichever inversion lies
+ * closest to the one before it, so the comp stays put instead of jumping back
+ * to root position on every bar. The first chord is in root position.
+ */
+function buildBackingChordVoicing(
+  rootNote,
+  quality,
+  lowMidi = BACKING_CHORD_LOW_MIDI,
+  state = null
+) {
+  const chordData = Tonal.Chord.get(`${rootNote}${quality || ''}`);
+  const tones = selectVoicingTones(chordData);
+  if (!tones.length) return null;
+  const inversions = tones.map((unused, rotation) =>
+    stackVoicing([...tones.slice(rotation), ...tones.slice(0, rotation)], lowMidi)
+  );
+  const previous = state?.previous;
+  const best = previous
+    ? inversions.reduce((closest, candidate) =>
+        voicingDistance(candidate, previous) < voicingDistance(closest, previous)
+          ? candidate
+          : closest
+      )
+    : inversions[0];
+  if (!best?.length) return null;
+  if (state) {
+    state.previous = best;
+  }
+  return best.map((note) => note.name);
 }
 
 /** The bass hit of a bass-&-chords preset: the root alone, placed in the
@@ -3287,12 +3396,17 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
   const noteTokens = [];
   const clipTokens = [];
   const compLowMidi = getBackingChordLowMidi();
+  // Voice leading runs along the chart, so the segments have to be walked in
+  // order — the same order the notation walks them in, which is what keeps
+  // the written comp and the played one identical.
+  const voicingState = { previous: null };
   segments.forEach((segment) => {
     const beats = segment.beats || 4;
     const voicingNotes = buildBackingChordVoicing(
       segment.rootNote,
       segment.quality,
-      compLowMidi
+      compLowMidi,
+      voicingState
     );
     const voicing = (voicingNotes || []).map(toStrudelNote).filter(Boolean);
     const bassToken = toStrudelNote(
@@ -3335,9 +3449,17 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
   if (typeof pattern.gain === 'function') {
     pattern = pattern.gain(config.gain);
   }
+  // Soft onset, long tail: the comp fades in under the exercise instead of
+  // striking on top of it, and a chord followed by a rest dies away rather
+  // than being switched off.
+  Object.entries(BACKING_CHORD_ENVELOPE).forEach(([control, value]) => {
+    if (typeof pattern[control] === 'function') {
+      pattern = pattern[control](value);
+    }
+  });
   // A touch of room so the comp sits behind the exercise rather than on top.
   if (typeof pattern.room === 'function') {
-    pattern = pattern.room(0.25);
+    pattern = pattern.room(0.3);
   }
   return pattern;
 }
@@ -5532,42 +5654,42 @@ function getNotatedAccompaniment() {
   };
 }
 
+/** Do these notes fill exactly `beats` quarter notes? (VexFlow counts a
+ * quarter note as 4096 ticks.) */
+function barFits(notes, beats) {
+  if (!notes?.length) return false;
+  const ticks = notes.reduce((sum, note) => sum + note.getTicks().value(), 0);
+  const fits = ticks === beats * 4096;
+  if (!fits) {
+    debugLog(`Accompaniment bar skipped: ${ticks} ticks for ${beats} beats.`);
+  }
+  return fits;
+}
+
 /**
  * One bar of the accompaniment staff, from the same preset the audio layer
  * plays: bass hits as single low roots, chord hits as stacks, each written to
  * last until the next hit (gaps become rests) so the bar always sums to 4.
  */
-function buildAccompanimentBarNotes(VF, segments, accomp) {
+function buildAccompanimentBarNotes(VF, segments, accomp, voicingState) {
   const notes = [];
   const restKey = accomp.clef === 'bass' ? 'd/3' : 'b/4';
-  const attachDots = (staveNote, dots) => {
-    for (let dot = 0; dot < dots; dot += 1) {
-      if (VF.Dot?.buildAndAttach) {
-        VF.Dot.buildAndAttach([staveNote], { all: true });
-      } else if (typeof staveNote.addDot === 'function') {
-        staveNote.addDot(0);
-      }
-    }
-  };
   const pushRest = (beats) => {
     decomposeRestBeats(beats).forEach((value) => {
       const spec = headDurationFor(value);
       if (!spec) return;
-      notes.push(
-        new VF.StaveNote({
-          clef: accomp.clef,
-          keys: [restKey],
-          duration: `${spec.duration}r`,
-        })
-      );
+      notes.push(makeSpecNote(VF, { clef: accomp.clef, keys: [restKey], spec, rest: true }));
     });
   };
   segments.forEach((segment) => {
     const beats = segment.beats || 4;
+    // Same voice-leading state the audio layer uses, threaded through the
+    // whole sheet, so the written comp is the one that plays.
     const voicing = buildBackingChordVoicing(
       segment.rootNote,
       segment.quality,
-      accomp.lowMidi
+      accomp.lowMidi,
+      voicingState
     );
     const bassNote = buildBackingBassNote(segment.rootNote, accomp.lowMidi);
     const hits = (accomp.config.hits(beats) || [])
@@ -5594,13 +5716,7 @@ function buildAccompanimentBarNotes(VF, segments, accomp) {
         hit.bass && bassNote
           ? [toVexFlowFormat(bassNote)]
           : voicing.map(toVexFlowFormat);
-      const staveNote = new VF.StaveNote({
-        clef: accomp.clef,
-        keys,
-        duration: spec.duration,
-      });
-      attachDots(staveNote, spec.dots);
-      notes.push(staveNote);
+      notes.push(makeSpecNote(VF, { clef: accomp.clef, keys, spec }));
       cursor = until;
     });
     if (cursor < beats) {
@@ -5657,6 +5773,8 @@ function generateExercise(options = {}) {
   const restKey = notationClef === 'bass' ? 'd/3' : 'b/4';
   const makeRest = (duration) =>
     new StaveNote({ clef: notationClef, keys: [restKey], duration: `${duration}r` });
+  // Carried across bars so the comp voice-leads through the whole chart.
+  const accompVoicing = { previous: null };
   const measures = barGroups.map((bar) => {
     const notes = [];
     const segmentStarts = [];
@@ -5721,7 +5839,9 @@ function generateExercise(options = {}) {
     return {
       segments: bar.segments,
       segmentStarts,
-      accompNotes: accomp ? buildAccompanimentBarNotes(VF, bar.segments, accomp) : null,
+      accompNotes: accomp
+        ? buildAccompanimentBarNotes(VF, bar.segments, accomp, accompVoicing)
+        : null,
       notes,
     };
   });
@@ -5854,7 +5974,10 @@ function generateExercise(options = {}) {
         measure.notes
       );
       let accompVoice = null;
-      if (accompStave && measure.accompNotes?.length) {
+      // A voice whose notes do not add up to the bar throws on draw, which
+      // would leave the reader with two empty staves. The comp is the
+      // dispensable part, so a bar that does not add up is simply left blank.
+      if (accompStave && barFits(measure.accompNotes, barBeats)) {
         accompVoice = new Voice({ num_beats: barBeats, beat_value: 4 }).addTickables(
           measure.accompNotes
         );
@@ -5958,24 +6081,21 @@ function headDurationFor(beats) {
   return HEAD_BEAT_TO_DURATION.find((entry) => Math.abs(entry.beats - beats) < 1e-6);
 }
 
-function makeHeadNote(VF, note, beats) {
-  const spec = headDurationFor(beats);
-  if (!spec) return null;
-  const clef = getNotationClef();
-  let staveNote;
-  if (note) {
-    staveNote = new VF.StaveNote({
-      clef,
-      keys: [toVexFlowFormat(note)],
-      duration: spec.duration,
-    });
-  } else {
-    staveNote = new VF.StaveNote({
-      clef,
-      keys: ['b/4'],
-      duration: `${spec.duration}r`,
-    });
-  }
+/**
+ * A note (or rest) for one HEAD_BEAT_TO_DURATION spec.
+ *
+ * The dots have to be in the duration string — 'hd', not 'h' plus a Dot
+ * modifier. VexFlow counts a note's ticks from the string alone, so a dotted
+ * half built the other way is two beats short and the voice it lands in throws
+ * IncompleteVoice, taking the whole sheet down with it. The modifier is still
+ * what prints the dot, so both go on.
+ */
+function makeSpecNote(VF, { clef, keys, spec, rest = false }) {
+  const staveNote = new VF.StaveNote({
+    clef,
+    keys,
+    duration: `${spec.duration}${'d'.repeat(spec.dots)}${rest ? 'r' : ''}`,
+  });
   for (let dot = 0; dot < spec.dots; dot += 1) {
     if (VF.Dot?.buildAndAttach) {
       VF.Dot.buildAndAttach([staveNote], { all: true });
@@ -5984,6 +6104,15 @@ function makeHeadNote(VF, note, beats) {
     }
   }
   return staveNote;
+}
+
+function makeHeadNote(VF, note, beats) {
+  const spec = headDurationFor(beats);
+  if (!spec) return null;
+  const clef = getNotationClef();
+  return note
+    ? makeSpecNote(VF, { clef, keys: [toVexFlowFormat(note)], spec })
+    : makeSpecNote(VF, { clef, keys: ['b/4'], spec, rest: true });
 }
 
 // Rests avoid dotted values (a dotted rest reads worse than two plain ones)
@@ -6356,14 +6485,22 @@ function sanitizeFilePart(value) {
     .toLowerCase();
 }
 
+/**
+ * A file name that says what the exercise is: instrument first, then the song
+ * (with its key) or the key and progression, then the shape — or, on piano,
+ * the hand and register that stand in for it. Pass a null extension for the
+ * bare stem.
+ */
 function buildExportFileName(extension) {
   const mode = getSelectedExerciseMode();
-  let parts = ['arpeggio-flow'];
+  const isPiano = getActiveInstrument() === 'piano';
+  let parts = ['arpeggio-flow', isPiano ? 'piano' : 'guitar'];
   if (mode === EXERCISE_MODES.SONG) {
     const song = getSelectedSong();
     parts = parts.concat([
-      sanitizeFilePart(song?.id || 'song'),
-      sanitizeFilePart(song?.title || ''),
+      'song',
+      sanitizeFilePart(song?.title || song?.id || 'song'),
+      sanitizeFilePart(song ? `${song.key}${song.scaleType === 'minor' ? 'm' : ''}` : ''),
     ]);
   } else {
     const key = getSelectedKeyValue() || 'key';
@@ -6374,21 +6511,24 @@ function buildExportFileName(extension) {
     parts = parts.concat([
       sanitizeFilePart(key),
       sanitizeFilePart(progression),
-      sanitizeFilePart(bars),
+      sanitizeFilePart(`${bars}bars`),
     ]);
-  }
-  if (getActiveInstrument() === 'piano') {
-    parts.push('piano');
   }
   if (getBeatsPerBar() !== 4) {
     parts.push(`${getBeatsPerBar()}4`);
   }
-  const shape = document.getElementById(getInstrumentView().shapeControlId)?.value || '';
-  if (shape) {
-    parts.push(sanitizeFilePart(shape));
+  if (isPiano) {
+    parts.push(getSelectedPianoHand() === 'left' ? 'lh' : 'rh');
+    parts.push(sanitizeFilePart(document.getElementById('pianoRange')?.value || ''));
+  } else {
+    const shape = document.getElementById('shape')?.value || '';
+    if (shape) {
+      parts.push(sanitizeFilePart(`shape-${shape}`));
+    }
   }
   parts = parts.filter(Boolean);
-  return `${parts.join('-')}.${extension}`;
+  const stem = parts.join('-');
+  return extension ? `${stem}.${extension}` : stem;
 }
 
 /** Controls that sit inside the exported block but must not be in the image. */
@@ -6520,6 +6660,11 @@ if (typeof window !== 'undefined') {
 // Initialize the application after DOM is loaded
 document.addEventListener('DOMContentLoaded', function () {
   const statusDiv = document.getElementById('status');
+  const versionLabel = document.getElementById('appVersion');
+  if (versionLabel) {
+    versionLabel.textContent = `v${APP_VERSION}`;
+    versionLabel.title = `Arpeggio Flow ${APP_VERSION} — the version stamped into exported files`;
+  }
 
   // Check if VexFlow and Tonal.js are loaded
   let vexflowLoaded = typeof Vex !== 'undefined';
