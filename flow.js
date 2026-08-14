@@ -1685,9 +1685,17 @@ function peekSelectValue(selectId, delta) {
   return values[(idx + delta + values.length) % values.length];
 }
 
+/** Set a select, but only to a value it actually offers. Assigning an unknown
+ * value blanks the select instead of failing, and a blank shape/register is
+ * only noticed later, as "Please select a chord shape" on the next loop. */
 function setSelectValue(selectId, value) {
   const select = document.getElementById(selectId);
   if (!select || value === null || value === undefined) return false;
+  const offered = [...select.options].some((option) => option.value === value);
+  if (!offered) {
+    debugLog(`Ignored ${selectId} = "${value}": not one of its options.`);
+    return false;
+  }
   select.value = value;
   select.dispatchEvent(new Event('change'));
   return true;
@@ -1700,17 +1708,27 @@ function setSelectValue(selectId, value) {
 // fret of the last. Positions come from the shape data itself rather than CAGED
 // theory, so stretched shapes and any future shape are handled the same way.
 
-function isStayInPositionEnabled() {
-  return document.getElementById('stayInPosition')?.checked ?? false;
+/** The toggle only means anything for the key-changing shifts, on guitar:
+ * "position" is a fretboard idea, and a piano register is not a CAGED box. */
+function stayInPositionApplies() {
+  return (
+    getSelectedContinuousShift() in CONTINUOUS_SHIFT_KEY_DELTAS &&
+    getActiveInstrument() === 'guitar'
+  );
 }
 
-/** The toggle only means anything for the key-changing shifts, on guitar. */
+/** Checked *and* meaningful. A disabled checkbox keeps its tick, and this one
+ * is remembered across sessions, so a box ticked while practising guitar is
+ * still ticked in piano mode — where following it would look for a CAGED shape
+ * and hand it to the register select. */
+function isStayInPositionEnabled() {
+  return stayInPositionApplies() && Boolean(document.getElementById('stayInPosition')?.checked);
+}
+
 function updateStayInPositionAvailability() {
   const toggle = document.getElementById('stayInPosition');
   if (!toggle) return;
-  const applies =
-    getSelectedContinuousShift() in CONTINUOUS_SHIFT_KEY_DELTAS &&
-    getActiveInstrument() === 'guitar';
+  const applies = stayInPositionApplies();
   toggle.disabled = !applies;
   toggle.closest('.toggle-label')?.classList.toggle('is-disabled', !applies);
 }
