@@ -19,7 +19,7 @@ import { SONGS, getSongById } from './songs/songs.js';
 // stamped into every exported file, shown in the page footer, and mirrored in
 // package.json; the git tag of a release should match it (`v1.1.0`).
 // Bump the minor when a release adds features, the patch for fixes.
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 // Debug flag - set to true for verbose console logging
 const DEBUG = true;
@@ -456,7 +456,7 @@ const STRUDEL_SOUND_CONFIG = {
   default: { type: 'synth', label: 'Synth (Default)' },
 };
 // Drum kit for the backing rhythm. @strudel/web's prebake only registers the
-// synth sounds, so the sample registry has to be loaded by hand — this JSON
+// synth sounds, so the sample registry has to be loaded by hand - this JSON
 // map (the same one the official Strudel REPL prebakes) names bd/sd/hh/oh/
 // rim/cp/rd/cr/perc and resolves them against the tidal-drum-machines repo.
 const DRUM_SAMPLE_MAP_URL =
@@ -464,7 +464,7 @@ const DRUM_SAMPLE_MAP_URL =
 
 // Backing rhythm played underneath (or instead of) the exercise notes. It
 // follows the tempo, not the note rhythm: one token per beat of the loop.
-// A layer maps (beatInMeasure, beatsInMeasure) to a mini-notation token —
+// A layer maps (beatInMeasure, beatsInMeasure) to a mini-notation token:
 // 'hh' is one hit on the beat, '[hh hh]' two eighths, '~' a rest. A layer is
 // either that function or { token, gain } when it needs its own level.
 const RHYTHM_CONFIG = {
@@ -489,7 +489,7 @@ const RHYTHM_CONFIG = {
     label: 'Jazz Ride (swing)',
     // Ride on every beat, swung "ding-da" on 2 and 4; hi-hat foot on 2 and 4.
     // The ride sample is far hotter than the kit's other sounds, so it sits
-    // well below the default rhythm gain — it should brush along under the
+    // well below the default rhythm gain - it should brush along under the
     // exercise, not lead it.
     layers: [
       { token: (beat) => (beat % 2 === 0 ? 'rd' : '[rd@2 rd]'), gain: 0.22 },
@@ -585,7 +585,7 @@ const BACKING_CHORD_CONFIG = {
 const GM_SOUNDFONT_FONTS = {
   // Not a GM program of its own: the blues voice is the overdriven-guitar
   // program (29) from the JCLive bank, which is warmer and sustains longer
-  // than the FluidR3 one — the singing, barely-broken-up tone of the
+  // than the FluidR3 one - the singing, barely-broken-up tone of the
   // "Robben Ford - Playing the Blues" examples. Pair it with the Room or
   // Slapback ambience below for the note tails.
   gm_blues_guitar: ['0290_JCLive_sf2_file'],
@@ -615,7 +615,7 @@ function getGlobalStrudelApi() {
     initStrudel: window.initStrudel,
     note: (...args) => window.note?.(...args),
     // s/stack are installed as globals by initStrudel's evalScope, so these
-    // stay lazy — they are looked up at call time, not at wrapper creation.
+    // stay lazy - they are looked up at call time, not at wrapper creation.
     s: (...args) => window.s?.(...args),
     stack: (...args) => window.stack?.(...args),
     hush: (...args) => window.hush?.(...args),
@@ -923,7 +923,7 @@ const FRETBOARD_COLOR_UPCOMING_NEXT_CHORD = '#9d7bff';
 // Notes from the next loop of a continuous shift: another key/shape entirely,
 // so they get their own colour and sit wherever that box is on the neck.
 const FRETBOARD_COLOR_UPCOMING_NEXT_LOOP = '#0d9488';
-// Opacity per step of lookahead — index 0 is the note right after the current
+// Opacity per step of lookahead - index 0 is the note right after the current
 // one. The length of this list is how far ahead the preview reaches. The next
 // note stays clearly readable; the drop-off across the three does the work of
 // showing how far away each one is.
@@ -1089,7 +1089,7 @@ function addPlayedNotesRing(dotEl, dotCircle, radius = FRETBOARD_DOT_RING_RADIUS
  *    to a later measure. A repeated pitch keeps its earliest rank, and the note
  *    sounding right now is never a preview.
  *  - positions: notes from the *next* loop of a continuous shift, as neck
- *    positions in that loop's box — a different part of the neck, so they
+ *    positions in that loop's box - a different part of the neck, so they
  *    cannot be matched by pitch against the box currently on screen.
  * With no shift pending, the preview wraps around the loop, which is exactly
  * what will be heard again.
@@ -1422,7 +1422,7 @@ function renderPianoNextLoopPreview(container, positions) {
     let markerEl = window.pianoKeyboard.markerAt(container, position.midi);
     if (!markerEl) {
       // In the incoming exercise but not on this diagram's scale: draw a
-      // temporary marker. Midis outside the drawn register are skipped — a
+      // temporary marker. Midis outside the drawn register are skipped - a
       // register shift previews only the overlap; the box label still
       // announces the target.
       markerEl = window.pianoKeyboard.addMarker(container, {
@@ -1513,7 +1513,7 @@ function buildVisualSteps(mode) {
     });
   });
   // One step per rest bar: the chart clears and, when a shift is pending, the
-  // incoming box stays lit — the pause is exactly when you move to it.
+  // incoming box stays lit - the pause is exactly when you move to it.
   const pauseBars = getSelectedLoopPauseBars();
   for (let bar = 0; bar < pauseBars; bar += 1) {
     steps.push({ pause: true, beats: getBeatsPerBar() });
@@ -1531,7 +1531,7 @@ function applyVisualStep(step, mode, steps, index) {
   moveHighlightToMeasure(step.segment.barIndex ?? 0);
   if (step.rest) {
     // A written rest: the chord's context stays lit, nothing reads as
-    // "sounding now" — same visual as chord mode, one beat long.
+    // "sounding now" - same visual as chord mode, one beat long.
     view.highlightChord(step.segment);
   } else if (step.note !== undefined) {
     view.highlightNote(
@@ -1544,7 +1544,7 @@ function applyVisualStep(step, mode, steps, index) {
   } else {
     view.highlightChord(step.segment);
     // Chord mode has no per-note lookahead, so the incoming box lights up for
-    // the last chord of the loop instead — the same cue, one chord wide.
+    // the last chord of the loop instead - the same cue, one chord wide.
     const isLastChord = steps.slice(index + 1).every((later) => later.pause);
     if (isLastChord) {
       const fretboardDiv = document.getElementById('fretboard-container');
@@ -1719,7 +1719,7 @@ function stayInPositionApplies() {
 
 /** Checked *and* meaningful. A disabled checkbox keeps its tick, and this one
  * is remembered across sessions, so a box ticked while practising guitar is
- * still ticked in piano mode — where following it would look for a CAGED shape
+ * still ticked in piano mode - where following it would look for a CAGED shape
  * and hand it to the register select. */
 function isStayInPositionEnabled() {
   return stayInPositionApplies() && Boolean(document.getElementById('stayInPosition')?.checked);
@@ -1776,7 +1776,7 @@ function pickShapeNearPosition(keyValue, center) {
   return best?.shape || null;
 }
 
-/** Where a shift would land, as { key } and/or { shape } — nothing is changed. */
+/** Where a shift would land, as { key } and/or { shape } - nothing is changed. */
 function peekContinuousShiftTarget(mode) {
   if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
     if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) return null;
@@ -1792,7 +1792,7 @@ function peekContinuousShiftTarget(mode) {
     return target;
   }
   // On guitar these walk the shape list (up/down the neck); on piano they walk
-  // the register list — same machinery, the instrument names the control.
+  // the register list - same machinery, the instrument names the control.
   if (mode === 'shape-up') {
     const shape = peekSelectValue(getInstrumentView().shapeControlId, 1);
     return shape ? { shape } : null;
@@ -2070,7 +2070,7 @@ function precomputeNextExercise() {
 
 // Fire slightly before the loop boundary: the scheduler queues audio events
 // ~150ms ahead (latency 0.1s + tick interval), so hushing right at the
-// boundary is too late — the old pattern's next first note is already
+// boundary is too late - the old pattern's next first note is already
 // scheduled and sounds together with the new pattern's first note.
 const CONTINUOUS_SHIFT_GUARD_MS = 200;
 
@@ -2133,13 +2133,13 @@ async function performContinuousShift(mode) {
     });
   }
   // A pinned exercise can be a different length or tempo, which moves the
-  // pattern onto a new cycle grid — that needs a clock restart, and a restart
+  // pattern onto a new cycle grid - that needs a clock restart, and a restart
   // has to happen AT the boundary, not before it.
   const audioOn = isAudioPlaybackEnabled() && playbackState.engine === 'strudel';
   const restartsClock = audioOn && willRestartStrudelLoop();
   // Otherwise swap the audio pattern NOW, before the scheduler queries the
   // boundary chunk: the delegating wrapper keeps playing without any clock
-  // restart, and the swap only affects queries from here on — the old loop's
+  // restart, and the swap only affects queries from here on - the old loop's
   // tail is already scheduled, the new loop's first note comes from the new
   // pattern.
   if (audioOn && !restartsClock) {
@@ -2168,8 +2168,8 @@ async function performContinuousShift(mode) {
   scheduleContinuousShift();
 }
 
-const AUDIO_OFF_MESSAGE = 'Audio is off — showing the exercise without sound.';
-const PAUSED_MESSAGE = 'Paused — Resume picks up from the top of the loop.';
+const AUDIO_OFF_MESSAGE = 'Audio is off: showing the exercise without sound.';
+const PAUSED_MESSAGE = 'Paused. Resume picks up from the top of the loop.';
 
 /**
  * Re-apply the Visual / Audio switches to a playback already in progress.
@@ -2197,7 +2197,7 @@ async function restartPlaybackLayers() {
 }
 
 // Starting playback awaits Strudel (a cold start loads the library and a
-// soundfont, seconds on a slow link). A Stop — or a second Play — during that
+// soundfont, seconds on a slow link). A Stop - or a second Play - during that
 // wait bumps this token, and the stale start bails out instead of flipping the
 // transport back to "playing" after the fact.
 let playbackSessionToken = 0;
@@ -2283,7 +2283,7 @@ async function startPlayback() {
     await playStrudelExercise(playbackState.notes);
   }
   if (!isAudioPlaybackEnabled()) {
-    // Silence here is a setting, not a fault — say so, or it reads as a bug.
+    // Silence here is a setting, not a fault - say so, or it reads as a bug.
     setPlaybackBanner(AUDIO_OFF_MESSAGE, 'warning');
   }
   if (token !== playbackSessionToken) {
@@ -2320,7 +2320,7 @@ async function stopPlayback() {
 /**
  * Pause holds the picture: the highlight freezes on the note you stopped on,
  * so you can look at where you are. The scheduler cannot be resumed mid-cycle
- * without drifting off the grid, so Resume starts the loop again from the top —
+ * without drifting off the grid, so Resume starts the loop again from the top;
  * the banner says as much. The next-shift preview is part of the held picture:
  * clearing it here would collapse the caption row's reserved height and slide
  * the transport up into the still-drawn caption (Resume recomputes it anyway
@@ -2361,7 +2361,7 @@ function updateTransportButtons() {
 // ─── Exercise history & pinned exercises ─────────────────────────────────────
 // Every loop that reaches the speakers is snapshotted: the form settings plus
 // the exact notes that were generated. That makes a continuous-shift run
-// replayable afterwards — you can go back to the key that caught you out
+// replayable afterwards - you can go back to the key that caught you out
 // instead of waiting for it to come round again. The session list lives in
 // memory; pinning copies an entry to localStorage so it survives a reload.
 
@@ -2616,7 +2616,7 @@ function matchReplayMeasures(replay, measureData) {
   return fits ? replay : null;
 }
 
-/** Put a saved exercise on screen — settings, chart and its exact notes. */
+/** Put a saved exercise on screen - settings, chart and its exact notes. */
 function showExerciseSnapshot(snapshot, { warnOnMismatch = false } = {}) {
   if (!snapshot) return;
   applyControlValues(snapshot.settings);
@@ -2645,7 +2645,7 @@ function ensurePinnedRotationStart() {
   const rotation = pinnedRotationEntries();
   if (!rotation.length) {
     setPlaybackBanner(
-      `No pinned exercises for the ${getActiveInstrument()} — the cycle only plays snapshots of the active instrument.`,
+      `No pinned exercises for the ${getActiveInstrument()}: the cycle only plays snapshots of the active instrument.`,
       'warning'
     );
     return;
@@ -2700,7 +2700,7 @@ function removePinned(id) {
 
 // ─── Pinned exercises: file in, file out ─────────────────────────────────────
 // localStorage is per browser, so the pinned set is also written to (and read
-// from) a plain JSON file — a backup, and the way to carry a practice set to
+// from) a plain JSON file - a backup, and the way to carry a practice set to
 // another device.
 
 // The shape of the file itself, bumped only when the layout of what is written
@@ -2736,7 +2736,7 @@ function downloadExercisesFile(exercises, filenameStem) {
   link.href = url;
   link.download = `${filenameStem}-${new Date().toISOString().slice(0, 10)}.json`;
   // Safari only downloads from an anchor that is in the document, and revoking
-  // the blob URL in the same tick cancels the download — hence the timeout.
+  // the blob URL in the same tick cancels the download - hence the timeout.
   link.style.display = 'none';
   document.body.appendChild(link);
   link.click();
@@ -2748,7 +2748,7 @@ function downloadExercisesFile(exercises, filenameStem) {
 
 function exportPinnedExercises() {
   if (!pinnedExercises.length) {
-    setHistoryHint('Nothing pinned yet — star an exercise first.');
+    setHistoryHint('Nothing pinned yet: star an exercise first.');
     return;
   }
   downloadExercisesFile(pinnedExercises, `arpeggio-flow-pinned-${pinnedExercises.length}`);
@@ -2770,7 +2770,7 @@ function exportCurrentExercise() {
 
 /**
  * Load an exported exercise file straight onto the main window, ready to
- * Play — unlike History → Import, which only adds entries to the pinned list
+ * Play - unlike History → Import, which only adds entries to the pinned list
  * and still needs Load clicked on one of them. A multi-exercise (pinned
  * export) file loads its first entry.
  */
@@ -2793,7 +2793,7 @@ async function loadExerciseFromFile(file) {
   const snapshot = entries[0];
   await loadExerciseSnapshot(snapshot);
   const extra = entries.length > 1 ? ` (first of ${entries.length} in the file)` : '';
-  setPlaybackBanner(`Loaded “${snapshot.label}”${extra} — ready to play.`, 'info');
+  setPlaybackBanner(`Loaded “${snapshot.label}”${extra}, ready to play.`, 'info');
 }
 
 /** Accepts the exported wrapper or a bare array of exercises. */
@@ -2978,9 +2978,9 @@ function renderExerciseHistory() {
   body.innerHTML = '';
   body.append(
     buildHistorySection(
-      'Pinned — cycled top to bottom',
+      'Pinned (cycled top to bottom)',
       pinnedExercises,
-      'Nothing pinned yet — use ☆ to keep an exercise after a reload, and to add it to the cycle.',
+      'Nothing pinned yet: use ☆ to keep an exercise after a reload, and to add it to the cycle.',
       { pinnedList: true }
     )
   );
@@ -3093,7 +3093,7 @@ function buildStrudelBeatPattern(beatSlots) {
  * 
  * This app uses bpc=4 as a fixed calibration unit: cycles per minute =
  * bpm / 4, whatever the written meter. The bar length is a separate,
- * user-picked value — see getBeatsPerBar() — and all the pattern math is
+ * user-picked value - see getBeatsPerBar() - and all the pattern math is
  * driven by total beat counts, so a 3/4 bar is simply three beat tokens.
  */
 
@@ -3120,7 +3120,7 @@ function buildStrudelEvaluateCode(notes, bpm) {
   ].join('; ');
 }
 
-// The tempo setters are NOT exports of the @strudel/web ES module — they are
+// The tempo setters are NOT exports of the @strudel/web ES module - they are
 // only installed as window globals once initStrudel() has run. Look in both
 // places (api for the CDN/global build, window for the ESM build).
 function resolveStrudelFn(api, names) {
@@ -3160,10 +3160,10 @@ function getMeasures(beatCount) {
   //   - pattern.cpm(x) means pattern.fast(x / 60)
   // slow(beats / 8) puts 8 beat-tokens in one cycle; combined with
   // pattern.cpm(bpm / 4) the note rate is 8 * (bpm/240) * 0.5 = bpm/60
-  // beats per second — exactly the notated tempo. Do not "simplify" this
+  // beats per second - exactly the notated tempo. Do not "simplify" this
   // to beats / BEATS_PER_CYCLE: that plays at half speed.
   // Loops shorter than 8 beats must return a fraction (slow(0.5) fits a
-  // 4-beat loop twice in a cycle) — clamping the RESULT to 1 played a
+  // 4-beat loop twice in a cycle) - clamping the RESULT to 1 played a
   // single-bar exercise at half tempo. Only the beat count is guarded.
   return Math.max(1, beatCount) / (2 * BEATS_PER_CYCLE);
 }
@@ -3348,7 +3348,7 @@ function getBackingChordLowMidi() {
 /**
  * The three chord tones a comping hand would actually hold: the root, the
  * third (or the tone that stands in for it in a sus chord), and the colour
- * tone on top — the seventh when there is one, else the sixth, else the fifth.
+ * tone on top - the seventh when there is one, else the sixth, else the fifth.
  * Extensions above the seventh are dropped. Triads keep all three notes.
  */
 function selectVoicingTones(chordData) {
@@ -3478,7 +3478,7 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
   const clipTokens = [];
   const compLowMidi = getBackingChordLowMidi();
   // Voice leading runs along the chart, so the segments have to be walked in
-  // order — the same order the notation walks them in, which is what keeps
+  // order - the same order the notation walks them in, which is what keeps
   // the written comp and the played one identical.
   const voicingState = { previous: null };
   segments.forEach((segment) => {
@@ -3546,7 +3546,7 @@ async function buildBackingChordsPattern(api, beatMeta, measures, options = {}) 
 }
 
 // ─── Song intro: the head played once before the exercise ────────────────────
-// One pass of the song's chart — comped chords, plus the melody when the song
+// One pass of the song's chart - comped chords, plus the melody when the song
 // carries one (`melodyBars`, parsed from the PD-only `melody` field in
 // songs/songs.js). After the chart, the running pattern is handed over to the
 // exercise at the loop boundary (same wrapper-swap machinery as continuous
@@ -3662,7 +3662,7 @@ async function playSongIntro() {
   startOrSwapStrudelPattern(api, pattern, `${measures}@${getCyclesPerMinute(bpm)}`);
   const barsCount = normalizeSongBars(song.progressionBars).length;
   setPlaybackBanner(
-    `Playing the head first (${barsCount} bars${song.melodyBars ? ', with melody' : ''}) — the exercise follows.`,
+    `Playing the head first (${barsCount} bars${song.melodyBars ? ', with melody' : ''}); the exercise follows.`,
     'info'
   );
   return introBeats;
@@ -3788,7 +3788,7 @@ async function playStrudelExercise(notes) {
   // "None (rhythm only)": the backing rhythm below is the whole pattern.
   pattern = await applySelectedSound(api, pattern, sound, soundConfig);
 
-  // Effects go on the notes only — a reverbed metronome is unusable as a
+  // Effects go on the notes only - a reverbed metronome is unusable as a
   // reference, and the drum samples already have their own room in them.
   pattern = applyAmbience(pattern);
   pattern = applySoundEnvelope(pattern, soundConfig);
@@ -3804,7 +3804,7 @@ async function playStrudelExercise(notes) {
   }
 
   // Tempo lives on the pattern: pattern.cpm(bpm/4) with the slow() factor
-  // from getMeasures() — see the calibration note there. The scheduler's
+  // from getMeasures() - see the calibration note there. The scheduler's
   // clock cannot be changed in this Strudel build (no setcpm/setcps globals
   // or exports), so applyStrudelTempo is only a fallback for other builds.
   if (typeof pattern.cpm === 'function') {
@@ -3819,7 +3819,7 @@ async function playStrudelExercise(notes) {
   const context = getStrudelAudioContext();
   if (context && context.state !== 'running') {
     // Nothing will be heard until a gesture wakes the context back up.
-    setPlaybackBanner('The browser suspended audio — tap Play again to re-enable it.', 'warning');
+    setPlaybackBanner('The browser suspended audio; tap Play again to re-enable it.', 'warning');
     return;
   }
   setPlaybackBanner(`Playing via Strudel at ${bpm} BPM (${describePlaybackVoices()}).`, 'info');
@@ -3839,7 +3839,7 @@ function getStrudelAudioContext() {
 
 /**
  * iOS suspends the audio context whenever the page goes to the background, and
- * Strudel only ever resumes it once — initAudioOnFirstClick removes its own
+ * Strudel only ever resumes it once - initAudioOnFirstClick removes its own
  * listener after the first click. Everything afterwards then drives a dead
  * context: Play does nothing, and neither does toggling Audio or changing the
  * sound. Resuming must happen synchronously inside a user gesture, so this runs
@@ -3906,8 +3906,8 @@ function updateKeyDebug(keyValue) {
 }
 
 // ─── Custom progressions ─────────────────────────────────────────────────────
-// "Custom…" swaps the preset menu for a free-text field. Input is forgiving —
-// any of "I-vi-ii-V", "i vi ii v", "| I | vi | ii | V |" work — and resolves to
+// "Custom…" swaps the preset menu for a free-text field. Input is forgiving:
+// any of "I-vi-ii-V", "i vi ii v", "| I | vi | ii | V |" work - and resolves to
 // the same roman symbols the presets use, so nothing downstream changes.
 
 const ROMAN_NUMERAL_TO_DEGREE = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7 };
@@ -3974,7 +3974,18 @@ function getProgressionChords() {
   if (!progression) {
     return { error: 'Please select a key, progression, and number of bars.' };
   }
-  return { chords: progression.replace(/\s/g, '').split('-') };
+  // Preset values are written with plain numerals ('vii'); resolve each token
+  // to the same canonical symbol the custom parser produces ('viiAø'), so the
+  // quality tables downstream always see the keys they know.
+  return {
+    chords: progression
+      .replace(/\s/g, '')
+      .split('-')
+      .map((token) => {
+        const roman = token.replace(/[^ivx]/gi, '').toLowerCase();
+        return DEGREE_TO_ROMAN_SYMBOL[ROMAN_NUMERAL_TO_DEGREE[roman]] || token;
+      }),
+  };
 }
 
 function updateBarsForProgression(progressionValue) {
@@ -4077,7 +4088,7 @@ function setExerciseMode(mode) {
     timeSignatureSelect.disabled = isSongMode;
     timeSignatureSelect.title = isSongMode
       ? 'Songs are played as written, in 4/4.'
-      : '';
+      : 'Beats per bar: 4/4, 3/4 waltz or 2/4';
   }
   updateNotesPerBarOptions();
   updateExportTitle();
@@ -4111,7 +4122,7 @@ const PIANO_HAND_DEFAULT_RANGE = {
 /**
  * The register select must always show a real register. Every reader of it
  * falls back to C3–C5 on garbage (playback keeps working), so a stale or
- * invalid stored value would otherwise sit as a silently-blank select —
+ * invalid stored value would otherwise sit as a silently-blank select;
  * snap the control to the same fallback the readers use instead.
  */
 function normalizePianoRangeSelection() {
@@ -4134,7 +4145,7 @@ function updateInstrumentSoundSelection(instrument) {
 }
 
 /** Apply the instrument to the form and chrome. Does not touch the rendered
- * exercise — restores regenerate right after, and the toggle buttons go
+ * exercise - restores regenerate right after, and the toggle buttons go
  * through switchInstrument() for that. */
 function setInstrument(instrument, { skipSave = false } = {}) {
   const target = instrument === 'piano' ? 'piano' : 'guitar';
@@ -4177,7 +4188,7 @@ async function switchInstrument(instrument) {
   }
   setInstrument(instrument);
   // The register (or shape) changes the pitch pool, so the notes must be
-  // re-rolled — re-skinning the old ones could show pitches the new
+  // re-rolled - re-skinning the old ones could show pitches the new
   // instrument's constraint would never generate.
   const hasExercise = Boolean(lastExerciseState?.measureData?.length);
   const shapeValue = document.getElementById(getInstrumentView().shapeControlId)?.value;
@@ -4297,7 +4308,7 @@ function toVexFlowFormat(note) {
   // Guitar transposes (+1 octave, sounding pitch → written pitch); piano is
   // written at sounding pitch. Reads the active instrument at render time,
   // which is safe because settings are always applied before an exercise is
-  // (re)rendered — a caller that renders before applying settings would
+  // (re)rendered - a caller that renders before applying settings would
   // mis-transpose.
   return `${pc.toLowerCase()}/${octave + getInstrumentView().vexflowOctaveShift}`;
 }
@@ -4677,7 +4688,7 @@ function renderPianoChordDiagrams(measureData, shapeContext) {
     });
     window.pianoKeyboard.render(box, {
       minMidi: 60,
-      maxMidi: 71, // C..B — one octave, chroma only
+      maxMidi: 71, // C..B - one octave, chroma only
       markers,
       showOctaveLabels: false,
     });
@@ -4729,8 +4740,8 @@ function openScaleDegreeModal() {
   const titleEl = document.getElementById('scaleDegreeModalTitle');
   if (!modal || !body) return;
 
-  // Use cagedShape.shape (e.g. "G Shape") directly — no extra "shape" suffix
-  titleEl.textContent = `Scale Arpeggios — ${cagedShape.key} ${cagedShape.scaleType} (${cagedShape.shape || ''})`.replace(/\s*\(\s*\)\s*$/, '');
+  // Use cagedShape.shape (e.g. "G Shape") directly - no extra "shape" suffix
+  titleEl.textContent = `Scale Arpeggios: ${cagedShape.key} ${cagedShape.scaleType} (${cagedShape.shape || ''})`.replace(/\s*\(\s*\)\s*$/, '');
   body.innerHTML = '';
 
   if (cagedShape.instrument === 'piano') {
@@ -5039,7 +5050,7 @@ function getVexChordRenderSettings(basePosition) {
 }
 
 /** Piano twin of prepareExerciseContext: the register is the "shape". Returns
- * the same bundle, with a register descriptor in the cagedShape slot — no
+ * the same bundle, with a register descriptor in the cagedShape slot - no
  * scale_frets, so every guitar-only consumer that guards on them stays inert. */
 function preparePianoContext(keyValue, rangeValue) {
   const keyContext = getKeyContext(keyValue);
@@ -5129,7 +5140,7 @@ function isTrueChorusLengthEnabled() {
 }
 
 /**
- * Beats in one written bar — the time signature's top number (the beat is
+ * Beats in one written bar - the time signature's top number (the beat is
  * always a quarter note). Songs are written 4/4 charts, so song mode pins it.
  * Distinct from BEATS_PER_CYCLE, the fixed Strudel calibration unit.
  */
@@ -5175,7 +5186,7 @@ function isAddRestsEnabled() {
 // beamed pair of eighths (2). n notes per bar → (n - beatsPerBar) slots
 // become eighth pairs, placed on random beats for variety. With rests on,
 // some slots become 0 (quarter rest), 'r8' (eighth rest then eighth note) or
-// '8r' (eighth note then eighth rest) — see addRestsToSlots.
+// '8r' (eighth note then eighth rest) - see addRestsToSlots.
 function buildBarSlots(notesPerBar, beatsPerBar = 4) {
   const n = Math.max(beatsPerBar, Math.min(2 * beatsPerBar, notesPerBar));
   const slots = Array(beatsPerBar).fill(1);
@@ -5248,15 +5259,15 @@ function updateNotesPerBarOptions() {
     option.value = String(n);
     option.textContent =
       pairs === 0
-        ? `${n} — quarter notes`
+        ? `${n} - quarter notes`
         : pairs === beatsPerBar
-          ? `${n} — eighth notes`
-          : `${n} — ${pairWords[pairs - 1]} pair${pairs > 1 ? 's' : ''} of 8ths`;
+          ? `${n} - eighth notes`
+          : `${n} - ${pairWords[pairs - 1]} pair${pairs > 1 ? 's' : ''} of 8ths`;
     select.append(option);
   }
   const randomOption = document.createElement('option');
   randomOption.value = 'random';
-  randomOption.textContent = `Random (${beatsPerBar}–${2 * beatsPerBar} per bar)`;
+  randomOption.textContent = `Random (${beatsPerBar}-${2 * beatsPerBar} per bar)`;
   select.append(randomOption);
   if (previous === 'random') {
     select.value = 'random';
@@ -5719,7 +5730,7 @@ function buildExerciseMeasures(options = {}) {
 /**
  * The accompaniment staff spec, or null when there is nothing to notate.
  * Piano mode with a backing-chords preset on gets a grand staff: the practice
- * line on one staff, the resting hand's comp written on the other — the
+ * line on one staff, the resting hand's comp written on the other - the
  * Chopin-waltz layout (melody over bass-and-chords), squared to 4/4.
  */
 function getNotatedAccompaniment() {
@@ -6068,7 +6079,7 @@ function generateExercise(options = {}) {
       // measure the clef/key/time overhead off the drawn stave rather than
       // guessing it (a wide key signature plus a dense bar used to push the
       // first bar's last note over the barline). What remains after a small
-      // right padding — smaller in dense bars, which need the room — is the
+      // right padding - smaller in dense bars, which need the room - is the
       // real formatting width.
       const extraNotes = Math.max(0, measure.notes.length - barBeats);
       const modifierWidth = Math.max(
@@ -6147,7 +6158,7 @@ function generateExercise(options = {}) {
 
 // ─── Head lead sheet ─────────────────────────────────────────────────────────
 // Notation for the intro chorus: the song's melody (with ties and beams) when
-// it has one, chord symbols over slash notation otherwise — so the user can
+// it has one, chord symbols over slash notation otherwise - so the user can
 // play the head along with the comped intro.
 
 const HEAD_BEAT_TO_DURATION = [
@@ -6166,7 +6177,7 @@ function headDurationFor(beats) {
 /**
  * A note (or rest) for one HEAD_BEAT_TO_DURATION spec.
  *
- * The dots have to be in the duration string — 'hd', not 'h' plus a Dot
+ * The dots have to be in the duration string - 'hd', not 'h' plus a Dot
  * modifier. VexFlow counts a note's ticks from the string alone, so a dotted
  * half built the other way is two beats short and the voice it lands in throws
  * IncompleteVoice, taking the whole sheet down with it. The modifier is still
@@ -6431,7 +6442,7 @@ function renderHeadSheet(song) {
             .setYShift(10);
           bar.notes[target].addModifier(annotation, 0);
         } else {
-          // A held note spans this chord's beat — nothing to attach to, so
+          // A held note spans this chord's beat - nothing to attach to, so
           // the symbol is drawn at its beat position once the bar is laid out
           // (otherwise both chords stack on the same note).
           floatingChords.push({
@@ -6558,7 +6569,7 @@ function regenerateExercise(options = {}) {
 
 // Note: findClosestIndex has been moved to noteFlow.js module
 
-// Case is kept: it carries meaning in these names — "Ab-I-V" is A-flat major
+// Case is kept: it carries meaning in these names - "Ab-I-V" is A-flat major
 // with major chords, where "ab-i-v" reads as minors.
 function sanitizeFilePart(value) {
   return value
@@ -6570,7 +6581,7 @@ function sanitizeFilePart(value) {
 
 /**
  * A file name that says what the exercise is: instrument first, then the song
- * (with its key) or the key and progression, then the shape — or, on piano,
+ * (with its key) or the key and progression, then the shape - or, on piano,
  * the hand and register that stand in for it. Pass a null extension for the
  * bare stem.
  */
@@ -6746,7 +6757,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const versionLabel = document.getElementById('appVersion');
   if (versionLabel) {
     versionLabel.textContent = `v${APP_VERSION}`;
-    versionLabel.title = `Arpeggio Flow ${APP_VERSION} — the version stamped into exported files`;
+    versionLabel.title = `Arpeggio Flow ${APP_VERSION}, the version stamped into exported files`;
   }
 
   // Check if VexFlow and Tonal.js are loaded
@@ -6931,7 +6942,7 @@ document.addEventListener('DOMContentLoaded', function () {
       updateStayInPositionAvailability();
       if (event.target.value === 'cycle-pinned' && !pinnedExercises.length) {
         setPlaybackBanner(
-          'Nothing pinned yet — open History and star the exercises you want in the cycle.',
+          'Nothing pinned yet: open History and star the exercises you want in the cycle.',
           'warning'
         );
       }
@@ -6950,7 +6961,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 
     // In piano mode the backing style is also written on the accompaniment
-    // staff, so the sheet re-renders — replaying the same notes, not rolling
+    // staff, so the sheet re-renders - replaying the same notes, not rolling
     // new ones.
     document.getElementById('backingChords')?.addEventListener('change', () => {
       if (getActiveInstrument() === 'piano' && lastExerciseState?.measureData?.length) {
@@ -7004,7 +7015,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // Remember the form as it is left. The inline window.onload handler in the
     // page rebuilds the shape list, so the restore waits for 'load' to run
-    // after it — otherwise the restored shape is overwritten.
+    // after it - otherwise the restored shape is overwritten.
     const rememberedIds = new Set([...SNAPSHOT_CONTROL_IDS, ...EXTRA_PREF_CONTROL_IDS]);
     document.addEventListener('change', (event) => {
       if (rememberedIds.has(event.target?.id)) {
@@ -7116,6 +7127,15 @@ document.addEventListener('DOMContentLoaded', function () {
         openScaleDegreeModal();
       });
     }
+
+    // FAQ: a static dialog, same chrome as the other modals.
+    const faqModal = document.getElementById('faqModal');
+    document.getElementById('faqButton')?.addEventListener('click', () => {
+      faqModal?.showModal();
+    });
+    document.getElementById('faqModalClose')?.addEventListener('click', () => {
+      faqModal?.close();
+    });
 
     // Scale-degree modal: close button
     const scaleDegreeModalClose = document.getElementById('scaleDegreeModalClose');

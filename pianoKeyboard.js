@@ -1,7 +1,7 @@
 /**
  * pianoKeyboard.js
  *
- * SVG piano keyboard renderer for piano mode. Pure geometry and DOM — all
+ * SVG piano keyboard renderer for piano mode. Pure geometry and DOM - all
  * music theory (which midis are in scale, labels, colors) stays in flow.js,
  * mirroring how fretboard.umd.js draws and flow.js colors.
  *

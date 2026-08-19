@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Arpeggio Flow — Sound Lab</title>
+<title>Arpeggio Flow - Sound Lab</title>
 <!--
   A bench for choosing the app's instrument sounds without touching flow.js.
 
@@ -15,7 +15,7 @@
 
   Standalone on purpose: double-click the file, no server and no build step.
   The one thing it duplicates from flow.js is the table of sounds the app
-  currently uses (APP_SOUNDS below) — keep it in step by hand when the app's
+  currently uses (APP_SOUNDS below) - keep it in step by hand when the app's
   GM_SOUNDFONT_FONTS changes.
 -->
 <script src="https://unpkg.com/@strudel/web@1.2.6"></script>
@@ -94,7 +94,7 @@
 <header>
   <h1>Sound Lab</h1>
   <button id="startButton" class="primary">Start audio</button>
-  <span class="status" id="status">Click “Start audio” — the browser only lets sound begin from a click.</span>
+  <span class="status" id="status">Click “Start audio” - the browser only lets sound begin from a click.</span>
 </header>
 <p class="tagline">
   Same Strudel build, same soundfont bank, same trigger code as the app: what you hear here is what it will play.
@@ -120,12 +120,12 @@
     <h2 style="margin-top:12px">Slots</h2>
     <div class="slot">
       <span class="slot__tag slot__tag--a">A</span>
-      <span class="slot__font" id="slotAFont">—</span>
+      <span class="slot__font" id="slotAFont">none</span>
       <button data-select-slot="A">select</button>
     </div>
     <div class="slot">
       <span class="slot__tag slot__tag--b">B</span>
-      <span class="slot__font" id="slotBFont">—</span>
+      <span class="slot__font" id="slotBFont">none</span>
       <button data-select-slot="B">select</button>
     </div>
     <div class="row">
@@ -143,12 +143,12 @@
     <h2>2 · Phrase</h2>
     <div class="row">
       <select id="phrase">
-        <option value="arp">Arpeggio (quarters) — the exercise</option>
-        <option value="arp8">Arpeggio (eighths) — fast lines</option>
-        <option value="single">One note per bar — hear the envelope</option>
-        <option value="chord">Held chord — the backing comp</option>
-        <option value="both">Lead + comp — A leads, B comps, the balance</option>
-        <option value="sweep">Register sweep — four octaves, one per bar</option>
+        <option value="arp">Arpeggio (quarters) - the exercise</option>
+        <option value="arp8">Arpeggio (eighths) - fast lines</option>
+        <option value="single">One note per bar - hear the envelope</option>
+        <option value="chord">Held chord - the backing comp</option>
+        <option value="both">Lead + comp - A leads, B comps, the balance</option>
+        <option value="sweep">Register sweep - four octaves, one per bar</option>
       </select>
       <label for="tempo">BPM</label>
       <input type="number" id="tempo" value="100" min="40" max="260" step="5" style="width:72px" />
@@ -169,7 +169,7 @@
     </div>
     <p class="hint">
       <strong>clip</strong> is note length (1 = the full beat); <strong>lpf</strong> rolls off the
-      top — the quickest cure for a brittle, cheap-keyboard edge. <strong>release</strong> is what
+      top - the quickest cure for a brittle, cheap-keyboard edge. <strong>release</strong> is what
       stops a note being cut off dead when a rest follows.
     </p>
   </section>
@@ -177,7 +177,7 @@
 
 <section class="panel" style="margin-top:16px">
   <h2>4 · Take it back to flow.js</h2>
-  <pre id="snippet">—</pre>
+  <pre id="snippet"></pre>
   <p class="hint">
     The font line goes in <code>GM_SOUNDFONT_FONTS</code>. Envelope and effect values go where that
     voice is built: <code>buildBackingChordsPattern()</code> for the comp
@@ -194,7 +194,7 @@ const STRUDEL_ESM_URL = 'https://esm.sh/@strudel/web@1.2.6?target=es2022';
 const SOUNDFONT_BASE_URL = 'https://felixroos.github.io/webaudiofontdata/sound';
 const BEATS_PER_CYCLE = 4; // one cycle is one 4/4 bar, as in the app
 
-// The 128 General MIDI program names are a fixed standard — keeping them here
+// The 128 General MIDI program names are a fixed standard - keeping them here
 // lets both menus fill at load, with no network and before "Start audio".
 const GM_PROGRAM_NAMES = [
   'Acoustic Grand Piano', 'Bright Acoustic Piano', 'Electric Grand Piano', 'Honky-tonk Piano',
@@ -235,9 +235,9 @@ const GM_PROGRAM_NAMES = [
 // number is read off the font name (the first three digits), so adding a row
 // only needs the label and the font.
 const APP_SOUNDS = [
-  { label: 'Electric Guitar (Jazz) — app default', gm: 'gm_electric_guitar_jazz', font: '0260_FluidR3_GM_sf2_file' },
+  { label: 'Electric Guitar (Jazz) - app default', gm: 'gm_electric_guitar_jazz', font: '0260_FluidR3_GM_sf2_file' },
   { label: 'Blues Guitar (warm overdrive)', gm: 'gm_blues_guitar', font: '0290_JCLive_sf2_file' },
-  { label: 'Acoustic Grand Piano — piano mode + comp', gm: 'gm_acoustic_grand_piano', font: '0000_JCLive_sf2_file' },
+  { label: 'Acoustic Grand Piano - piano mode + comp', gm: 'gm_acoustic_grand_piano', font: '0000_JCLive_sf2_file' },
   { label: 'Acoustic Guitar (Nylon)', gm: 'gm_acoustic_guitar_nylon', font: '0240_FluidR3_GM_sf2_file' },
   { label: 'Acoustic Guitar (Steel)', gm: 'gm_acoustic_guitar_steel', font: '0250_FluidR3_GM_sf2_file' },
   { label: 'Electric Guitar (Clean)', gm: 'gm_electric_guitar_clean', font: '0270_FluidR3_GM_sf2_file' },
@@ -364,7 +364,7 @@ async function startAudio() {
     renderFontList();
     el('playButton').disabled = false;
     el('stopButton').disabled = false;
-    setStatus(`Ready — ${state.fonts.length} font files across 128 GM programs.`);
+    setStatus(`Ready - ${state.fonts.length} font files across 128 GM programs.`);
   } catch (error) {
     el('startButton').disabled = false;
     setStatus(`Could not start: ${error?.message || error}`, true);
@@ -498,7 +498,7 @@ function buildProgramList() {
   state.instrumentNames.forEach((name, program) => {
     const option = document.createElement('option');
     option.value = String(program);
-    option.textContent = `${String(program).padStart(3, '0')} — ${name}`;
+    option.textContent = `${String(program).padStart(3, '0')} - ${name}`;
     select.appendChild(option);
   });
   select.value = String(state.program);
@@ -551,8 +551,8 @@ function renderFontList() {
 }
 
 function renderSlots() {
-  el('slotAFont').textContent = state.slots.A || '—';
-  el('slotBFont').textContent = state.slots.B || '—';
+  el('slotAFont').textContent = state.slots.A || 'none';
+  el('slotBFont').textContent = state.slots.B || 'none';
   document.querySelectorAll('[data-select-slot]').forEach((button) => {
     const isActive = button.dataset.selectSlot === state.activeSlot;
     button.classList.toggle('primary', isActive);
@@ -600,7 +600,7 @@ function renderSnippet() {
   const gm = match?.gm || `gm_program_${String(program ?? 0).padStart(3, '0')}`;
   const knobs = state.knobs;
   const lines = [
-    `// flow.js — GM_SOUNDFONT_FONTS${program === null ? '' : `  (program ${program}: ${state.instrumentNames[program] || '?'})`}`,
+    `// flow.js - GM_SOUNDFONT_FONTS${program === null ? '' : `  (program ${program}: ${state.instrumentNames[program] || '?'})`}`,
     `${gm}: ['${font || '…'}'],`,
     '',
     '// envelope + effects for this voice',
@@ -611,7 +611,7 @@ function renderSnippet() {
   ];
   if (el('layerBoth').checked && state.slots.A && state.slots.B) {
     lines.push('', `// layered: ${state.slots.A} + ${state.slots.B}`);
-    lines.push('// (the app plays one font per voice — layering needs a stack() in flow.js)');
+    lines.push('// (the app plays one font per voice - layering needs a stack() in flow.js)');
   }
   el('snippet').textContent = lines.join('\n');
 }
@@ -664,7 +664,7 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-// Menus fill at load — the app-sound table and the GM program names are local
+// Menus fill at load - the app-sound table and the GM program names are local
 // data. Only the font browser and playback wait for "Start audio".
 buildAppSoundList();
 buildProgramList();

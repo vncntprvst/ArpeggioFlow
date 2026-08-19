@@ -51,6 +51,14 @@
         <div class="app-header-actions">
           <button
             type="button"
+            id="faqButton"
+            class="app-header-link"
+            title="How to use Arpeggio Flow"
+          >
+            FAQ
+          </button>
+          <button
+            type="button"
             id="instrumentToggle"
             class="instrument-toggle"
             title="Switch to piano"
@@ -64,6 +72,7 @@
             class="app-header-link"
             target="_blank"
             rel="noopener noreferrer"
+            title="Source code and README"
           >
             View on GitHub
           </a>
@@ -95,6 +104,7 @@
                 id="modeRandom"
                 class="mode-toggle__button is-active"
                 aria-pressed="true"
+                title="Practice a progression you pick, in any key"
               >
                 Chord Progression
               </button>
@@ -103,6 +113,7 @@
                 id="modeSong"
                 class="mode-toggle__button"
                 aria-pressed="false"
+                title="Practice the changes of a real song chart"
               >
                 Songs
               </button>
@@ -115,7 +126,7 @@
                 <div class="form-row">
                   <div class="form-field">
                     <label for="key">Key</label>
-                    <select id="key" name="key" required>
+                    <select id="key" name="key" required title="Key the exercise is written in">
                       <option value="A" selected>A</option>
                       <option value="Bb">Bb</option>
                       <option value="B">B</option>
@@ -133,7 +144,7 @@
 
                   <div class="form-field">
                     <label for="scaleType">Scale</label>
-                    <select id="scaleType" name="scaleType" required>
+                    <select id="scaleType" name="scaleType" required title="Major or minor key">
                       <option value="major" selected>Major</option>
                       <option value="minor">Minor</option>
                     </select>
@@ -147,7 +158,12 @@
                 <div class="form-row">
                   <div class="form-field">
                     <label for="progression">Chord progression</label>
-                    <select id="progression" name="progression" required>
+                    <select
+                      id="progression"
+                      name="progression"
+                      required
+                      title="Chords the exercise walks through, one per bar"
+                    >
                       <option value="ii-V-I" selected>ii - V - I</option>
                       <option value="I-vi-ii-V">I - vi - ii - V</option>
                       <option value="I-vi-IV-V">I - vi - IV - V</option>
@@ -156,6 +172,8 @@
                       <option value="vi-I-V-I">vi - I - V - I</option>
                       <option value="IV-I-V-I">IV - I - V - I</option>
                       <option value="I-IV-V-I">I - IV - V - I</option>
+                      <option value="I-ii-iii-IV-V-vi-vii">I - ii - iii - IV - V - vi - vii</option>
+                      <option value="I">I (stay on root)</option>
                       <option value="custom">Custom…</option>
                     </select>
                   </div>
@@ -169,6 +187,7 @@
                       value="3"
                       min="1"
                       required
+                      title="Exercise length; the progression repeats to fill it"
                     />
                   </div>
                 </div>
@@ -195,7 +214,12 @@
                 <h3 class="section-subtitle">Song</h3>
 
                 <div class="form-field">
-                  <select id="songSelect" name="songSelect" required></select>
+                  <select
+                    id="songSelect"
+                    name="songSelect"
+                    required
+                    title="Song chart to practice over"
+                  ></select>
                 </div>
 
                 <div class="form-row">
@@ -238,26 +262,34 @@
               <div class="form-row piano-only">
                 <div class="form-field">
                   <label for="pianoHand">Practice hand</label>
-                  <select id="pianoHand" name="pianoHand">
+                  <select
+                    id="pianoHand"
+                    name="pianoHand"
+                    title="The hand that plays the arpeggio; the other can comp chords"
+                  >
                     <option value="right" selected>Right hand</option>
                     <option value="left">Left hand</option>
                   </select>
                 </div>
                 <div class="form-field">
                   <label for="pianoRange">Octave range</label>
-                  <select id="pianoRange" name="pianoRange">
-                    <option value="C2-C4">Low — C2 to C4</option>
-                    <option value="C3-C5" selected>Mid-low — C3 to C5</option>
-                    <option value="C4-C6">Mid-high — C4 to C6</option>
-                    <option value="C5-C7">High — C5 to C7</option>
-                    <option value="C3-C6">Wide — C3 to C6</option>
+                  <select
+                    id="pianoRange"
+                    name="pianoRange"
+                    title="Octaves the exercise is generated in"
+                  >
+                    <option value="C2-C4">Low (C2 to C4)</option>
+                    <option value="C3-C5" selected>Mid-low (C3 to C5)</option>
+                    <option value="C4-C6">Mid-high (C4 to C6)</option>
+                    <option value="C5-C7">High (C5 to C7)</option>
+                    <option value="C3-C6">Wide (C3 to C6)</option>
                   </select>
                 </div>
               </div>
               <p class="field-hint piano-only">
                 The other hand comps: pick a “Backing chords” style below (try
                 “bass &amp; chords”) and it plays the chart on the opposite side
-                of this register — written on its own staff.
+                of this register, written on its own staff.
               </p>
 
               <div class="form-row guitar-only">
@@ -268,6 +300,7 @@
                     name="scaleSystem"
                     required
                     onchange="updateShapeOptions()"
+                    title="How the neck is divided into positions"
                   >
                     <option value="CAGED_SHAPES">CAGED Shapes</option>
                     <option value="EXT_CAGED_SHAPES" selected>
@@ -278,7 +311,12 @@
 
                 <div class="form-field">
                   <label for="shape">Chord shape</label>
-                  <select id="shape" name="shape" required>
+                  <select
+                    id="shape"
+                    name="shape"
+                    required
+                    title="Where on the neck the exercise sits"
+                  >
                     <option value="" disabled selected>Select a Shape</option>
                     <!-- Populated dynamically by updateShapeOptions() -->
                   </select>
@@ -291,7 +329,11 @@
 
               <div class="form-field">
                 <label for="startDegree">Start each chord on</label>
-                <select id="startDegree" name="startDegree">
+                <select
+                  id="startDegree"
+                  name="startDegree"
+                  title="Which chord tone each measure begins on"
+                >
                   <option value="flow">Closest tone</option>
                   <option value="flow-different" selected>Closest different tone</option>
                   <option value="1">Root</option>
@@ -309,15 +351,23 @@
               <div class="form-row">
                 <div class="form-field">
                   <label for="notesPerMeasure">Notes per bar</label>
-                  <select id="notesPerMeasure" name="notesPerMeasure">
-                    <option value="4" selected>4 — quarter notes</option>
-                    <option value="5">5 — one pair of 8ths</option>
-                    <option value="6">6 — two pairs of 8ths</option>
-                    <option value="7">7 — three pairs of 8ths</option>
-                    <option value="8">8 — eighth notes</option>
-                    <option value="random">Random (4–8 per bar)</option>
+                  <select
+                    id="notesPerMeasure"
+                    name="notesPerMeasure"
+                    title="How busy each bar is: quarters, eighth pairs or a mix"
+                  >
+                    <option value="4" selected>4 - quarter notes</option>
+                    <option value="5">5 - one pair of 8ths</option>
+                    <option value="6">6 - two pairs of 8ths</option>
+                    <option value="7">7 - three pairs of 8ths</option>
+                    <option value="8">8 - eighth notes</option>
+                    <option value="random">Random (4-8 per bar)</option>
                   </select>
-                  <label class="toggle-label toggle-label--under" for="addRests">
+                  <label
+                    class="toggle-label toggle-label--under"
+                    for="addRests"
+                    title="Swap a few notes for rests, so you practice counting through silence"
+                  >
                     <input type="checkbox" id="addRests" />
                     Add rests
                   </label>
@@ -325,7 +375,11 @@
 
                 <div class="form-field">
                   <label for="timeSignature">Time signature</label>
-                  <select id="timeSignature" name="timeSignature">
+                  <select
+                    id="timeSignature"
+                    name="timeSignature"
+                    title="Beats per bar: 4/4, 3/4 waltz or 2/4"
+                  >
                     <option value="4" selected>4/4</option>
                     <option value="3">3/4</option>
                     <option value="2">2/4</option>
@@ -334,7 +388,11 @@
 
                 <div class="form-field">
                   <label for="turnaroundMode">Turn around</label>
-                  <select id="turnaroundMode" name="turnaroundMode">
+                  <select
+                    id="turnaroundMode"
+                    name="turnaroundMode"
+                    title="Where the line reverses direction"
+                  >
                     <option value="bounds" selected>At range bounds</option>
                     <option value="mid">Mid-measure (up &amp; down)</option>
                   </select>
@@ -345,7 +403,11 @@
 
           <div class="form-section">
             <div class="form-actions">
-              <button type="button" id="generateButton">
+              <button
+                type="button"
+                id="generateButton"
+                title="Write a new exercise from the settings above"
+              >
                 Generate Exercise
               </button>
             </div>
@@ -366,15 +428,20 @@
             <div class="form-row">
               <div class="form-field">
                 <div class="button-row playback-controls-row">
-                  <label class="toggle-label">
+                  <label class="toggle-label" title="Light up the diagram and sheet while playing">
                     <input type="checkbox" id="playbackVisual" checked />
                     Visual
                   </label>
-                  <label class="toggle-label">
+                  <label class="toggle-label" title="Play the exercise out loud">
                     <input type="checkbox" id="playbackAudio" checked />
                     Audio
                   </label>
-                  <button type="button" id="exerciseHistoryButton" class="secondary-button">
+                  <button
+                    type="button"
+                    id="exerciseHistoryButton"
+                    class="secondary-button"
+                    title="Every loop played this session, plus your pinned exercises"
+                  >
                     History
                   </button>
                 </div>
@@ -384,8 +451,12 @@
             <div class="form-row">
               <div class="form-field">
                 <label for="continuousShift">Continuous shift</label>
-                <select id="continuousShift" name="continuousShift">
-                  <option value="off" selected>Off — repeat as is</option>
+                <select
+                  id="continuousShift"
+                  name="continuousShift"
+                  title="Move the exercise to a new key, shape or register at each loop"
+                >
+                  <option value="off" selected>Off (repeat as is)</option>
                   <option value="key-up">Next key (ascending)</option>
                   <option value="key-down">Next key (descending)</option>
                   <option value="fifths">Circle of 5ths</option>
@@ -394,7 +465,11 @@
                   <option value="shape-down">Adjacent shape (down the neck)</option>
                   <option value="cycle-pinned">Cycle pinned exercises</option>
                 </select>
-                <label class="toggle-label toggle-label--under guitar-only" for="stayInPosition">
+                <label
+                  class="toggle-label toggle-label--under guitar-only"
+                  for="stayInPosition"
+                  title="On key shifts, pick the shape whose box stays closest to your hand"
+                >
                   <input type="checkbox" id="stayInPosition" />
                   Stay in neck position
                 </label>
@@ -405,6 +480,7 @@
                 <div class="input-with-suffix">
                   <input
                     type="number"
+                    title="Silent bars between loops, to reset your hand"
                     id="loopPause"
                     name="loopPause"
                     value="0"
@@ -428,7 +504,11 @@
             <div class="form-row">
               <div class="form-field">
                 <label for="playbackHighlightMode">Visual highlight</label>
-                <select id="playbackHighlightMode" name="playbackHighlightMode">
+                <select
+                  id="playbackHighlightMode"
+                  name="playbackHighlightMode"
+                  title="What lights up on the diagram during playback"
+                >
                   <option value="chord" selected>Chord arpeggio per measure</option>
                   <option value="note-arpeggio">Each note + faint arpeggio</option>
                   <option value="note-scale">Each note + faint scale</option>
@@ -439,11 +519,23 @@
             <div class="form-row">
               <div class="form-field">
                 <label for="tempoBpm">Tempo (BPM)</label>
-                <input type="number" id="tempoBpm" name="tempoBpm" value="80" min="40" max="240" />
+                <input
+                  type="number"
+                  id="tempoBpm"
+                  name="tempoBpm"
+                  value="80"
+                  min="40"
+                  max="240"
+                  title="Playback tempo in beats per minute"
+                />
               </div>
               <div class="form-field">
                 <label for="strudelSound">Sound</label>
-                <select id="strudelSound" name="strudelSound">
+                <select
+                  id="strudelSound"
+                  name="strudelSound"
+                  title="Instrument sound for the exercise notes"
+                >
                   <!-- <option value="guitar-1">Guitar (Sample 1)</option>
                   <option value="guitar-2">Guitar (Sample 2)</option>
                   <option value="guitar-3">Guitar (Sample 3)</option>
@@ -461,7 +553,7 @@
                   <optgroup label="Piano">
                     <option value="gm_acoustic_grand_piano">Acoustic Grand Piano</option>
                   </optgroup>
-                  <!-- Novelty / rarely used sounds — kept for reference,
+                  <!-- Novelty / rarely used sounds - kept for reference,
                        re-enable by uncommenting (configs still exist in
                        STRUDEL_SOUND_CONFIG in flow.js):
                   <option value="gm_guitar_fret_noise">Guitar Fret Noise</option>
@@ -483,7 +575,11 @@
             <div class="form-row">
               <div class="form-field">
                 <label for="rhythmSound">Backing rhythm</label>
-                <select id="rhythmSound" name="rhythmSound">
+                <select
+                  id="rhythmSound"
+                  name="rhythmSound"
+                  title="Metronome click or drum groove under the exercise"
+                >
                   <option value="off" selected>Off</option>
                   <option value="metronome">Metronome Click</option>
                   <option value="metronome-accent">Metronome (accent on 1)</option>
@@ -498,21 +594,29 @@
               </div>
               <div class="form-field">
                 <label for="backingChords">Backing chords</label>
-                <select id="backingChords" name="backingChords">
+                <select
+                  id="backingChords"
+                  name="backingChords"
+                  title="Comped chords under the exercise, following the chart"
+                >
                   <option value="off" selected>Off</option>
-                  <option value="piano-held">Piano — held</option>
-                  <option value="piano-comp">Piano — comp on 2 &amp; 4</option>
-                  <option value="piano-quarters">Piano — quarter notes</option>
-                  <option value="piano-bass-chords">Piano — bass &amp; chords (waltz feel)</option>
-                  <option value="piano-stride">Piano — stride (bass on 1 &amp; 3)</option>
+                  <option value="piano-held">Piano: held</option>
+                  <option value="piano-comp">Piano: comp on 2 &amp; 4</option>
+                  <option value="piano-quarters">Piano: quarter notes</option>
+                  <option value="piano-bass-chords">Piano: bass &amp; chords (waltz feel)</option>
+                  <option value="piano-stride">Piano: stride (bass on 1 &amp; 3)</option>
                 </select>
               </div>
               <div class="form-field">
                 <label for="soundAmbience">Ambience</label>
-                <select id="soundAmbience" name="soundAmbience">
+                <select
+                  id="soundAmbience"
+                  name="soundAmbience"
+                  title="Space and tail on the lead sound"
+                >
                   <option value="dry">Dry (no effects)</option>
-                  <option value="room" selected>Room — notes ring</option>
-                  <option value="hall">Hall — long tail</option>
+                  <option value="room" selected>Room (notes ring)</option>
+                  <option value="hall">Hall (long tail)</option>
                   <option value="slapback">Slapback echo (blues)</option>
                 </select>
               </div>
@@ -556,10 +660,22 @@
               <!-- Mirror of the transport below, for long sheets where the
                    other one sits a screen away. Not exported. -->
               <div id="preview-transport-top" data-export-ignore="true">
-                <button type="button" id="playbackPlayButtonTop" class="secondary-button" disabled>
+                <button
+                  type="button"
+                  id="playbackPlayButtonTop"
+                  class="secondary-button"
+                  title="Play, pause or resume the loop"
+                  disabled
+                >
                   Play
                 </button>
-                <button type="button" id="playbackStopButtonTop" class="secondary-button" hidden>
+                <button
+                  type="button"
+                  id="playbackStopButtonTop"
+                  class="secondary-button"
+                  title="Stop and reset to the top of the loop"
+                  hidden
+                >
                   Stop
                 </button>
               </div>
@@ -578,10 +694,22 @@
               <!-- Transport for the exercise on screen. Kept out of the
                    exported image (see data-export-ignore). -->
               <div id="preview-transport" data-export-ignore="true">
-                <button type="button" id="playbackPlayButton" class="secondary-button" disabled>
+                <button
+                  type="button"
+                  id="playbackPlayButton"
+                  class="secondary-button"
+                  title="Play, pause or resume the loop"
+                  disabled
+                >
                   Play
                 </button>
-                <button type="button" id="playbackStopButton" class="secondary-button" hidden>
+                <button
+                  type="button"
+                  id="playbackStopButton"
+                  class="secondary-button"
+                  title="Stop and reset to the top of the loop"
+                  hidden
+                >
                   Stop
                 </button>
               </div>
@@ -606,13 +734,19 @@
               id="scaleDegreeModalBtn"
               class="secondary-button"
               style="display:none"
+              title="Every scale-degree arpeggio in this position, one row each"
             >
               View all scale arpeggios ↗
             </button>
             <div class="card-footer__exports">
               <!-- Loads an exercise file saved via Export onto this window,
                    unlike History → Import which only fills the pinned list. -->
-              <button type="button" id="loadExerciseButton" class="secondary-button">
+              <button
+                type="button"
+                id="loadExerciseButton"
+                class="secondary-button"
+                title="Open an exercise file saved with Export"
+              >
                 Load exercise
               </button>
               <input
@@ -628,6 +762,7 @@
                   class="secondary-button"
                   aria-haspopup="true"
                   aria-expanded="false"
+                  title="Save this exercise as an image, a PDF or a loadable file"
                 >
                   Export ▾
                 </button>
@@ -653,13 +788,28 @@
     </div>
     <div class="scale-degree-modal__body">
       <div class="hist-toolbar">
-        <button type="button" id="pinCurrentExerciseButton" class="secondary-button">
+        <button
+          type="button"
+          id="pinCurrentExerciseButton"
+          class="secondary-button"
+          title="Keep the exercise on screen; pinned exercises survive a reload"
+        >
           ☆ Pin current exercise
         </button>
-        <button type="button" id="exportPinnedButton" class="secondary-button">
+        <button
+          type="button"
+          id="exportPinnedButton"
+          class="secondary-button"
+          title="Save all pinned exercises to one file"
+        >
           Export all pinned
         </button>
-        <button type="button" id="importPinnedButton" class="secondary-button">
+        <button
+          type="button"
+          id="importPinnedButton"
+          class="secondary-button"
+          title="Add exercises from a file to the pinned list"
+        >
           Import from file
         </button>
         <input type="file" id="importPinnedInput" accept="application/json,.json" hidden />
@@ -671,11 +821,96 @@
     </div>
   </dialog>
 
+  <!-- FAQ: a plain-language guide to the app -->
+  <dialog id="faqModal" class="scale-degree-modal">
+    <div class="scale-degree-modal__header">
+      <h2 class="scale-degree-modal__title">How to use Arpeggio Flow</h2>
+      <button type="button" id="faqModalClose" class="scale-degree-modal__close" aria-label="Close">✕</button>
+    </div>
+    <div class="scale-degree-modal__body faq-body">
+      <h3>What does this app do?</h3>
+      <p>
+        It writes short arpeggio exercises for you. Pick a key and a chord
+        progression, and it generates a fresh line of chord tones, shows it as
+        sheet music, and marks where to play each note on the fretboard (or on
+        the keyboard, in piano mode). Every exercise is new, so your ears and
+        hands cannot run on autopilot.
+      </p>
+
+      <h3>Quick start</h3>
+      <ol>
+        <li>Pick a key, a scale and a chord progression on the left.</li>
+        <li>
+          On guitar, pick a scale shape (where on the neck to play). On piano,
+          pick the practice hand and its octave range.
+        </li>
+        <li>Click <strong>Generate Exercise</strong>.</li>
+        <li>
+          Click <strong>Play</strong>. The current note lights up on the
+          diagram and the highlight follows the sheet, bar by bar.
+        </li>
+      </ol>
+
+      <h3>What is the Guitar / Piano button?</h3>
+      <p>
+        It switches the whole app between instruments. The same generator
+        drives both; only the diagram, the register and the notation change.
+        The exercise on screen is regenerated for the new instrument.
+      </p>
+
+      <h3>How do I read the diagram?</h3>
+      <p>
+        Dots are the notes of the scale in the chosen position, with roots in
+        green. While playing, the tones of the current chord stay bright and
+        the rest fades. The small diagrams at the bottom show each chord of
+        the progression on its own.
+      </p>
+
+      <h3>What do the rhythm options do?</h3>
+      <p>
+        "Notes per bar" trades quarter notes for pairs of eighths. "Time
+        signature" switches between 4/4, 3/4 and 2/4. "Add rests" leaves a few
+        beats silent, so you practice counting through them. "Turn around"
+        picks where the line changes direction.
+      </p>
+
+      <h3>What plays along with me?</h3>
+      <p>
+        "Backing rhythm" adds a metronome click or a drum groove. "Backing
+        chords" comps the chart's harmony under the exercise; in piano mode
+        the comp is written on a second staff, like a left hand. "Ambience"
+        adds room or echo to the lead sound.
+      </p>
+
+      <h3>What is Continuous shift?</h3>
+      <p>
+        With a shift on, every loop moves the exercise somewhere new: the next
+        key, around the circle of fifths, or to the next shape or register.
+        The chart previews where the loop goes next, so you can move early.
+      </p>
+
+      <h3>Where do my exercises go?</h3>
+      <p>
+        Every loop you play lands in History. Pin the ones you like and they
+        survive a reload; "Cycle pinned exercises" plays the pinned list as a
+        rotation. Export saves the exercise as a PNG, a PDF or a .json file,
+        and Load brings a .json file back, ready to play.
+      </p>
+
+      <h3>No sound?</h3>
+      <p>
+        Check that Audio is ticked, then click Play again: browsers only allow
+        sound after a click. The instrument sounds load from the network the
+        first time you play.
+      </p>
+    </div>
+  </dialog>
+
   <!-- Note flow pure functions (must load before flow.js) -->
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260819"></script>
+  <script type="module" src="flow.js?v=20260819b"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>
