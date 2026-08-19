@@ -2768,6 +2768,34 @@ function exportCurrentExercise() {
   setPlaybackBanner(`Exported “${snapshot.label}” as a file.`, 'info');
 }
 
+/**
+ * Load an exported exercise file straight onto the main window, ready to
+ * Play — unlike History → Import, which only adds entries to the pinned list
+ * and still needs Load clicked on one of them. A multi-exercise (pinned
+ * export) file loads its first entry.
+ */
+async function loadExerciseFromFile(file) {
+  if (!file) return;
+  let entries = [];
+  try {
+    entries = readPinnedFilePayload(await file.text());
+  } catch (error) {
+    setPlaybackBanner(
+      `Could not read “${file.name}”: ${error?.message || error}`,
+      'warning'
+    );
+    return;
+  }
+  if (!entries.length) {
+    setPlaybackBanner(`No exercise found in “${file.name}”.`, 'warning');
+    return;
+  }
+  const snapshot = entries[0];
+  await loadExerciseSnapshot(snapshot);
+  const extra = entries.length > 1 ? ` (first of ${entries.length} in the file)` : '';
+  setPlaybackBanner(`Loaded “${snapshot.label}”${extra} — ready to play.`, 'info');
+}
+
 /** Accepts the exported wrapper or a bare array of exercises. */
 function readPinnedFilePayload(text) {
   const parsed = JSON.parse(text);
@@ -3134,7 +3162,10 @@ function getMeasures(beatCount) {
   // pattern.cpm(bpm / 4) the note rate is 8 * (bpm/240) * 0.5 = bpm/60
   // beats per second — exactly the notated tempo. Do not "simplify" this
   // to beats / BEATS_PER_CYCLE: that plays at half speed.
-  return Math.max(1, beatCount / (2 * BEATS_PER_CYCLE));
+  // Loops shorter than 8 beats must return a fraction (slow(0.5) fits a
+  // 4-beat loop twice in a cycle) — clamping the RESULT to 1 played a
+  // single-bar exercise at half tempo. Only the beat count is guarded.
+  return Math.max(1, beatCount) / (2 * BEATS_PER_CYCLE);
 }
 
 // ─── Backing rhythm ──────────────────────────────────────────────────────────
@@ -6527,13 +6558,14 @@ function regenerateExercise(options = {}) {
 
 // Note: findClosestIndex has been moved to noteFlow.js module
 
+// Case is kept: it carries meaning in these names — "Ab-I-V" is A-flat major
+// with major chords, where "ab-i-v" reads as minors.
 function sanitizeFilePart(value) {
   return value
     .toString()
     .trim()
     .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9-_]+/g, '')
-    .toLowerCase();
+    .replace(/[^a-zA-Z0-9-_]+/g, '');
 }
 
 /**
@@ -6942,8 +6974,24 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
 
-    document.getElementById('generateButton').addEventListener('click', () => {
+    document.getElementById('generateButton').addEventListener('click', async () => {
+      // A paused (or still-playing) loop belongs to the old exercise: stop it
+      // so the fresh one lands on a clean transport, ready to Play.
+      if (playbackState.isPlaying || playbackState.isPaused) {
+        await stopPlayback();
+      }
       regenerateExercise();
+    });
+
+    // Load an exported exercise file onto the main window.
+    const loadExerciseInput = document.getElementById('loadExerciseInput');
+    document.getElementById('loadExerciseButton')?.addEventListener('click', () => {
+      loadExerciseInput?.click();
+    });
+    loadExerciseInput?.addEventListener('change', async (event) => {
+      await loadExerciseFromFile(event.target.files?.[0]);
+      // Clear the input so picking the same file twice still fires a change.
+      event.target.value = '';
     });
 
     window.addEventListener('resize', repositionFretboardBoxLabel);

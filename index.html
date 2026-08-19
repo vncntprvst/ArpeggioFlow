@@ -609,20 +609,33 @@
             >
               View all scale arpeggios ↗
             </button>
-            <div class="card-footer__exports export-menu">
-              <button
-                type="button"
-                id="exportMenuButton"
-                class="secondary-button"
-                aria-haspopup="true"
-                aria-expanded="false"
-              >
-                Export ▾
+            <div class="card-footer__exports">
+              <!-- Loads an exercise file saved via Export onto this window,
+                   unlike History → Import which only fills the pinned list. -->
+              <button type="button" id="loadExerciseButton" class="secondary-button">
+                Load excercise
               </button>
-              <div class="export-menu__list" id="exportMenuList" hidden>
-                <button type="button" id="exportPngButton">PNG image</button>
-                <button type="button" id="exportPdfButton">PDF</button>
-                <button type="button" id="exportExerciseButton">Exercise file (.json)</button>
+              <input
+                type="file"
+                id="loadExerciseInput"
+                accept=".json,application/json"
+                hidden
+              />
+              <div class="export-menu">
+                <button
+                  type="button"
+                  id="exportMenuButton"
+                  class="secondary-button"
+                  aria-haspopup="true"
+                  aria-expanded="false"
+                >
+                  Export ▾
+                </button>
+                <div class="export-menu__list" id="exportMenuList" hidden>
+                  <button type="button" id="exportPngButton">PNG image</button>
+                  <button type="button" id="exportPdfButton">PDF</button>
+                  <button type="button" id="exportExerciseButton">Exercise file (.json)</button>
+                </div>
               </div>
             </div>
           </footer>
@@ -662,7 +675,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260812"></script>
+  <script type="module" src="flow.js?v=20260819"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>

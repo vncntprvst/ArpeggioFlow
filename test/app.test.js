@@ -386,7 +386,16 @@ describe('Strudel playback adapters', () => {
   test('buildStrudelEvaluateCode uses setcpm and slow', () => {
     const code = buildStrudelEvaluateCode(['C4', 'E4', 'G4', 'B4'], 120);
     expect(code).toContain('setcpm(30)');
-    expect(code).toContain('note("c4 e4 g4 b4").slow(1)');
+    // One 4/4 bar is half a cycle: slow(0.5), NOT clamped up to 1 — the
+    // clamp is what used to play single-bar exercises at half tempo.
+    expect(code).toContain('note("c4 e4 g4 b4").slow(0.5)');
+  });
+
+  test('getMeasures scales with total beats, without a minimum of one cycle', () => {
+    expect(getMeasures(4)).toBe(0.5); // one 4/4 bar
+    expect(getMeasures(3)).toBe(0.375); // one 3/4 bar
+    expect(getMeasures(8)).toBe(1);
+    expect(getMeasures(24)).toBe(3);
   });
 
   test('getGlobalStrudelApi returns null when initStrudel is missing', () => {
