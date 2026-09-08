@@ -1778,6 +1778,9 @@ function pickShapeNearPosition(keyValue, center) {
 
 /** Where a shift would land, as { key } and/or { shape } - nothing is changed. */
 function peekContinuousShiftTarget(mode) {
+  // 'regenerate' moves nothing: the empty target leaves the builder on the
+  // selected key and shape, and only the notes are rolled again.
+  if (mode === 'regenerate') return {};
   if (mode in CONTINUOUS_SHIFT_KEY_DELTAS) {
     if (getSelectedExerciseMode() === EXERCISE_MODES.SONG) return null;
     const key = peekSelectValue('key', CONTINUOUS_SHIFT_KEY_DELTAS[mode]);
@@ -1809,6 +1812,8 @@ function applyContinuousShift(mode) {
     debugLog('Continuous key shift is not available in song mode.');
     return false;
   }
+  // Nothing to move: the new loop comes from regenerating on the same controls.
+  if (mode === 'regenerate') return true;
   // Apply exactly what the preview was built from, so what was shown is what
   // gets generated.
   const target = peekContinuousShiftTarget(mode);
@@ -2046,13 +2051,15 @@ function precomputeNextExercise() {
       ? `${target.key}m`
       : target.key
     : null;
-  const built = buildExerciseMeasures({
+  const buildOptions = {
     mode: exerciseMode,
     song: exerciseMode === EXERCISE_MODES.SONG ? getSelectedSong() : null,
     key: keyValue,
     shape: target.shape || null,
-    carryOver: getCarryOverFromLastExercise(),
-  });
+    carryOver: getShiftCarryOver(mode),
+  };
+  let built = buildExerciseMeasures(buildOptions);
+  if (mode === 'regenerate') built = rerollUntilDifferent(built, buildOptions);
   if (!built || built.error !== undefined || !built.measureData?.length) {
     debugLog('Next-loop preview unavailable:', built?.error);
     return;
@@ -2060,12 +2067,14 @@ function precomputeNextExercise() {
   nextExercisePreview = {
     mode,
     cagedShape: built.cagedShape,
-    scaleLabel: describeNextBox(built.cagedShape),
+    // The box does not move under 'regenerate', so a second caption would only
+    // repeat the current one on top of it.
+    scaleLabel: mode === 'regenerate' ? null : describeNextBox(built.cagedShape),
     measures: toReplayMeasures(built.measureData),
     steps: buildNextLoopSteps(built.measureData, built.cagedShape),
   };
   updateLabelRowHeight();
-  debugLog('Next loop precomputed:', nextExercisePreview.scaleLabel);
+  debugLog('Next loop precomputed:', nextExercisePreview.scaleLabel || mode);
 }
 
 // Fire slightly before the loop boundary: the scheduler queues audio events
@@ -2100,6 +2109,40 @@ function getCarryOverFromLastExercise() {
   return { prevNote: lastNote, prevDirection: last.direction ?? true };
 }
 
+/**
+ * A shift lands in a new key or box, where voice-leading from the last note
+ * played is the point of the carry-over. 'regenerate' does not move: the whole
+ * exercise follows from its first note, so carrying that note over makes each
+ * loop the forced reply to the one before it and the line settles into a short
+ * cycle. Dropping it re-rolls the opening note, the way Generate does.
+ */
+function getShiftCarryOver(mode) {
+  return mode === 'regenerate' ? null : getCarryOverFromLastExercise();
+}
+
+// A re-rolled opening note can land on the one just played, which reproduces
+// the exercise note for note. A few re-rolls make that unlikely; they cannot
+// rule it out, and a progression with only one playable line would exhaust
+// them, so the last candidate is used either way.
+const REGENERATE_REROLL_ATTEMPTS = 4;
+
+function exerciseNoteSignature(measureData) {
+  return (measureData || []).map((measure) => (measure.generatedNotes || []).join(' ')).join(' | ');
+}
+
+function rerollUntilDifferent(built, buildOptions) {
+  const current = exerciseNoteSignature(lastExerciseState?.measureData);
+  let candidate = built;
+  for (let attempt = 0; attempt < REGENERATE_REROLL_ATTEMPTS; attempt += 1) {
+    if (!current || !candidate?.measureData?.length) break;
+    if (exerciseNoteSignature(candidate.measureData) !== current) break;
+    const retry = buildExerciseMeasures(buildOptions);
+    if (!retry?.measureData?.length) break;
+    candidate = retry;
+  }
+  return candidate;
+}
+
 async function performContinuousShift(mode) {
   if (!playbackState.isPlaying) return;
   // This fires CONTINUOUS_SHIFT_GUARD_MS before the musical loop boundary
@@ -2128,7 +2171,7 @@ async function performContinuousShift(mode) {
       return;
     }
     regenerateExercise({
-      carryOver: getCarryOverFromLastExercise(),
+      carryOver: getShiftCarryOver(mode),
       replay: pending?.measures || null,
     });
   }
@@ -4509,7 +4552,7 @@ function getBoxCenterOffsetForShape(cagedShape) {
 function updateLabelRowHeight() {
   document
     .getElementById('fretboard-labels')
-    ?.classList.toggle('has-next-row', Boolean(nextExercisePreview));
+    ?.classList.toggle('has-next-row', Boolean(nextExercisePreview?.scaleLabel));
 }
 
 function buildBoxLabel(className, scaleText, chordText, scaleTag = 'scale') {

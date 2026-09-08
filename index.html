@@ -454,9 +454,10 @@
                 <select
                   id="continuousShift"
                   name="continuousShift"
-                  title="Move the exercise to a new key, shape or register at each loop"
+                  title="At each loop, move the exercise to a new key, shape or register, or re-roll the notes where they are"
                 >
                   <option value="off" selected>Off (repeat as is)</option>
+                  <option value="regenerate">Off (new arpeggio)</option>
                   <option value="key-up">Next key (ascending)</option>
                   <option value="key-down">Next key (descending)</option>
                   <option value="fifths">Circle of 5ths</option>
@@ -887,6 +888,8 @@
         With a shift on, every loop moves the exercise somewhere new: the next
         key, around the circle of fifths, or to the next shape or register.
         The chart previews where the loop goes next, so you can move early.
+        "Off (new arpeggio)" stays in the current key and shape but writes a
+        fresh exercise each loop, so the line never becomes muscle memory.
       </p>
 
       <h3>Where do my exercises go?</h3>
@@ -910,7 +913,7 @@
   <script src="noteFlow.js"></script>
 
   <!-- Main script -->
-  <script type="module" src="flow.js?v=20260819b"></script>
+  <script type="module" src="flow.js?v=20260908"></script>
 
   <!-- Shape options setup (unchanged logic) -->
   <script>
