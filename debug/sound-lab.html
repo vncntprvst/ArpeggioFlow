@@ -172,6 +172,9 @@
         <option value="strum">Strummed chord (4 a bar) - hear the strum knob</option>
         <option value="both">Lead + comp - A leads, B comps, the balance</option>
         <option value="sweep">Register sweep - four octaves, one per bar</option>
+        <option value="caged">★ CAGED C shape - one note per string, all ringing</option>
+        <option value="onestring">★ Same notes, one string - every note chokes the last</option>
+        <option value="shift">★ Position shift - open, then up at the 12th</option>
       </select>
       <label for="tempo">BPM</label>
       <input type="number" id="tempo" value="100" min="40" max="260" step="5" style="width:72px" />
@@ -198,6 +201,22 @@
 
     <h3>Karplus-Strong only</h3>
     <div id="ksKnobs"></div>
+
+    <h3>Articulation - the ★ phrases only</h3>
+    <div class="row">
+      <label class="toggle">
+        <input type="checkbox" id="stringModel" checked />
+        <strong>string model</strong> - one note per string, strings ring on
+      </label>
+    </div>
+    <div id="artKnobs"></div>
+    <p class="hint">
+      Off is what the app does today: every note is its own voice, none of them
+      knows about any other. On, a note stops whatever was on its string and
+      keeps sounding past its beat if nothing disturbs it.
+      <strong>Play “same notes, one string” with this on and off</strong> - the pitches are
+      identical to the CAGED phrase, so anything you hear is the model alone.
+    </p>
 
     <div class="row" style="margin-top:8px">
       <button id="resetKnobs">Reset to app defaults</button>
@@ -239,6 +258,13 @@ const BEATS_PER_CYCLE = 4; // one cycle is one 4/4 bar, as in the app
 // Not a font name: the sentinel that puts a synthesised string in a slot
 // instead of a sample. Handled in the trigger, next to getFontBufferSource.
 const KARPLUS_FONT = '__karplus_strong__';
+// Score phrases are written in eighths, which is enough room for an arpeggio
+// to go up and come back down inside one bar.
+const STEPS_PER_CYCLE = 8;
+// Standard tuning, low to high: index 0 is the low E (string 6 in the app's
+// numbering, which counts down from the thickest).
+const TUNING_MIDI = [40, 45, 50, 55, 59, 64];
+const PITCH_NAMES = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b'];
 // Fixed voice for the fret-noise layer - GM program 120.
 const FRET_NOISE_FONT = '1200_FluidR3_GM_sf2_file';
 
@@ -347,6 +373,42 @@ const APP_SOUNDS = [
   { group: 'Physical model', label: 'Karplus-Strong plucked string', gm: 'karplus_strong', fonts: [KARPLUS_FONT] },
 ];
 
+// ─── Scores: notes that know which string they are on ───────────────────────
+// A sampler has no idea two notes share a string, so it lets them both ring -
+// which a guitar physically cannot do. These phrases carry the string and fret
+// the app already computes (flow.js getShapePositions / the CAGED tables), so
+// the string model below has something real to work with.
+
+const noteNameOf = (midi) => `${PITCH_NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`;
+/** stringIndex 0 = low E. Returns the note that position actually sounds. */
+const at = (stringIndex, fret, step) => ({
+  string: stringIndex,
+  fret,
+  step,
+  note: noteNameOf(TUNING_MIDI[stringIndex] + fret),
+});
+
+// The open C shape from cagedShapes.js: chord_frets [-1, 3, 2, 0, 1, 0].
+// One note per string, so nothing chokes anything and the whole arpeggio
+// blooms - the sound a guitar makes and a keyboard does not.
+const SCORE_CAGED = [
+  at(1, 3, 0), at(2, 2, 1), at(3, 0, 2), at(4, 1, 3),
+  at(5, 0, 4), at(4, 1, 5), at(3, 0, 6), at(2, 2, 7),
+];
+// The same eight pitches, all on the A string. Every note kills the one
+// before it, because there is only one string to vibrate. Identical notes to
+// the phrase above: any difference you hear is the string model alone.
+const SCORE_ONE_STRING = [
+  at(1, 3, 0), at(1, 7, 1), at(1, 10, 2), at(1, 15, 3),
+  at(1, 19, 4), at(1, 15, 5), at(1, 10, 6), at(1, 7, 7),
+];
+// Open position for half a bar, then the same strings up at the 12th. The
+// shift reuses strings 2 and 3, so the choke and the fret noise both land.
+const SCORE_SHIFT = [
+  at(2, 2, 0), at(3, 0, 1), at(4, 1, 2), at(5, 0, 3),
+  at(2, 14, 4), at(3, 12, 5), at(4, 13, 6), at(5, 12, 7),
+];
+
 // Defaults are the app's own: the Room ambience plus the comp envelope, so the
 // bench starts from what the app sounds like right now.
 const TONE_KNOBS = [
@@ -376,7 +438,21 @@ const KS_KNOBS = [
   { id: 'ksPick', label: 'pick position', min: 0.02, max: 0.5, step: 0.01, value: 0.14 },
 ];
 
-const ALL_KNOBS = [...TONE_KNOBS, ...FEEL_KNOBS, ...KS_KNOBS];
+// Articulation. These only do anything on the three score phrases, because
+// they are the only ones that know which string a note is on. Defaults are
+// deliberately live rather than zero: switching the string model off is the
+// comparison, and off is what the app does today.
+const ART_KNOBS = [
+  { id: 'letRing', label: 'let ring (s)', min: 0, max: 4, step: 0.05, value: 1.6 },
+  { id: 'choke', label: 'choke (ms)', min: 3, max: 250, step: 1, value: 28 },
+  { id: 'openRing', label: 'open string +(s)', min: 0, max: 3, step: 0.05, value: 0.9 },
+  { id: 'pickAccent', label: 'pick accent', min: 0, max: 0.6, step: 0.02, value: 0.18 },
+  { id: 'legato', label: 'legato (slurs)', min: 0, max: 1, step: 0.02, value: 0 },
+  { id: 'humanTime', label: 'human timing (ms)', min: 0, max: 40, step: 1, value: 8 },
+  { id: 'humanGain', label: 'human dynamics', min: 0, max: 0.5, step: 0.01, value: 0.12 },
+];
+
+const ALL_KNOBS = [...TONE_KNOBS, ...FEEL_KNOBS, ...KS_KNOBS, ...ART_KNOBS];
 const KS_KNOB_IDS = new Set(KS_KNOBS.map((knob) => knob.id));
 
 const state = {
@@ -391,6 +467,7 @@ const state = {
   fonts: [],
   instrumentNames: GM_PROGRAM_NAMES,
   noiseReady: false,
+  stringModel: true,
 };
 
 // Where the Strudel API lives: the window (unpkg script tag) or the ESM
@@ -492,6 +569,63 @@ function karplusBufferSource(event, audioContext) {
   return source;
 }
 
+// ─── The string model ───────────────────────────────────────────────────────
+// What is actually missing when a guitar sample sounds like MIDI. Two rules,
+// both of them things a keyboard-shaped trigger cannot express:
+//
+//   1. A string can only sound one note. Striking it again stops what was
+//      there - instantly, not with a release tail.
+//   2. A string nobody touches keeps ringing, well past the beat it was
+//      played on. That overlap between strings is the guitar.
+//
+// Rule 1 has to be done by hand: superdough carries `cut` through to the event
+// but never calls a custom sound's stop(), so nothing chokes on its own.
+
+/** stringIndex -> the gain of the note currently sounding on it. */
+const ringingStrings = new Map();
+
+/** Stop whatever is on this string, fast. Not the ADSR release: a finger or a
+ * fresh pick lands on the string and the old note is simply gone. */
+function chokeString(stringIndex, atTime) {
+  const previous = ringingStrings.get(stringIndex);
+  if (!previous || previous.startTime >= atTime) {
+    return;
+  }
+  const seconds = Math.max(0.003, state.knobs.choke / 1000);
+  try {
+    // The choke gain is its own node that only ever goes from its starting
+    // level to zero, so this ramp is exact - reading .value off the ADSR gain
+    // would sample "now" rather than the value at atTime.
+    previous.gain.cancelScheduledValues(atTime);
+    previous.gain.setValueAtTime(previous.level, atTime);
+    previous.gain.linearRampToValueAtTime(0, atTime + seconds);
+  } catch (error) {
+    /* a node already torn down is not worth breaking playback over */
+  }
+  ringingStrings.set(stringIndex, { ...previous, choked: true });
+}
+
+/** How much longer this note is allowed to ring past its own beat. An open
+ * string rings longer than a fretted one - there is no finger on it. */
+function ringSecondsFor(event) {
+  if (!state.stringModel || event.gstring === undefined) {
+    return 0;
+  }
+  const open = event.gfret === 0 ? state.knobs.openRing : 0;
+  return state.knobs.letRing + open;
+}
+
+/** A pick crossing the strings alternates down, up, down, up, and a down-stroke
+ * is the harder one. Plus a little dynamic spread, because nobody plays eight
+ * identical notes in a row. */
+function velocityFor(event) {
+  if (!state.stringModel || event.gpick === undefined) {
+    return 1;
+  }
+  const accent = event.gpick === 1 ? 1 - state.knobs.pickAccent : 1;
+  return Math.max(0.05, accent * (event.ghuman ?? 1));
+}
+
 /** A stable few cents per pitch, not a fresh random number per note: a guitar
  * is out of tune in a fixed way, and re-rolling it on every note just sounds
  * broken rather than human. */
@@ -520,12 +654,18 @@ function registerSlotSound(name, getSlot, getFontBufferSource) {
   strudel.registerSound(
     name,
     async (startTime, event, done) => {
-      const [attack, decay, sustain, release] = strudel.getADSRValues([
+      let [attack, decay, sustain, release] = strudel.getADSRValues([
         event.attack,
         event.decay,
         event.sustain,
         event.release,
       ]);
+      // A hammer-on or a pull-off has no pick in it at all: the note arrives
+      // by a finger landing, so the transient that says "struck" is missing.
+      // Softening the attack is most of that.
+      if (state.stringModel && event.gslur && state.knobs.legato > 0) {
+        attack = attack + state.knobs.legato * 0.06;
+      }
       const { duration } = event;
       const audioContext = strudel.getAudioContext();
       const slot = getSlot();
@@ -555,10 +695,26 @@ function registerSlotSound(name, getSlot, getFontBufferSource) {
       bufferSource.start(startTime);
       const gainNode = audioContext.createGain();
       const outputNode = bufferSource.connect(gainNode);
-      const stopTime = startTime + duration;
+      // The note keeps sounding past its beat unless something stops it, which
+      // is the whole difference between an arpeggio and a scale played on a
+      // keyboard. `clip` alone cannot do this: it is per-voice, and what has to
+      // vary is per-string.
+      const ring = ringSecondsFor(event);
+      const stopTime = startTime + duration + ring;
       strudel.getParamADSR(
         outputNode.gain, attack, decay, sustain, release, 0, 0.3, startTime, stopTime, 'linear'
       );
+      // Its own node, downstream of the envelope, so choking a string is a
+      // clean multiply against whatever the ADSR happens to be doing.
+      const level = velocityFor(event);
+      const chokeNode = audioContext.createGain();
+      chokeNode.gain.setValueAtTime(level, startTime);
+      outputNode.connect(chokeNode);
+      const stringIndex = event.gstring;
+      if (state.stringModel && stringIndex !== undefined) {
+        chokeString(stringIndex, startTime);
+        ringingStrings.set(stringIndex, { gain: chokeNode.gain, level, startTime });
+      }
       const vibrato = strudel.getVibratoOscillator(bufferSource.detune, event, startTime);
       strudel.getPitchEnvelope(bufferSource.detune, event, startTime, stopTime);
       bufferSource.stop(stopTime + release + 0.01);
@@ -566,9 +722,13 @@ function registerSlotSound(name, getSlot, getFontBufferSource) {
         bufferSource.disconnect();
         vibrato?.stop();
         outputNode.disconnect();
+        chokeNode.disconnect();
+        if (ringingStrings.get(stringIndex)?.gain === chokeNode.gain) {
+          ringingStrings.delete(stringIndex);
+        }
         done();
       };
-      return { node: outputNode, stop: () => {} };
+      return { node: chokeNode, stop: () => {} };
     },
     {
       type: 'soundfont',
@@ -651,6 +811,12 @@ function phraseFor(kind, octave) {
       return { chord, perBeat: true };
     case 'both':
       return { lead: `c${lead} e${lead} g${lead} b${lead}`, chord };
+    case 'caged':
+      return { score: SCORE_CAGED, octave };
+    case 'onestring':
+      return { score: SCORE_ONE_STRING, octave };
+    case 'shift':
+      return { score: SCORE_SHIFT, octave };
     case 'sweep':
       return {
         lead: [2, 3, 4, 5]
@@ -747,6 +913,61 @@ function chordVoice(notes, soundName, spec, bpm) {
   return build(down);
 }
 
+/** One pattern per note, because everything that makes this sound like a
+ * guitar is per-note: which string it is on, whether the pick was going down
+ * or up, how late the hand actually was. A single mini-notation string can
+ * carry pitch and nothing else.
+ *
+ * The extra data rides along via withValue, which is the one route that
+ * survives into a custom registered sound - registerControl works too, but
+ * this keeps the invented names out of Strudel's global namespace. */
+function scoreVoice(score, soundName, bpm, octaveShift) {
+  const cycleSeconds = (60 / bpm) * BEATS_PER_CYCLE;
+  const knobs = state.knobs;
+  // Fixed jitter per position rather than a fresh roll each cycle: a player
+  // has habits, and re-randomising every bar reads as a broken clock.
+  const jitter = (i) => {
+    const h = Math.sin((i + 1) * 78.233) * 43758.5453;
+    return (h - Math.floor(h) - 0.5) * 2;
+  };
+  return strudel.stack(
+    ...score.map((entry, i) => {
+      const tokens = Array.from({ length: STEPS_PER_CYCLE }, (_, step) =>
+        (step === entry.step ? entry.note : '~')
+      ).join(' ');
+      let part = strudel.note(tokens);
+      if (octaveShift && typeof part.add === 'function') {
+        // note() values are names here, so shift in semitones rather than
+        // rebuilding the token.
+        part = part.add(strudel.note(octaveShift * 12));
+      }
+      const lateSeconds = (knobs.humanTime / 1000) * jitter(i);
+      if (lateSeconds !== 0 && typeof part.late === 'function') {
+        // late() takes cycles, and a negative one is simply early.
+        part = part.late(lateSeconds / cycleSeconds);
+      }
+      part = decorate(part, soundName);
+      // Was this note reached without picking it? Same string, small move -
+      // that is a hammer-on or a pull-off, and it has no attack transient.
+      const previous = score[i - 1];
+      const slur =
+        Boolean(previous) &&
+        previous.string === entry.string &&
+        Math.abs(previous.fret - entry.fret) <= 4 &&
+        previous.fret !== entry.fret;
+      const human = 1 + jitter(i + 100) * knobs.humanGain;
+      return part.withValue((value) => ({
+        ...value,
+        gstring: entry.string,
+        gfret: entry.fret,
+        gpick: i % 2,
+        gslur: slur,
+        ghuman: human,
+      }));
+    })
+  );
+}
+
 /** The squeak of a hand moving up the neck. In the app the shape changes
  * between bars, so it belongs a hair before the downbeat, not on it. */
 function fretNoiseVoice() {
@@ -775,6 +996,12 @@ function buildPattern() {
   // slots stop being a comparison and become the two instruments: A leads,
   // B comps. Everywhere else the active slot plays and the toggle compares.
   const duet = Boolean(spec.lead && spec.chord);
+  if (spec.score) {
+    voices.push(scoreVoice(spec.score, active, bpm, spec.octave || 0));
+    if (el('layerBoth').checked && slotOf(other).fonts.length) {
+      voices.push(scoreVoice(spec.score, other, bpm, spec.octave || 0));
+    }
+  }
   if (spec.lead) {
     voices.push(decorate(voice(spec.lead), duet ? 'labA' : active));
     if (!duet && el('layerBoth').checked && slotOf(other).fonts.length) {
@@ -809,6 +1036,9 @@ function play() {
 function stop() {
   (strudel?.hush || window.hush)?.();
   state.playing = false;
+  // Nothing is ringing any more, and a stale entry would try to choke a node
+  // that has already been torn down on the next Play.
+  ringingStrings.clear();
   el('playStatus').textContent = 'Stopped.';
 }
 
@@ -1068,6 +1298,19 @@ function renderSnippet() {
       '// slightly early on each shape change.'
     );
   }
+  if (state.stringModel && /^(caged|onestring|shift)$/.test(el('phrase').value)) {
+    code.push(
+      '// ─ string model ─ the big one, and the only one that needs the app to send',
+      '// more than pitch. getShapePositions() already returns {string, fret}; carry',
+      '// it onto each note with .withValue(v => ({...v, gstring, gfret})) and port',
+      '// chokeString() + ringSecondsFor() from this file into the registered sound.',
+      `//   let ring ${knobs.letRing}s, open +${knobs.openRing}s, choke ${knobs.choke}ms,`,
+      `//   pick accent ${knobs.pickAccent}, legato ${knobs.legato},`,
+      `//   humanise ${knobs.humanTime}ms / ${knobs.humanGain}`,
+      '// Note the app currently builds one pattern for all notes; per-note data',
+      '// needs one pattern per note, stacked (see scoreVoice()).'
+    );
+  }
   if (code.length) {
     lines.push('', '// ─── needs code in flow.js, not config ───', ...code);
   }
@@ -1089,6 +1332,13 @@ el('tempo').addEventListener('change', refresh);
 el('octave').addEventListener('change', refresh);
 el('strumDir').addEventListener('change', refresh);
 el('layerBoth').addEventListener('change', refresh);
+el('stringModel').addEventListener('change', (event) => {
+  state.stringModel = event.target.checked;
+  // Nothing is ringing under the new rules, and a stale entry would choke a
+  // note that has no business being stopped.
+  ringingStrings.clear();
+  refresh();
+});
 el('program').addEventListener('change', (event) => {
   state.program = parseInt(event.target.value, 10);
   renderFontList();
@@ -1144,6 +1394,7 @@ applyAppSound(APP_SOUNDS[0]);
 buildKnobs('toneKnobs', TONE_KNOBS);
 buildKnobs('feelKnobs', FEEL_KNOBS);
 buildKnobs('ksKnobs', KS_KNOBS);
+buildKnobs('artKnobs', ART_KNOBS);
 renderSnippet();
 </script>
 </body>
